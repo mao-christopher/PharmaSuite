@@ -1,5 +1,6 @@
 """Main FastAPI Application Entrypoint for Pharma Inventory Platform."""
 
+import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -31,9 +32,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Warning loading demo scenario on startup: {e}")
 
+    clock = asyncio.create_task(controller.run_clock())
     yield
 
-    # Cleanup shutdown
+    clock.cancel()
     routes.controller = None
 
 

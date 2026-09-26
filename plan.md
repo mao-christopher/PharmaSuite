@@ -21,7 +21,7 @@ inventory and prompts employees when input is needed. MongoDB stores state/histo
 | People and handling | One active technician; one bottle handled at a time |
 | Prescription | One active prescription, one medication + strength |
 | Camera | Fixed room-camera POV with visible shelf/counter/disposal regions |
-| Shelf map | Fixed labeled rectangles for the demo; employee-drawn setup later |
+| Shelf map | Employee-drawn polygons on the dashboard Setup page (see "Shared camera layout") |
 | Medication identity | Infer from the configured pickup region, not label OCR |
 | Rendering | Moderately realistic human and motions; Unity proposed default |
 | Execution | Offline-rendered footage replayed through actual YOLO pose inference |
@@ -170,7 +170,7 @@ Proposed MongoDB collections:
 | Collection | Responsibility |
 | --- | --- |
 | medications | Stable medication + strength key and display fields |
-| regions | Camera rectangles, region type, designated medication, calibration version |
+| regions | Camera polygons, region type, designated medication, calibration version |
 | receipts | Received bottles/batches, initial quantities, expiry, lot/reference |
 | inventory | Pooled tablet totals, total bottles, per-location counts, uncertainty |
 | events | Raw inputs, derived actions, evidence, deduplication IDs |
@@ -178,6 +178,57 @@ Proposed MongoDB collections:
 | transactions | Prescription status and whether its stock deduction was applied |
 | disposals | Candidate/selected receipts, quantity/default, deductions and corrections |
 | alerts | Misplacement, uncertainty, expiry, out-of-stock, and reconciliation status |
+
+### Shared camera layout (implemented)
+
+Decided 2026-09-26. The camera is fixed, so one layout is annotated once and shared
+by every recording. `data/layouts/<layout_id>/layout.json` holds frame dimensions,
+`calibration_version`, medications, region polygons (normalized 0-1 vertices), and
+preset received batches (bottle count, units per bottle, expiry, lot, received date).
+Each recording folder in `data/scenarios/` holds its own video/IMU/transaction files
+plus `scenario.json` naming its `layout_id`.
+
+- A medication is one drug + strength (`AMOXICILLIN_500MG`); each has exactly one
+  shelf and each shelf holds exactly one medication. Any number of counter and
+  disposal regions are allowed. The API rejects layouts that break these rules.
+- Starting inventory is derived from the preset batches on scenario load: pooled
+  tablets = sum of bottles x units per bottle, and all bottles start on the shelf.
+- Saving from the Setup page bumps `calibration_version` and reloads the active
+  recording, which resets its live inventory, alerts, and replay position.
+- The Setup page imports a photo taken from the camera angle as the annotation
+  background (`background_image`); the layout takes the photo's frame size.
+
+### Recordings and hand-to-region association (implemented)
+
+Decided 2026-09-26. Demo input is an uploaded video plus a timestamps file (CSV,
+JSON, or JSONL; `time_s` or `media_time_ms`; `pickup`/`grab` and `release`/`drop`),
+standing in for wearable IMU signals. Each pickup opens a movement session and the
+next release closes it. On upload, YOLO11n-pose runs over every frame in the
+background and stores the most confident person's 17 keypoints in `poses.json`.
+
+- At each signal, both wrists are taken from the frame at the signal's media time
+  (or the nearest frame within 3 frames that shows a confident wrist, conf >= 0.35).
+- The region nearest either wrist wins: distance 0 inside a polygon, otherwise
+  distance to its edge as a fraction of the frame diagonal. Pickups consider shelves
+  and counters; releases also consider disposal regions.
+- `MAX_REGION_DISTANCE = 0.06` is an arbitrary, unvalidated constant. Farther than
+  that, no confident wrist, or a tie between overlapping regions requires employee
+  confirmation, which then applies the chosen region. A release that arrives while
+  its pickup is unconfirmed is held and applied after confirmation.
+- Release on the home shelf: no alert. Other shelf: misplacement alert. Counter:
+  valid parking. Disposal: bottle removed and disposal form opened.
+- Per user direction, a pickup from a shelf holding a misplaced bottle is assumed to
+  be that bottle (the correction). It keeps its original medication, and putting it
+  down anywhere closes the earlier misplacement alert.
+- Receiving stock adds a batch to live counts (bottles go straight onto the shelf)
+  without resetting. All state is in memory; restarting or reloading a recording
+  returns to the layout presets. MongoDB persistence is deferred.
+- The replay clock runs server-side on real elapsed time, independent of viewers,
+  stops at the end of the clip, and dispatches each event ID exactly once. Restart
+  and seek rebuild state from the recording's seed. State changes are pushed over
+  the WebSocket, and the dashboard shows a per-signal log of the decision.
+- Measured on this dev Mac (CPU): YOLO11n-pose extraction ran at about 17 frames/s
+  including model load. This is processing speed only, not pose accuracy.
 
 Use unique IDs and atomic/idempotent processing so replay, retries, and restart do
 not repeat mutations. Keep event acceptance and its stock update consistent across
@@ -252,6 +303,11 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
   source data can create discrepancies that CV cannot resolve.
 - Real IMU timing, release detection reliability, and attachment/identity conventions
   require agreement with the separate hardware effort before real integration.
+- The wrist is a proxy for the bottle. Shelf depth, which hand holds the bottle, and
+  occlusion are not modeled; the nearest-region rule and its distance constant have
+  not been evaluated against ground truth on rendered footage.
+- Only the most confident person per frame is tracked; a second person in view can
+  be picked instead of the technician.
 
 ## Renderer references
 

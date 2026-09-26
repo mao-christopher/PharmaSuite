@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pharma.db.connection import get_database, init_indexes
+from pharma.services.layout import build_initial_state, load_layout
 
 
 def load_json(path: Path) -> Any:
@@ -26,9 +27,11 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return records
 
 
-async def load_scenario_into_db(scenario_dir: Path, db: AsyncIOMotorDatabase = None):
-    """Reset database collections and populate from scenario fixture files."""
+async def load_scenario_into_db(scenario_dir: Path, layouts_dir: Path, db: AsyncIOMotorDatabase = None):
+    """Reset database collections and populate from the scenario and its shared layout."""
     database = db if db is not None else get_database()
+    layout = load_layout(layouts_dir, load_json(scenario_dir / "scenario.json")["layout_id"])
+    regions, inventory, receipts = build_initial_state(layout)
 
     # Clear existing collections
     collections = [
@@ -40,29 +43,20 @@ async def load_scenario_into_db(scenario_dir: Path, db: AsyncIOMotorDatabase = N
 
     await init_indexes(database)
 
-    # 1. Regions
-    regions_data = load_json(scenario_dir / "regions.json")
+    calibration = {"layout_id": layout.layout_id, "calibration_version": layout.calibration_version}
+    regions_data = [{**r.model_dump(mode="json"), **calibration} for r in regions]
     if regions_data:
         await database.regions.insert_many(regions_data)
 
-    # 2. Medications (derive from regions + inventory if not separate)
-    medications_data = load_json(scenario_dir / "medications.json")
-    if not medications_data and regions_data:
-        keys = {r["medication_key"] for r in regions_data if r.get("medication_key")}
-        medications_data = [
-            {"medication_key": key, "name": key.split("_")[0].title(), "strength": "500mg", "unit": "tablets"}
-            for key in keys
-        ]
+    medications_data = [m.model_dump() for m in layout.medications]
     if medications_data:
         await database.medications.insert_many(medications_data)
 
-    # 3. Initial Inventory
-    inventory_data = load_json(scenario_dir / "initial_inventory.json")
+    inventory_data = [i.model_dump() for i in inventory.values()]
     if inventory_data:
         await database.inventory.insert_many(inventory_data)
 
-    # 4. Receipts
-    receipts_data = load_json(scenario_dir / "receipts.json")
+    receipts_data = [r.model_dump() for r in receipts]
     if receipts_data:
         await database.receipts.insert_many(receipts_data)
 

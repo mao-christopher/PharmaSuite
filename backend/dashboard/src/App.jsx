@@ -1,162 +1,131 @@
-import React, { useState, useEffect } from 'react';
-import Header from './components/Header';
-import VideoPlayer from './components/VideoPlayer';
-import InventoryBoard from './components/InventoryBoard';
-import AlertCenter from './components/AlertCenter';
-import PrescriptionPanel from './components/PrescriptionPanel';
-import DisposalModal from './components/DisposalModal';
+import React, { useEffect, useRef, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Pill, Upload } from 'lucide-react';
+import { LiveProvider, useLive } from './lib/live';
+import { DialogProvider, useDialogs } from './lib/dialogs';
+import { request } from './lib/api';
+import Dashboard from './pages/Dashboard';
+import Inventory from './pages/Inventory';
+import Setup from './pages/Setup';
 
-export default function App() {
-  const [data, setData] = useState({
-    scenario: 'demo_scenario_01',
-    media_time_ms: 0,
-    is_playing: false,
-    inventory: {},
-    sessions: {},
-    disposals: {},
-    alerts: {},
-    receipts: [],
-    transactions: {},
-  });
-  const [isConnected, setIsConnected] = useState(false);
-  const [activeDisposal, setActiveDisposal] = useState(null);
+const STATUS_SUFFIX = { processing: ' (processing…)', unprocessed: ' (needs skeletons)', error: ' (failed)' };
 
-  const fetchState = async () => {
-    try {
-      const res = await fetch('/api/inventory');
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-
-        // Check if pending disposal modal should open
-        const pending = Object.values(json.disposals || {}).find(d => d.status === 'pending_employee_entry');
-        if (pending) {
-          setActiveDisposal(pending);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch inventory state:', err);
-    }
-  };
+function ScenarioPicker() {
+  const { state, loadScenario } = useLive();
+  const [scenarios, setScenarios] = useState([]);
+  const [error, setError] = useState(null);
+  const busy = scenarios.some((s) => s.status === 'processing');
 
   useEffect(() => {
-    fetchState();
-
-    // WebSocket live stream connection
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-    const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/events`);
-
-    ws.onopen = () => setIsConnected(true);
-    ws.onclose = () => setIsConnected(false);
-    ws.onmessage = (evt) => {
-      try {
-        const snapshot = JSON.parse(evt.data);
-        if (snapshot.type === 'state_snapshot') {
-          setData(prev => ({
-            ...prev,
-            media_time_ms: snapshot.media_time_ms,
-            is_playing: snapshot.is_playing,
-            inventory: snapshot.inventory || prev.inventory,
-            sessions: snapshot.sessions || prev.sessions,
-            disposals: snapshot.disposals || prev.disposals,
-            alerts: snapshot.alerts || prev.alerts,
-          }));
-
-          const pending = Object.values(snapshot.disposals || {}).find(d => d.status === 'pending_employee_entry');
-          if (pending) {
-            setActiveDisposal(pending);
-          }
-        }
-      } catch (err) {
-        console.error('Error parsing WS message:', err);
-      }
+    let alive = true;
+    const load = () =>
+      request('/api/scenarios')
+        .then((r) => alive && setScenarios(r.scenarios))
+        .catch(() => alive && setScenarios([]));
+    load();
+    const timer = busy ? setInterval(load, 1500) : null;
+    return () => {
+      alive = false;
+      clearInterval(timer);
     };
+  }, [state?.scenario, busy]);
 
-    return () => ws.close();
-  }, []);
+  if (scenarios.length === 0) return null;
+  return (
+    <label className="scenario-picker" title={error || undefined}>
+      <span className="muted">Recording</span>
+      <select
+        className="input input-sm"
+        value={state?.scenario || ''}
+        onChange={(e) => loadScenario(e.target.value).then(() => setError(null), (err) => setError(err.message))}
+      >
+        {!state?.scenario && <option value="">Choose…</option>}
+        {scenarios.map((s) => (
+          <option key={s.name} value={s.name} disabled={s.status !== 'ready'}>
+            {s.label}
+            {STATUS_SUFFIX[s.status] || ''}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
-  const handleTogglePlay = async () => {
-    const action = data.is_playing ? 'pause' : 'play';
-    await fetch('/api/replay/control', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
-    });
-    fetchState();
-  };
+function Shell() {
+  const { state, connected, error } = useLive();
+  const { openDisposal, openUpload } = useDialogs();
+  const location = useLocation();
+  const seenDisposals = useRef(new Set());
 
-  const handleRestart = async () => {
-    await fetch('/api/replay/control', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'restart' }),
-    });
-    fetchState();
-  };
+  const pending = state ? Object.values(state.disposals).filter((d) => d.status === 'pending_employee_entry') : [];
+  const openCount = state ? Object.values(state.alerts).filter((a) => a.status === 'open').length + pending.length : 0;
 
-  const handleResolveAlert = async (alertId) => {
-    await fetch(`/api/inventory/confirmations/${alertId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    fetchState();
-  };
-
-  const handleUpdateTxStatus = async (txId, status) => {
-    await fetch(`/api/transactions/${txId}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    fetchState();
-  };
-
-  const handleSubmitDisposal = async (disposalId, receiptId, explicitQty) => {
-    await fetch(`/api/inventory/disposals/${disposalId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        selected_receipt_id: receiptId,
-        explicit_quantity: explicitQty,
-      }),
-    });
-    setActiveDisposal(null);
-    fetchState();
-  };
+  useEffect(() => {
+    const fresh = pending.find((d) => !seenDisposals.current.has(d.disposal_id));
+    seenDisposals.current = new Set(pending.map((d) => d.disposal_id));
+    if (fresh && !location.pathname.startsWith('/setup')) openDisposal(fresh.disposal_id);
+  }, [state?.disposals]);
 
   return (
-    <div className="dashboard-container">
-      <Header
-        scenarioName={data.scenario}
-        isPlaying={data.is_playing}
-        onTogglePlay={handleTogglePlay}
-        onRestart={handleRestart}
-        isConnected={isConnected}
-      />
-
-      <InventoryBoard inventory={data.inventory} />
-
-      <div className="main-grid">
-        <div className="video-column">
-          <VideoPlayer mediaTimeMs={data.media_time_ms} scenarioName={data.scenario} />
+    <div className="app">
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <Pill size={18} />
+            <span>Pharma</span>
+          </div>
+          <nav className="nav">
+            <NavLink to="/" end>
+              Dashboard
+              {openCount > 0 && <span className="nav-count">{openCount}</span>}
+            </NavLink>
+            <NavLink to="/inventory">Inventory</NavLink>
+            <NavLink to="/setup">Setup</NavLink>
+          </nav>
+          <div className="topbar-right">
+            <ScenarioPicker />
+            <button className="btn btn-sm" onClick={openUpload}>
+              <Upload size={14} /> Upload
+            </button>
+            <span className={`conn ${connected ? 'on' : 'off'}`} title={connected ? 'Live updates connected' : 'Reconnecting…'}>
+              <span className="conn-dot" />
+              {connected ? 'Live' : 'Offline'}
+            </span>
+          </div>
         </div>
+      </header>
 
-        <div className="sidebar-column">
-          <AlertCenter alerts={data.alerts} onResolveAlert={handleResolveAlert} />
-          <PrescriptionPanel transactions={data.transactions} onUpdateStatus={handleUpdateTxStatus} />
-        </div>
-      </div>
-
-      {activeDisposal && (
-        <DisposalModal
-          disposal={activeDisposal}
-          receipts={data.receipts || []}
-          onSubmit={handleSubmitDisposal}
-          onClose={() => setActiveDisposal(null)}
-        />
-      )}
+      <main className="content">
+        {!state ? (
+          <div className="blank-state">
+            {error ? (
+              <>
+                <h2>Can't load the pharmacy state</h2>
+                <p className="muted">{error}. Check that the API server is running on port 8000 and a recording is loaded.</p>
+              </>
+            ) : (
+              <p className="muted">Loading…</p>
+            )}
+          </div>
+        ) : (
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        )}
+      </main>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LiveProvider>
+      <DialogProvider>
+        <Shell />
+      </DialogProvider>
+    </LiveProvider>
   );
 }

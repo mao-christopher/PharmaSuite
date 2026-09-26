@@ -1,25 +1,48 @@
 """Pydantic schemas and MongoDB document definitions for Pharma inventory management."""
 
-from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict
+import re
+from datetime import date
+from typing import Dict, List, Literal, Optional, Any, Tuple
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
+
+RegionType = Literal["designated_shelf", "dispensing_counter", "disposal"]
+LAYOUT_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,63}$"
+BACKGROUND_PATTERN = r"^background-[0-9a-f]{12}\.(jpg|png)$"
+
+
+def medication_key_for(name: str, strength: str) -> str:
+    """Derive the medication + strength key, e.g. ("Amoxicillin", "500 mg") -> AMOXICILLIN_500MG."""
+    name_part = re.sub(r"[^A-Z0-9]+", "_", name.strip().upper()).strip("_")
+    strength_part = re.sub(r"[^A-Z0-9.]+", "", strength.strip().upper())
+    return f"{name_part}_{strength_part}"
 
 
 class Medication(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     medication_key: str = Field(..., description="Unique key e.g. AMOXICILLIN_500MG")
-    name: str = Field(..., description="Display name e.g. Amoxicillin")
-    strength: str = Field(..., description="Strength e.g. 500mg")
+    name: str = Field(..., min_length=1, description="Display name e.g. Amoxicillin")
+    strength: str = Field(..., min_length=1, description="Strength e.g. 500mg")
     unit: str = Field(default="tablets", description="Dosage form unit")
 
 
 class Region(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    region_id: str = Field(..., description="Unique region ID e.g. shelf_amoxicillin_500mg")
-    region_type: str = Field(..., description="designated_shelf | dispensing_counter | disposal")
+    region_id: str = Field(..., min_length=1, description="Stable region ID e.g. shelf_01")
+    region_type: RegionType
     medication_key: Optional[str] = Field(default=None, description="Designated medication key if shelf")
-    bbox: List[float] = Field(..., description="[x_min, y_min, x_max, y_max] in normalized 0.0-1.0 coordinates")
+    polygon: List[Tuple[float, float]] = Field(
+        ..., min_length=3, description="Closed polygon vertices [[x, y], ...] in normalized 0.0-1.0 frame coordinates"
+    )
+
+    @field_validator("polygon")
+    @classmethod
+    def _normalized(cls, pts: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        for x, y in pts:
+            if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+                raise ValueError("polygon coordinates must be normalized to 0.0-1.0")
+        return pts
 
 
 class Receipt(BaseModel):
@@ -110,3 +133,78 @@ class Alert(BaseModel):
     description: str = Field(..., description="Human-readable alert message")
     status: str = Field(default="open", description="open | resolved")
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LayoutReceipt(BaseModel):
+    """Preset received batch; runtime Receipt totals are derived from it on scenario load."""
+
+    receipt_id: str = Field(..., min_length=1)
+    medication_key: str
+    bottle_count: int = Field(..., ge=1)
+    tablets_per_bottle: int = Field(..., ge=0)
+    expiry_date: str = Field(..., description="YYYY-MM-DD")
+    lot_number: Optional[str] = None
+    received_at: str = Field(..., description="Receipt timestamp ISO string")
+
+    @field_validator("expiry_date")
+    @classmethod
+    def _iso_date(cls, value: str) -> str:
+        date.fromisoformat(value)
+        return value
+
+
+class Layout(BaseModel):
+    """Fixed-camera setup shared by every recording that references it."""
+
+    layout_id: str = Field(..., pattern=LAYOUT_ID_PATTERN)
+    calibration_version: int = Field(default=0, ge=0)
+    frame_width: int = Field(default=1280, gt=0)
+    frame_height: int = Field(default=720, gt=0)
+    updated_at: Optional[str] = None
+    background_image: Optional[str] = Field(
+        default=None, pattern=BACKGROUND_PATTERN, description="Imported camera photo in the layout folder"
+    )
+    medications: List[Medication] = Field(default_factory=list)
+    regions: List[Region] = Field(default_factory=list)
+    receipts: List[LayoutReceipt] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "Layout":
+        issues: List[str] = []
+        med_keys = [m.medication_key for m in self.medications]
+        for m in self.medications:
+            expected = medication_key_for(m.name, m.strength)
+            if m.medication_key != expected:
+                issues.append(f"Medication key {m.medication_key} should be {expected}")
+        for key in {k for k in med_keys if med_keys.count(k) > 1}:
+            issues.append(f"Duplicate medication {key}")
+
+        region_ids = [r.region_id for r in self.regions]
+        for rid in {r for r in region_ids if region_ids.count(r) > 1}:
+            issues.append(f"Duplicate region ID {rid}")
+
+        shelves_by_med: Dict[str, List[str]] = {k: [] for k in med_keys}
+        for r in self.regions:
+            if r.region_type == "designated_shelf":
+                if r.medication_key not in shelves_by_med:
+                    issues.append(f"Shelf {r.region_id} has no known medication assigned")
+                else:
+                    shelves_by_med[r.medication_key].append(r.region_id)
+            elif r.medication_key is not None:
+                issues.append(f"Region {r.region_id} is not a shelf and cannot hold a medication")
+        for key, shelves in shelves_by_med.items():
+            if not shelves:
+                issues.append(f"{key} has no shelf drawn")
+            elif len(shelves) > 1:
+                issues.append(f"{key} is assigned to more than one shelf: {', '.join(shelves)}")
+
+        receipt_ids = [r.receipt_id for r in self.receipts]
+        for rid in {r for r in receipt_ids if receipt_ids.count(r) > 1}:
+            issues.append(f"Duplicate receipt ID {rid}")
+        for r in self.receipts:
+            if r.medication_key not in shelves_by_med:
+                issues.append(f"Receipt {r.receipt_id} references unknown medication {r.medication_key}")
+
+        if issues:
+            raise ValueError("; ".join(sorted(issues)))
+        return self
