@@ -32,5 +32,19 @@ services:
       - "8888:8888"
     volumes:
       - ../:/app
-    env_file:
-      - ../.env
+  # MongoDB for inventory state, events, receipts, and alerts
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mongo-data:

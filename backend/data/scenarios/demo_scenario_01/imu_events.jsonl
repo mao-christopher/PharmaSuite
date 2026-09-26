@@ -1,0 +1,2 @@
+{"event_id": "evt_001", "schema_version": "1.0", "session_id": "sess_001", "timestamp": 1774580000.0, "media_time_ms": 1000, "event_type": "pickup", "sensor_id": "imu_wrist_right_01", "details": {}}
+{"event_id": "evt_002", "schema_version": "1.0", "session_id": "sess_001", "timestamp": 1774580005.0, "media_time_ms": 6000, "event_type": "release", "sensor_id": "imu_wrist_right_01", "details": {}}

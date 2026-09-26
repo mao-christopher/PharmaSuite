@@ -51,6 +51,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!backend/dashboard/src/lib/
 lib64/
 parts/
 sdist/
@@ -150,6 +151,14 @@ data/interim/
 *.tar.gz
 *.tar.bz2
 
+# Uploaded recordings, extracted skeletons, and imported camera photos
+backend/data/scenarios/upload-*/
+backend/data/scenarios/*/video.*
+backend/data/scenarios/*/poses.json
+backend/data/layouts/*/background-*
+backend/data/scenarios/*/thumb.jpg
+backend/data/state/
+
 # Keep directory structure
 !data/.gitkeep
 !data/**/.gitkeep
@@ -208,6 +217,16 @@ tramp
 *.stTheme.cache
 *.sublime-workspace
 *.sublime-project
+
+# ============================================================
+# Node / npm
+# ============================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.vite/
 
 # ============================================================
 # Logs / Temporary
