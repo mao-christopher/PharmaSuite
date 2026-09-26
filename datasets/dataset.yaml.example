@@ -1,0 +1,14 @@
+# Copy to datasets/dataset.yaml and edit for your labelled data.
+# Images must live under data/raw/<split>/ and labels under data/raw/<split>/labels/.
+# Ultralytics format: one .txt per image, YOLO normalised [cls cx cy w h] per line.
+
+path: data/raw          # root relative to repo root
+train: train/images
+val: val/images
+test: test/images       # optional
+
+nc: 3                   # number of classes
+names:
+  0: pill
+  1: capsule
+  2: tablet
