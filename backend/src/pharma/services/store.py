@@ -236,6 +236,8 @@ class PharmacyStore:
         regions: Optional[List[Region]] = None,
         layout_id: Optional[str] = None,
         joint: Optional[str] = "wrist",
+        camera_id: Optional[str] = None,
+        calibration_version: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """Apply one pickup/release signal exactly once. Returns its activity entry, or None if seen."""
         entry = self.recording_entry(recording)
@@ -258,10 +260,13 @@ class PharmacyStore:
         else:
             session = engine.handle_release(sid, hands, event.get("timestamp", 0.0))
         for alert_id in set(engine.alerts) - before:
-            engine.alerts[alert_id].metadata.update(recording=recording, layout_id=layout_id, joint=joint)
+            engine.alerts[alert_id].metadata.update(recording=recording, layout_id=layout_id, joint=joint,
+                                                         camera_id=camera_id, calibration_version=calibration_version)
         evidence = session.evidence.get("pending_release", {}).get("evidence") or session.evidence
         activity = {
             "raw_event": copy.deepcopy(event),
+            "camera_id": camera_id,
+            "calibration_version": calibration_version,
             "event_id": event["event_id"],
             "media_time_ms": event["media_time_ms"],
             "event_type": event["event_type"],

@@ -175,7 +175,7 @@ export default function CameraFeed() {
           <Badge tone={applied.tone}>{applied.label}</Badge>
         </>
       }
-      subtitle={`${state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}, view ${state.layout?.name || state.layout?.layout_id}`}
+      subtitle={`${state.camera_selection ? `Automatic POV: ${state.camera_selection.camera_id} · ${state.camera_selection.reliable_arm ? "arm visible" : "arm uncertain"} · ` : ""}${state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}, view ${state.layout?.name || state.layout?.layout_id}`}
       className="area-player"
       flush
     >

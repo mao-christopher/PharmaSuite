@@ -70,6 +70,16 @@ namespace Pharma.Simulation.Editor
             Directory.CreateDirectory(Path.Combine(output,"evaluator_only"));
             string session=Path.GetFileName(output)+"-"+Guid.NewGuid().ToString("N").Substring(0,12);
             var camera=sim.roomCamera;
+            string preset=Argument("-pharmaCamera","front");
+            if(preset!="front" && preset!="side") throw new ArgumentException("Camera must be front or side");
+            if(preset=="side")
+            {
+                camera.transform.position=new Vector3(7.8f,5f,4.6f);
+                camera.transform.LookAt(new Vector3(-.2f,.8f,2.5f));
+                camera.fieldOfView=48;
+            }
+            string cameraId=preset=="front"?"room-camera-01":"room-camera-02";
+            string calibrationVersion=preset=="front"?"pharmacy-v3":"pharmacy-v3-side";
             var rt=new RenderTexture(width,height,24,RenderTextureFormat.ARGB32);
             rt.antiAliasing=4; rt.Create(); camera.targetTexture=rt; camera.aspect=(float)width/height;
             var texture=new Texture2D(width,height,TextureFormat.RGB24,false);
@@ -120,10 +130,10 @@ namespace Pharma.Simulation.Editor
                 }
                 else
                 {
-                    var capture=new Capture{session_id=session,width=width,height=height,fps=fps,frame_count=times.Length};
+                    var capture=new Capture{camera_id=cameraId,calibration_version=calibrationVersion,session_id=session,width=width,height=height,fps=fps,frame_count=times.Length};
                     File.WriteAllText(Path.Combine(output,"capture.json"),JsonUtility.ToJson(capture,true));
                 }
-                WriteCalibration(sim,width,height,output);
+                WriteCalibration(sim,width,height,output,cameraId,calibrationVersion);
                 if(sim.CompletedActions != sim.Cues.Count)
                     throw new InvalidOperationException("Export did not complete every action");
                 var actualEvents=sim.SensorEvents.ToArray();
@@ -151,7 +161,7 @@ namespace Pharma.Simulation.Editor
                 sim.Evaluate(0);
             }
         }
-        static void WriteCalibration(PharmacySimulation sim,int width,int height,string output)
+        static void WriteCalibration(PharmacySimulation sim,int width,int height,string output,string cameraId,string calibrationVersion)
         {
             var data=new List<RegionData>();
             foreach(var region in sim.regions)
@@ -167,7 +177,7 @@ namespace Pharma.Simulation.Editor
                 }
                 data.Add(new RegionData{region_id=region.id,kind=region.kind,medication_id=region.medication,x_min=xmin,y_min=ymin,x_max=xmax,y_max=ymax});
             }
-            File.WriteAllText(Path.Combine(output,"calibration.json"),JsonUtility.ToJson(new Calibration{width=width,height=height,regions=data.ToArray()},true));
+            File.WriteAllText(Path.Combine(output,"calibration.json"),JsonUtility.ToJson(new Calibration{camera_id=cameraId,calibration_version=calibrationVersion,width=width,height=height,regions=data.ToArray()},true));
         }
         static bool Has(string key) => Environment.GetCommandLineArgs().Contains(key);
         static string Argument(string key,string fallback)

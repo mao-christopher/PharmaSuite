@@ -28,6 +28,7 @@ from pharma.services.layout import (
     DEFAULT_LAYOUT_ID, frame_similarity, list_layout_ids, load_background, load_catalog, load_layout,
     merge_view, new_layout_id, save_catalog, save_frame_background, save_layout,
 )
+from pharma.services.multicamera import CameraGroup
 from pharma.services.recordings import EVENTS_FILE, POSES_FILE, PoseTrack, VideoInfo, find_video, probe_video
 from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarge
 from pharma.services.store import PharmacyStore, now_iso, session_key
@@ -90,6 +91,7 @@ class Recording:
     video_path: Optional[Path]
     video: Optional[VideoInfo]
     poses: Optional[PoseTrack]
+    camera_group: Optional[CameraGroup] = None
 
     @property
     def label(self) -> str:
@@ -108,6 +110,8 @@ class Recording:
         return self.video.fps if self.video else SYNTHETIC_FPS
 
     def hand_points_at(self, media_time_ms: float) -> Tuple[List[Hand], Optional[str]]:
+        if self.camera_group:
+            return self.camera_group.hands_at(media_time_ms)
         if self.poses:
             return self.poses.hand_points_at(media_time_ms, MIN_KEYPOINT_CONF)
         return [synthetic_hand(media_time_ms)], "wrist"
@@ -256,6 +260,12 @@ class ReplayController:
         layout_id = meta.get("layout_id")
         if not layout_id:
             raise FileNotFoundError(f"Recording '{name}' has no layout_id in scenario.json")
+        group = CameraGroup.load(path) if (path / "multicam.json").exists() else None
+        if group:
+            for camera in group.cameras.values():
+                view = self.view(camera.layout_id)
+                if view.calibration_version != camera.calibration_version:
+                    raise ValueError("Camera calibration changed; reprocess/review the synchronized recording")
         self.view(layout_id)  # the recording's camera view must exist
         video_path = find_video(path)
         return Recording(
@@ -266,6 +276,7 @@ class ReplayController:
             video_path=video_path,
             video=probe_video(video_path) if video_path else None,
             poses=PoseTrack.load(path / POSES_FILE) if video_path else None,
+            camera_group=group,
         )
 
     def load_scenario(self, scenario_name: str) -> Dict[str, Any]:
@@ -567,13 +578,16 @@ class ReplayController:
         pending = [e for e in rec.events if e["media_time_ms"] <= until_ms and e["event_id"] not in applied_ids]
         if not pending:
             return 0
-        view = self.view(rec.layout_id)
-        frame_size = (rec.video.width, rec.video.height) if rec.video else (view.frame_width, view.frame_height)
         changed = 0
         for evt in pending:
+            camera = rec.camera_group.camera_at(evt["media_time_ms"]) if rec.camera_group else None
+            view = self.view(camera.layout_id if camera else rec.layout_id)
+            frame_size = (camera.poses.width, camera.poses.height) if camera else ((rec.video.width, rec.video.height) if rec.video else (view.frame_width, view.frame_height))
             hands, joint = rec.hand_points_at(evt["media_time_ms"])
             if self.store.apply_event(rec.name, evt, hands, frame_size, rec.label,
-                                      regions=view.regions, layout_id=view.layout_id, joint=joint):
+                                      regions=view.regions, layout_id=view.layout_id, joint=joint,
+                                      camera_id=camera.camera_id if camera else None,
+                                      calibration_version=view.calibration_version):
                 changed += 1
         if changed:
             self.store.save()
@@ -602,6 +616,16 @@ class ReplayController:
         self.current_media_time_ms = max(0.0, min(float(media_time_ms), float(self.duration_ms)))
         self._last_tick = time.monotonic()
         self.process_events_until(self.current_media_time_ms)
+        self._select_camera()
+
+    def _select_camera(self):
+        if not self.current or not self.current.camera_group:
+            return False
+        camera = self.current.camera_group.camera_at(self.current_media_time_ms)
+        if self.layout.layout_id != camera.layout_id:
+            self._set_player_view(camera.layout_id)
+            return True
+        return False
 
     def tick(self, now: float) -> bool:
         """Advance the media clock by real elapsed time. Returns True if inventory state changed."""
@@ -611,6 +635,7 @@ class ReplayController:
         self._last_tick = now
         self.current_media_time_ms = min(self.duration_ms, self.current_media_time_ms + elapsed_ms)
         changed = self.process_events_until(self.current_media_time_ms) > 0
+        changed = self._select_camera() or changed
         if self.current_media_time_ms >= self.duration_ms:
             self.is_playing = False
             changed = True
@@ -688,6 +713,7 @@ class ReplayController:
             "duration_ms": self.duration_ms,
             "is_playing": self.is_playing,
             "has_video": self.video_path is not None,
+            "camera_selection": rec.camera_group.at(self.current_media_time_ms) if rec and rec.camera_group else None,
             "frame_size": list(self.frame_size()),
             "events": [{**e, "processed": e["event_id"] in applied} for e in (rec.events if rec else [])],
             "activity": self.activity,
@@ -791,7 +817,8 @@ class ReplayController:
 
         hands: List[Tuple[int, int]] = []
         if rec and rec.poses:
-            kps = rec.poses.keypoints_at(media_time_ms)
+            track = rec.camera_group.camera_at(media_time_ms).poses if rec.camera_group else rec.poses
+            kps = track.keypoints_at(media_time_ms)
             if kps:
                 px = [(int(x * width), int(y * height), c) for x, y, c in kps]
                 for a, b in SKELETON_EDGES:
@@ -808,6 +835,11 @@ class ReplayController:
         for x, y in hands:
             cv2.circle(frame, (x, y), max(4, round(5 * scale)), WRIST_COLOR, -1, cv2.LINE_AA)
             cv2.circle(frame, (x, y), max(6, round(8 * scale)), (255, 255, 255), max(1, round(1.5 * scale)), cv2.LINE_AA)
+        if rec and rec.camera_group:
+            selected = rec.camera_group.at(media_time_ms)
+            label = selected["camera_id"] + (" | arm visible" if selected["reliable_arm"] else " | arm uncertain")
+            cv2.rectangle(frame, (0, 0), (width, 45), (30, 30, 30), -1)
+            cv2.putText(frame, label, (15, 30), cv2.FONT_HERSHEY_SIMPLEX, .7, (255, 255, 255), 2)
         return frame
 
     def mjpeg_generator(self):
@@ -816,16 +848,19 @@ class ReplayController:
         cap_generation = -1
         last_index = -1
         last_frame = None
+        cap_path = None
         try:
             while True:
                 t = self.current_media_time_ms
                 rec = self.current
-                video_path = rec.video_path if rec else None
-                if cap_generation != self.generation:
+                camera = rec.camera_group.camera_at(t) if rec and rec.camera_group else None
+                video_path = camera.video_path if camera else (rec.video_path if rec else None)
+                if cap_generation != self.generation or cap_path != video_path:
                     if cap is not None:
                         cap.release()
                     cap = cv2.VideoCapture(str(video_path)) if video_path else None
                     cap_generation, last_index, last_frame = self.generation, -1, None
+                    cap_path = video_path
 
                 if cap is not None:
                     index = int(t * rec.fps / 1000.0)
