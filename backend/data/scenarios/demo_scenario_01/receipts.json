@@ -1,0 +1,12 @@
+[
+  {
+    "receipt_id": "REC_AMX_2026_01",
+    "medication_key": "AMOXICILLIN_500MG",
+    "bottle_count": 5,
+    "remaining_bottles": 5,
+    "total_tablets": 500,
+    "expiry_date": "2027-06-30",
+    "lot_number": "LOT-88391",
+    "received_at": "2026-09-01T08:00:00Z"
+  }
+]

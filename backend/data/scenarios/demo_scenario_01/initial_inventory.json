@@ -1,0 +1,14 @@
+[
+  {
+    "medication_key": "AMOXICILLIN_500MG",
+    "pooled_tablets": 500,
+    "total_bottles": 5,
+    "shelf_counts": {
+      "shelf_amoxicillin_500mg": 5
+    },
+    "held_bottles": 0,
+    "counter_bottles": 0,
+    "disposed_bottles": 0,
+    "uncertain_location": false
+  }
+]
