@@ -1,0 +1,37 @@
+{
+  "frame_count": 3180,
+  "fps": 30.0,
+  "switches": [
+    {
+      "frame": 181,
+      "media_time_ms": 6033.333333333333,
+      "camera_id": "room-camera-02",
+      "reliable_arm": true,
+      "scores": {
+        "room-camera-01": 0.0,
+        "room-camera-02": 0.7153152823448181
+      },
+      "switched": true,
+      "reason": "arm_lost_handoff"
+    },
+    {
+      "frame": 1015,
+      "media_time_ms": 33833.333333333336,
+      "camera_id": "room-camera-01",
+      "reliable_arm": true,
+      "scores": {
+        "room-camera-01": 0.8254259824752808,
+        "room-camera-02": 0.0
+      },
+      "switched": true,
+      "reason": "arm_lost_handoff"
+    }
+  ],
+  "uncertain_frames": 75,
+  "sensor_events": 10,
+  "threshold": 0.5,
+  "loss_seconds": 0.2,
+  "acquire_seconds": 0.1,
+  "selection_source": "YOLO image keypoints only; at least one complete arm",
+  "limitation": "Confidence is not proof of true visibility. Single technician; synchronized prerecorded cameras only."
+}

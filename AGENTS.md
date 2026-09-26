@@ -10,7 +10,8 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
 
 ## Scope
 
-- One fixed camera, one active technician, one bottle being handled at a time,
+- Fixed, calibrated cameras with visibility-driven handoff during multi-shelf workflows,
+  one active technician, one bottle being handled at a time,
   and one active prescription containing one medication and strength.
 - Preconfigured shelf rectangles, each assigned one medication + strength;
   separately configured dispensing-counter and disposal regions.
@@ -68,6 +69,21 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
     provide this as a clearly labeled simulation X-ray view using Unity rig truth.
     Keep that data evaluator-only and separate from CV/runtime inventory inputs.
     A projected wrist/region match alone cannot establish depth or a stock mutation.
+
+15. Multi-shelf workflows must support switching between calibrated cameras when
+    the technician's arm skeleton is no longer observable in the active camera.
+    The demo must demonstrate POV handoff to a camera that can observe the arm.
+    Use actual CV visibility/confidence for the decision; the simulation X-ray is
+    presentation-only and must not imply camera visibility through an obstacle.
+    Preserve the shared clock, technician/bottle movement session, medication
+    identity, inventory state, and event IDs across camera switches. A switch must
+    not create another pickup/release or duplicate an inventory mutation. If no
+    camera has adequate evidence, retain uncertainty and request confirmation.
+    Each observation must identify its camera and calibration version.
+16. The intended final presentation mixes real-world and simulated footage with
+    seamless transitions. This is project context and future presentation work;
+    implementing or editing those transitions is not part of the current MongoDB
+    migration. Automatic camera handoff is a requirement, not an implemented claim.
 
 ## Repository conventions
 

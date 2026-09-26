@@ -1,0 +1,134 @@
+import React, { useState } from 'react';
+import { useLive } from '../lib/live';
+import { JOINT_LABEL, REGION_TYPES, formatMs, medLabel, regionLabel } from '../lib/format';
+import { Dialog } from './ui';
+
+const REASONS = {
+  too_far: 'The hand was too far from every region.',
+  ambiguous: 'The hand was inside two overlapping regions.',
+  no_confident_hand: 'No wrist, elbow or shoulder was confidently visible at that moment.',
+  nothing_parked_at_counter: 'The hand was at a counter, but no bottle was parked there.',
+  no_regions: 'No regions are configured.',
+};
+const PICKUP_TYPES = ['designated_shelf', 'dispensing_counter'];
+
+/** Regions of the alert's view, nearest to the hand first. */
+function rankRegions(view, types, candidates = []) {
+  const regions = view.regions.filter((r) => types.includes(r.region_type));
+  const dist = new Map(candidates.map((c) => [c.region_id, c.distance]));
+  return regions
+    .map((r) => ({ region: r, distance: dist.get(r.region_id) }))
+    .sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+}
+
+function RegionChoices({ legend, name, view, options, value, onChange }) {
+  return (
+    <fieldset className="field" aria-labelledby={`${name}-legend`}>
+      <span id={`${name}-legend`} className="label">
+        {legend}
+      </span>
+      <div className="choice-list">
+        {options.map(({ region, distance }, i) => (
+          <label key={region.region_id} className={`choice ${value === region.region_id ? 'selected' : ''}`}>
+            <input type="radio" name={name} checked={value === region.region_id} onChange={() => onChange(region.region_id)} />
+            <span className="dot" aria-hidden="true" style={{ background: REGION_TYPES[region.region_type].color, marginTop: 6 }} />
+            <span className="choice-main">
+              <span className="row-title">{regionLabel(view, region.region_id)}</span>
+              {distance != null && (
+                <span className="row-sub">
+                  {distance === 0 ? 'Hand inside' : `${(distance * 100).toFixed(1)}% of the frame away`}
+                  {i === 0 ? ', nearest' : ''}
+                </span>
+              )}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+export default function ConfirmLocationDialog({ alert, onClose }) {
+  const { state, confirmLocation } = useLive();
+  const m = alert.metadata;
+  const view = { ...(state.views?.[m.layout_id] || state.layout), medications: state.layout.medications };
+  const phase = m.phase;
+  const session = state.sessions[m.session_id];
+  const pending = phase === 'pickup' ? session?.evidence?.pending_release : null;
+  const askRelease = pending && !pending.region_id;
+
+  const pickupOptions = rankRegions(view, phase === 'pickup' ? PICKUP_TYPES : Object.keys(REGION_TYPES), m.candidates);
+  const releaseOptions = askRelease ? rankRegions(view, Object.keys(REGION_TYPES), pending.evidence?.candidates) : [];
+  const [regionId, setRegionId] = useState(pickupOptions[0]?.distance != null ? pickupOptions[0].region.region_id : '');
+  const [releaseId, setReleaseId] = useState(releaseOptions[0]?.distance != null ? releaseOptions[0].region.region_id : '');
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const events = (state.activity || []).filter((a) => a.session_id === m.session_id);
+  const at = (type) => events.find((a) => a.event_type === type);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await confirmLocation(alert.alert_id, regionId, askRelease ? releaseId : null);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={askRelease ? 'Where was the bottle picked up and put down?' : phase === 'pickup' ? 'Where was the bottle picked up?' : 'Where was the bottle put down?'}
+      onClose={onClose}
+      width={askRelease ? 720 : 480}
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Later
+          </button>
+          <button className="btn btn-primary" type="submit" form="confirm-form" disabled={!regionId || (askRelease && !releaseId) || saving}>
+            {saving ? 'Saving…' : askRelease ? 'Confirm both' : 'Confirm location'}
+          </button>
+        </>
+      }
+    >
+      <form id="confirm-form" className="form" onSubmit={submit}>
+        <p className="lead">
+          {REASONS[m.reason] || 'The location was uncertain.'}
+          {m.joint && m.joint !== 'wrist' && ` Position came from the ${JOINT_LABEL[m.joint]}.`}
+          {session && session.medication_key !== 'UNKNOWN' && ` Bottle: ${medLabel(state.layout.medications, session.medication_key)}.`}
+          {m.recording && m.recording !== state.scenario && ` Recording: ${m.recording}.`}
+          {' '}Choose where it happened; the nearest options are listed first.
+        </p>
+        <div className={askRelease ? 'grid-2 align-start' : ''}>
+          <RegionChoices
+            legend={`${phase === 'pickup' ? 'Picked up from' : 'Put down at'}${at(phase) ? ` (${formatMs(at(phase).media_time_ms)})` : ''}`}
+            name="region"
+            view={view}
+            options={pickupOptions}
+            value={regionId}
+            onChange={setRegionId}
+          />
+          {askRelease && (
+            <RegionChoices
+              legend={`Put down at${at('release') ? ` (${formatMs(at('release').media_time_ms)})` : ''}`}
+              name="release-region"
+              view={view}
+              options={releaseOptions}
+              value={releaseId}
+              onChange={setReleaseId}
+            />
+          )}
+        </div>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </Dialog>
+  );
+}

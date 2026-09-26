@@ -1,0 +1,16 @@
+{
+  "scenario_name": "demo_scenario_01",
+  "expected_sequence": [
+    {
+      "media_time_ms": 1000,
+      "expected_action": "pickup",
+      "expected_source_region": "shelf_amoxicillin_500mg",
+      "expected_medication": "AMOXICILLIN_500MG"
+    },
+    {
+      "media_time_ms": 6000,
+      "expected_action": "release",
+      "expected_target_region": "counter_dispensing_01"
+    }
+  ]
+}

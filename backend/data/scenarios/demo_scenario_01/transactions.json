@@ -1,0 +1,9 @@
+[
+  {
+    "transaction_id": "TX_RX_1001",
+    "medication_key": "AMOXICILLIN_500MG",
+    "quantity": 30,
+    "status": "created",
+    "deducted": false
+  }
+]
