@@ -1409,6 +1409,8 @@ select.input {
 
 .segmented {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   padding: 2px;
   gap: 2px;
   background: var(--surface-2);
@@ -1484,9 +1486,10 @@ select.input {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
 }
@@ -2228,4 +2231,119 @@ input[type='range'] {
   .review-head {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ---------------------------------------------------------------- multi-camera upload */
+
+.camera-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.camera-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 6px 4px 12px;
+  font-size: 13px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.camera-file + .camera-file {
+  border-top: 1px solid var(--hairline);
+}
+
+.camera-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.camera-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------------------------------------------------------------- upload steps */
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.steps li.active {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.steps li.active .step-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.steps li.done .step-num {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.draft-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#upload-views-form .camera-tabs {
+  margin-bottom: 12px;
+}
+
+/* ---------------------------------------------------------------- stock suggestions */
+
+.suggestion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.notice-list + .suggestion-head {
+  border-top: 1px solid var(--hairline);
+  margin-top: 4px;
+}
+
+.reorder-field {
+  margin-top: 12px;
 }

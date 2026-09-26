@@ -180,7 +180,7 @@ def make_video(path, frames=30, fps=10, size=(320, 180)):
     writer.release()
 
 
-def fake_keypoints(video_path, total_frames, model_path=None, conf=0.25, progress=None, settings=None):
+def fake_keypoints(video_path, total_frames, model_path=None, conf=0.25, progress=None, settings=None, imgsz=None):
     # Right wrist sits on the Amoxicillin shelf, then over the Ibuprofen shelf from frame 15.
     frames = []
     for i in range(total_frames):

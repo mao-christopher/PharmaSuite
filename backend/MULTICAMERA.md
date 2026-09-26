@@ -14,12 +14,20 @@ meets that condition. After 0.2 seconds without a usable arm, switch to an alter
 with at least 0.1 seconds of continuous evidence. Decisions use only frames up to
 the current timestamp and remain identical after seeking/restarting.
 
-If no view qualifies, retain the current POV with an uncertainty label and provide
-no hand location to inventory. A sensor event then goes through employee confirmation.
-The multi-camera path does not use elbow/shoulder-only hand fallback, future frames,
-or Unity rig truth. Confidence remains an imperfect visibility proxy. This demo
-assumes one technician, aligned clocks, identical FPS/frame count, and prerecorded
-videos; unsynchronized live streams and identity tracking across multiple people
+If no view qualifies, keep the current POV with an uncertainty label. For a sensor
+event at that moment, fall back in order (added 2026-09-26, unvalidated):
+
+1. any confident wrist, then any confident elbow (>= 0.35), in the signal's frame or
+   the nearest frame within 5 before or after it, in every camera (selected first,
+   then by arm score);
+2. the nearest confident wrist within 1 s before or after the signal;
+3. no location, so the event goes through employee confirmation.
+
+The hand is matched against the regions of the camera it was found in. Camera
+selection never uses future frames; the event fallback may, since recordings are
+processed before playback. Nothing uses Unity rig truth. Confidence remains an imperfect visibility proxy.
+This demo assumes one technician, cameras that start together, and prerecorded
+videos. Unsynchronized live streams and identity tracking across multiple people
 are not implemented.
 
 ## Recording format
@@ -41,11 +49,21 @@ and a single `imu_events.jsonl`. Add `multicam.json`:
 ```
 
 Paths must stay within the recording directory. Each view must have its own saved
-calibration. Loading rejects mismatched clocks/pose sizes or changed calibration
-versions. Rebuild/review a group after changing calibration. The current upload form
-still creates single-camera recordings; use the bundle generator for synchronized
-groups. The dashboard automatically selects POV for a loaded group and shows its
-camera ID and arm visibility status above the player.
+calibration. For this `shared_zero_origin` clock, loading rejects mismatched clocks or
+pose sizes, or a changed calibration version, so rebuild or review the group after
+changing calibration. The dashboard selects the camera automatically for a loaded
+group and shows its name and arm visibility above the player.
+
+### Uploaded groups
+
+Uploading several videos in the dashboard's upload window writes the same file with
+`"clock": "media_time"` and `"source": "upload"`. Its cameras only share a zero time
+origin, so their frame rates and lengths may differ; the first camera's clock drives
+the player. Its `calibration_version` is `null`, meaning it follows the view's current
+calibration, so editing a view in Setup doesn't break the recording. Each camera also
+records its `label` (the file name), `width`, `height`, `fps` and `view_confirmed`.
+The upload window's second step shows each camera's own frame and view before the
+recording is created, so every camera's view is confirmed on upload.
 
 ## Reproduce the rendered demonstration
 

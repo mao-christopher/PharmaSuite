@@ -6,6 +6,7 @@ import { useLive } from './live';
 
 const JobsContext = createContext(null);
 const POLL_MS = 1200;
+const TOAST_TONE = { ready: 'tone-green', notes: 'tone-amber', error: 'tone-red' };
 
 /**
  * Tracks recordings whose skeletons are still being extracted after the upload window
@@ -20,7 +21,8 @@ export function JobsProvider({ children }) {
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
 
-  const track = useCallback((name, label) => {
+  const track = useCallback((name, label, warnings = []) => {
+    if (warnings.length) setToasts((ts) => [...ts, { id: `${name}-notes`, name, label, status: 'notes', notes: warnings }]);
     if (known.current.has(name)) return;
     known.current.add(name);
     setJobs((js) => [...js, { name, label, progress: 0 }]);
@@ -74,15 +76,19 @@ export function JobsProvider({ children }) {
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className="toast" role="status">
-            <span className={`notice-icon ${t.status === 'ready' ? 'tone-green' : 'tone-red'}`} aria-hidden="true">
+            <span className={`notice-icon ${TOAST_TONE[t.status]}`} aria-hidden="true">
               {t.status === 'ready' ? <CheckCircleIcon /> : <WarningCircleIcon />}
             </span>
             <div className="notice-content">
-              <div className="notice-title">{t.status === 'ready' ? `${t.label} is ready` : `${t.label} failed`}</div>
+              <div className="notice-title">
+                {t.status === 'ready' ? `${t.label} is ready` : t.status === 'notes' ? `Check ${t.label}` : `${t.label} failed`}
+              </div>
               <p className="notice-text">
                 {t.status === 'ready'
                   ? 'Skeletons are extracted. Its signals apply when it plays.'
-                  : `Skeleton extraction failed: ${t.error}. Retry it from Recordings.`}
+                  : t.status === 'notes'
+                    ? t.notes.join(' ')
+                    : `Skeleton extraction failed: ${t.error}. Retry it from Recordings.`}
               </p>
               <div className="toast-actions">
                 {t.status === 'ready' ? (

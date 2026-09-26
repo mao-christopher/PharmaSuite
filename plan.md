@@ -3,19 +3,39 @@
 ## Status and objective
 
 The agreed product requirements below remain the implementation baseline.
+Status as of 2026-09-26, after PRs #2 (Unity simulation) and #3 (MongoDB, camera
+handoff, and the dashboard branch) merged into `main`:
 
-The `simulation/` Unity project now implements the fixed-camera room, a textured
-rigged technician, stateful bottle handling with navigation and collision guards, offline frame/video export, synchronized
-mock sensor events, calibration, synthetic receiving/prescription fixtures, and
-separate evaluator ground truth. It includes a deliberate occlusion variant and an
-offline evaluation script that calls the existing backend pose helper. See
-[simulation/VALIDATION.md](simulation/VALIDATION.md) for measured results.
+**Implemented**
 
-This covers the simulation feasibility work in milestone 1 and the recording/fixture
-portion of milestone 2. It does not implement the downstream replay/event-fusion
-service, inventory mutations, MongoDB persistence, or working dashboard. The terminal
-in the scene is a visual prop. Generic runtime replay/pause and recovery beyond Unity
-scene playback remain separate work.
+- `simulation/`: a Unity room with a textured, rigged technician. It has stateful
+  bottle handling with navigation and collision guards, and exports offline video.
+  Mock sensor events, calibration, synthetic receiving/prescription fixtures, and
+  evaluator-only ground truth are exported alongside. Measured results are in
+  [simulation/VALIDATION.md](simulation/VALIDATION.md).
+- `backend/`: a FastAPI service that replays uploaded recordings on a server-side
+  media clock and extracts YOLO skeletons in the background. At each signal it
+  matches the hand to a region and applies the inventory rules below once per signal.
+  State lives in MongoDB (see `backend/MONGODB.md`).
+- `backend/dashboard/`: a React dashboard with the player, signal log,
+  notifications, recordings library, inventory, and camera-view setup.
+- Multi-camera recordings. They come from the simulator's bundle format or from
+  uploading several videos. The player switches to whichever camera sees the arm
+  (see `backend/MULTICAMERA.md`).
+- A single upload window: videos, pickup and put-down times, then each camera's shelf
+  boxes. Upload closes the window and extracts skeletons in the background.
+- Proactive stock suggestions: low stock, last bottle, run-out forecast, and
+  batches expiring soon.
+
+**Not implemented or not validated**
+
+- Region association has not been scored against ground truth. That covers the
+  distance threshold, the joint fallbacks, and camera switching. The 10/10 result in
+  `simulation/VALIDATION.md` is a feasibility check on one scripted clip.
+- No real pharmacy footage has been processed.
+- Per-action clips, the real IMU adapter, and real-to-simulation re-enactment are
+  not implemented. The same goes for the mixed real and simulated presentation.
+- The terminal in the Unity scene is a visual prop.
 
 Demonstrate medication pickup, valid temporary counter placement, correct/incorrect
 return, disposal, expiry notification, and transaction-based tablet inventory using
@@ -29,10 +49,10 @@ inventory and prompts employees when input is needed. MongoDB stores state/histo
 | --- | --- |
 | People and handling | One active technician; one bottle handled at a time |
 | Prescription | One active prescription, one medication + strength |
-| Camera | Fixed room-camera POV with visible shelf/counter/disposal regions |
+| Camera | Fixed, calibrated cameras; with several, the player switches to the one that sees the arm |
 | Shelf map | Employee-drawn polygons on the dashboard Setup page (see "Shared camera layout") |
 | Medication identity | Infer from the configured pickup region, not label OCR |
-| Rendering | Moderately realistic human and motions; Unity proposed default |
+| Rendering | Moderately realistic human and motions; Unity 6000.6.3f1 |
 | Execution | Offline-rendered footage replayed through actual YOLO pose inference |
 | Sensor input | Synchronized mock pickup/movement/release events |
 | Tablet stock | Pool across all bottles of each medication + strength |
@@ -56,9 +76,8 @@ Employee confirmations and corrections -------------------------------> inventor
                                                                          MongoDB + dashboard
 ```
 
-Use Python for the existing inference pipeline and proposed event/inventory service.
-A small web dashboard is proposed; exact API/UI frameworks are implementation
-choices, not user commitments. Start with replayable files before streaming.
+The inference pipeline and event/inventory service are Python (FastAPI); the
+dashboard is React (Vite). Recordings are replayable files; live streaming is future work.
 
 The simulator may know exact bottle and joint transforms for animation and scoring.
 The runtime receives only rendered video, legitimate mock sensor events, configured
@@ -241,9 +260,14 @@ JSON, or JSONL; `time_s` or `media_time_ms`; `pickup`/`grab` and `release`/`drop
 standing in for wearable IMU signals. Each pickup opens a movement session and the
 next release closes it. On upload, YOLO11n-pose runs over every frame in the
 background and stores the most confident person's 17 keypoints in `poses.json`.
+Inference runs at 960 px on the long side (`POSE_IMGSZ`, decided 2026-09-26; was the
+640 default), which finds distant people more often at roughly twice the processing
+time. The stored video is never resized, and `poses.json` records the size used.
 
-- At each signal, both wrists are taken from the frame at the signal's media time
-  (or the nearest frame within 3 frames that shows a confident wrist, conf >= 0.35).
+- At each signal, both wrists are taken from the frame at the signal's media time,
+  or the nearest frame within 5 before or after it, when confident (conf >= 0.35).
+  Fallbacks when no wrist qualifies are under "Multi-camera uploads, hand fallback,
+  upload order, and stock suggestions" below.
 - The region nearest either wrist wins: distance 0 inside a polygon, otherwise
   distance to its edge as a fraction of the frame diagonal. Pickups consider shelves
   and counters; releases also consider disposal regions.
@@ -272,16 +296,19 @@ Uploaded recordings are kept in `data/scenarios/upload-*` with their metadata
 and listed on a Recordings page. Inventory is one live state that carries across
 recordings instead of resetting per recording.
 
-- Live state is saved to `data/state/pharmacy.json` (atomic write, gitignored) after
-  every change and reloaded on server start. This JSON store stands in for MongoDB;
-  moving it into the collections above remains open.
+- Live state was first saved to `data/state/pharmacy.json`. It now lives in one
+  revision-checked MongoDB document per pharmacy; the JSON file is imported once
+  and kept as a backup (see "MongoDB workflow and camera handoff" and
+  `backend/MONGODB.md`).
 - A recording's signals change inventory the first time the playhead passes them, or
   all at once with "Apply". Applied event IDs are recorded per recording, so replays,
   seeks backward, restarts, and repeated Apply calls never apply a signal twice and
   never undo one. Movement sessions are namespaced `<recording>:<session>` because
   every upload numbers its sessions from `sess_001`.
-- Recordings apply in whatever order they are played or applied, not by capture time.
-  A partially played recording leaves its bottle in hand until the rest is applied.
+- Superseded 2026-09-26: uploads are assumed to have happened in upload order (see
+  below). Playing or applying still works in any order; Apply offers to catch up earlier
+  uploads first. A partially played recording leaves its bottle in hand until the rest
+  is applied.
 - Deleting an uploaded recording removes its files; inventory changes it made stay.
   Bundled fixtures cannot be deleted.
 - "Reset to opening stock" restores the layout's preset batches, clears alerts,
@@ -291,11 +318,10 @@ recordings instead of resetting per recording.
 
 Use unique IDs and atomic/idempotent processing so replay, retries, and restart do
 not repeat mutations. Keep event acceptance and its stock update consistent across
-crashes. Choose a MongoDB transaction-capable setup or a documented recoverable
-event-ledger approach before implementing multi-document writes. The JSON store
-writes the whole state in one atomic replace, so an event and its stock update land
-together; a crash between applying and saving can lose the latest change but not
-split it.
+crashes. The MongoDB store writes the whole pharmacy state (counts, applied event
+IDs, history) in one revision-checked document replace, so an event and its stock
+update land together. A long-running service would need to split that ledger before
+MongoDB's document size limit (see `backend/MONGODB.md`).
 
 ## Implementation milestones
 
@@ -376,7 +402,7 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 
 - The simulator uses Unity 6000.6.3f1, the MIT-licensed Microsoft Rocketbox Medical_Male_03
   character, procedural animation, and a fixed camera recorded at 1920 x 1080 / 30 FPS.
-  Dashboard framework and production CV thresholds remain to be selected.
+  The dashboard is React; production CV thresholds remain to be selected.
 - Unity is implemented for the simulation. The measured prototype results are in
   the simulation validation report; they do not establish real-camera performance.
   Prerecorded playback separates rendering from inference.
@@ -389,13 +415,16 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 - Real IMU timing, release detection reliability, and attachment/identity conventions
   require agreement with the separate hardware effort before real integration.
 - The wrist is a proxy for the bottle. Shelf depth, which hand holds the bottle, and
-  occlusion are not modeled; the nearest-region rule and its distance constant have
-  not been evaluated against ground truth on rendered footage.
+  occlusion are not modeled. The nearest-region rule, its distance constant, and the
+  elbow and nearest-wrist fallbacks have not been evaluated against ground truth on
+  rendered footage. A nearest wrist can be up to 1 s before or after the signal; the
+  hand may have moved in between.
 - Only the most confident person per frame is tracked; a second person in view can
   be picked instead of the technician.
-- Live inventory now depends on the order recordings are applied. Clips recorded out
-  of order, or applied twice under different uploads of the same footage, will be
-  counted as separate real events.
+- Decided 2026-09-26: every upload is a new set of real events, even identical
+  footage uploaded twice, and upload order is the order they happened. Uploading
+  clips out of order, or uploading footage by mistake, therefore changes stock. The
+  fix is a correction or a reset, not deduplication.
 
 ### Camera views, joint fallback, and manual stock actions (implemented)
 
@@ -415,11 +444,10 @@ Decided 2026-09-26.
   regions cannot drift between annotation and playback. Setup also warns when a view's
   photo and its recordings differ in shape, and can take a recording's frame as the
   photo or crop an imported photo to the recordings' aspect ratio.
-- **Joint fallback.** At each signal the hand position comes from the wrists, else the
-  elbows, else the shoulders, each searched within 3 frames. Elbows and shoulders are
-  coarser proxies for the bottle and have not been evaluated; the joint used is shown
-  in the signal log and confirmation dialog. If no joint is visible (seen in a Unity
-  clip where no person is detected around the pickup), the employee confirms.
+- **Joint fallback.** Superseded 2026-09-26 by the chain under "Multi-camera uploads,
+  hand fallback, upload order, and stock suggestions": shoulders are no longer used,
+  and a recently seen wrist is tried last. Signals applied before the change keep the
+  joint they were recorded with.
 - **Confirmation.** The dialog lists regions nearest first with their distances, and
   settles a pickup and its held put-down in one step. Confirmed rows in the signal log
   show the employee's choice; the original evidence stays in the history.
@@ -490,6 +518,117 @@ The 106-second recording switches at 6.033 s and 33.833 s; 75 frames have no rel
 arm in the selected view and remain uncertain. All 10 scripted bottle-action regions
 were correct in the integrated inventory replay, with no action abstentions/wrong
 regions. MongoDB state and applied-event counts remained unchanged after replay and
-controller restart. This does not validate real-camera performance. The multi-camera
-upload form and unsynchronized live capture remain future work; synchronized groups
-are generated/imported using the documented bundle format in `backend/MULTICAMERA.md`.
+controller restart. This does not validate real-camera performance. Multi-camera
+uploads were added afterwards (see the next section); unsynchronized live capture
+remains future work. Simulator groups use the bundle format in `backend/MULTICAMERA.md`.
+
+## Multi-camera uploads, hand fallback, upload order, and stock suggestions (implemented)
+
+Decided 2026-09-26. The thresholds below are unvalidated demo defaults.
+
+- **Multi-camera uploads.** The upload window accepts several videos of the same moment
+  plus one timestamps file. The first video is the main camera: its clock drives the
+  player and the timestamps, and any other can be made main. The cameras are assumed
+  to start together; they may differ in frame rate or length, and a camera is treated
+  as having no view once its video ends. A difference over 1 s is shown as a warning.
+  Each camera gets the most similar saved view, preferring one no other camera of the
+  upload uses, and a camera's recordings follow its view's current calibration. Simulator bundles still pin a
+  calibration version and require identical clocks.
+- **One upload window** (decided 2026-09-26). Everything happens before the upload
+  finishes, so a recording never needs revisiting to draw boxes:
+  1. *Video and times.* Choosing videos starts uploading them to a draft
+     (`POST /api/uploads`, kept under `scenarios/.drafts/`) while the employee marks
+     pickup and put-down times on the main camera's preview, types them, or picks a
+     timestamps file.
+  2. *Shelf boxes.* Each camera's first frame, with its most similar saved view,
+     preferring one no other camera uses. The employee can switch views or adjust
+     boxes. Edited cameras are saved as a new view (default) or as an update to that
+     view. Unchanged or unopened cameras use their view as is.
+
+  Upload (`POST /api/uploads/{id}/finish`) checks the times and choices first, so a
+  rejected request keeps the draft to fix. It then turns the draft into a recording
+  with every camera's view confirmed, starts skeleton extraction, and closes the
+  window. Progress shows in the top bar, then as a toast. Cancelling or closing the
+  window deletes the draft. Drafts left by a closed browser tab are deleted after
+  24 h. The one-request `POST /api/recordings` still works; its views stay
+  unconfirmed and are reviewed from Recordings, where any recording's views can
+  still be changed later.
+- **Where the hand is at a signal.** Each step is tried only when the previous one
+  finds nothing:
+  1. Camera switching (`backend/MULTICAMERA.md`): the selected camera's complete
+     arm, meaning shoulder, elbow and wrist at confidence >= 0.5.
+  2. Any confident wrist, then any confident elbow (>= 0.35). Each is looked for in
+     the signal's frame, then outwards up to 5 frames before or after it (earlier
+     first on ties), in every camera: the selected camera first, then the others by
+     arm score.
+  3. The nearest confident wrist before or after the signal, within 1 s: its last
+     or next known position.
+  4. Nothing: the employee confirms the location. Anything needing more than 1 s
+     either way lands here (decided 2026-09-26).
+
+  A single camera runs the same chain without step 1. Steps 2 and 3 read frames after
+  the signal, which is fine because recordings are processed before they play; camera
+  selection itself still never looks ahead. Shoulders are not used.
+
+  A person missing from the start of a clip, or from every camera, gives step 4 with
+  no error. The signal log shows which camera was used and when the hand came from
+  an elbow or a wrist seen earlier or later (with how far). The engine's distance
+  threshold still decides whether the position is confident enough to act on.
+  Activity rows store the offset as `joint_offset_ms` (negative means before);
+  earlier rows stored `joint_age_ms`.
+- **Upload order.** Every upload is a new set of events, even the same footage again.
+  Uploads are numbered in upload order, which is taken as the order they happened.
+  Applying a recording while earlier uploads still have unapplied signals asks
+  whether to apply those first, oldest first; "Only this one" is still available.
+- **Simulator event files.** Timestamp files may contain the simulator's `movement`
+  samples. They are skipped, since they carry no location, and the original file
+  is saved beside the recording as `events-source.*`.
+- **Stock suggestions.** Derived from live stock on every read, not stored, so they
+  never duplicate. They change nothing; alerts still come from the inventory rules.
+  - *Running low:* tablets at or below the medication's reorder point. The default is
+    20% of opening stock; it can be set per medication on Setup.
+  - *Last bottle:* one bottle left, which replaces "Running low".
+  - *Forecast to run out:* at the average of the last 14 days' prescription
+    deductions, stock lasts fewer than 7 days. This needs the new `deducted_at` time
+    on prescriptions, so deductions made before this change don't count.
+  - *Expiring soon:* a batch with bottles left expires within 30 days, marked urgent
+    within 7 days. If nothing else would be left, or only one bottle, it says to
+    order more.
+
+  "Dismiss" hides a suggestion until it changes. The expiry suggestion comes back
+  when it escalates to the 7-day stage; the stock suggestions come back after a new
+  batch is received. Dismissals are stored with the pharmacy state and cleared by a
+  reset.
+
+## Real footage and the simulation (direction)
+
+Recorded 2026-09-26 as context; nothing in this section is implemented.
+
+The intended flow starts with real footage plus a pickup and put-down signal. The
+real footage gets the CV annotations: skeleton, regions, and the decided shelf. A
+Unity re-enactment of the same actions highlights which shelf or bottle was picked up
+and where it was put down. The final demo cross-fades between real and simulated
+footage; that edit is separate work. For now the simulation is rendered first and
+then repeated in real life. Either way the pipeline uses only what real film would
+provide: video and signals. It never uses Unity calibration or rig truth.
+
+Proposed path for real-to-Unity, simplest first:
+
+1. **Event-driven re-enactment (recommended).**
+   - The dashboard exports the confirmed action timeline of a recording: time, pickup
+     or put-down, region and medication.
+   - The Unity simulation plays those actions through its existing guarded action
+     system, walking to the shelf, picking and placing, and highlights the shelf,
+     bottle and destination.
+   - This needs a timeline export endpoint and a table mapping each dashboard region
+     to a Unity shelf or region. On the Unity side it needs the "configurable
+     scenario format" from "Task flexibility" above, plus slack in the schedule for
+     walking time.
+   - Only the action moments line up with the real clip, not body motion.
+   - Moderate effort, mostly on the Unity side.
+2. **Motion reconstruction (not recommended for the demo).**
+   - Lift the real 2D keypoints to 3D with a monocular human pose or mesh model, then
+     retarget them onto the Rocketbox rig in a Unity room built to match the real one.
+   - This needs real camera intrinsics and extrinsics, a matched room model, and
+     foot-contact cleanup.
+   - Research-grade effort, with visible artefacts likely.

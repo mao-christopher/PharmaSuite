@@ -38,7 +38,23 @@ export function designatedShelfId(layout, medKey) {
   return medKey ? `shelf_${medKey.toLowerCase()}` : undefined;
 }
 
-export const JOINT_LABEL = { wrist: 'wrist', elbow: 'elbow (wrist hidden)', shoulder: 'shoulder (wrist and elbow hidden)' };
+const JOINT_LABEL = {
+  wrist: 'wrist',
+  elbow: 'elbow (wrist hidden)',
+  shoulder: 'shoulder (wrist and elbow hidden)', // older recordings
+};
+
+/** Where a signal's hand position came from when it wasn't the wrist at that moment, or null. */
+export function jointNote(joint, offsetMs) {
+  if (!joint || joint === 'wrist') return null;
+  const s = (Math.max(Math.abs(offsetMs || 0), 100) / 1000).toFixed(1);
+  if (joint === 'last_seen_wrist') return `the wrist seen ${s} s earlier`;
+  if (joint === 'next_seen_wrist') return `the wrist seen ${s} s later`;
+  return `the ${JOINT_LABEL[joint] || joint}`;
+}
+
+/** A signal row's joint offset (older rows stored how long before the signal, as joint_age_ms). */
+export const jointOffset = (row) => row.joint_offset_ms ?? -(row.joint_age_ms || 0);
 
 export function bottleCounts(layout, inv) {
   const shelfId = designatedShelfId(layout, inv.medication_key);

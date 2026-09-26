@@ -20,4 +20,7 @@ class Settings:
     models_dir: Path = ROOT / os.getenv("MODELS_DIR", "models")
     outputs_dir: Path = ROOT / os.getenv("OUTPUTS_DIR", "runs")
     default_model: str = "yolo11n-pose.pt"
+    # Pose inference size (long side, px). 960 finds distant people that 640 misses, at
+    # roughly twice the processing time. The uploaded video itself is never resized.
+    pose_imgsz: int = int(os.getenv("POSE_IMGSZ", "960"))
     device: str = "cuda" if _cuda_available() else "cpu"

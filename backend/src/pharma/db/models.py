@@ -29,6 +29,9 @@ class Medication(BaseModel):
     name: str = Field(..., min_length=1, description="Display name e.g. Amoxicillin")
     strength: str = Field(..., min_length=1, description="Strength e.g. 500mg")
     unit: str = Field(default="tablets", description="Dosage form unit")
+    reorder_point: Optional[int] = Field(
+        default=None, ge=0, description="Suggest reordering at or below this many units; None uses the default"
+    )
 
 
 class Region(BaseModel):
@@ -111,6 +114,7 @@ class PrescriptionTransaction(BaseModel):
     quantity: int = Field(..., gt=0, description="Tablet quantity to deduct")
     status: str = Field(default="created", description="created | confirmed_fill | paid | cancelled")
     deducted: bool = Field(default=False, description="True if tablet deduction has been applied")
+    deducted_at: Optional[str] = Field(default=None, description="When the deduction was applied (ISO time)")
 
 
 class DisposalRecord(BaseModel):

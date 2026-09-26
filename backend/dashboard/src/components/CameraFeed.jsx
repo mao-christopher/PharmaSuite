@@ -175,7 +175,13 @@ export default function CameraFeed() {
           <Badge tone={applied.tone}>{applied.label}</Badge>
         </>
       }
-      subtitle={`${state.camera_selection ? `Automatic POV: ${state.camera_selection.camera_id} · ${state.camera_selection.reliable_arm ? "arm visible" : "arm uncertain"} · ` : ""}${state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}, view ${state.layout?.name || state.layout?.layout_id}`}
+      subtitle={
+        state.camera_selection
+          ? `Switching between ${state.camera_selection.cameras} cameras. Showing ${state.camera_selection.label || state.camera_selection.camera_id} (${
+              state.camera_selection.reliable_arm ? 'arm visible' : 'arm not clearly visible'
+            }), view ${state.layout?.name || state.layout?.layout_id}`
+          : `${state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}, view ${state.layout?.name || state.layout?.layout_id}`
+      }
       className="area-player"
       flush
     >

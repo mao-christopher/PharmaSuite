@@ -23,12 +23,17 @@ def extract_video_keypoints(
     conf: float = 0.25,
     progress: Optional[Callable[[int, int], None]] = None,
     settings: Settings = None,
+    imgsz: Optional[int] = None,
 ) -> List[Optional[List[List[float]]]]:
-    """Per-frame keypoints of the most confident person: 17 x [x_norm, y_norm, conf], or None."""
+    """Per-frame keypoints of the most confident person: 17 x [x_norm, y_norm, conf], or None.
+
+    imgsz is the inference size (defaults to POSE_IMGSZ); keypoints stay normalized to the video.
+    """
     cfg = settings or Settings()
     model = YOLO(model_path or resolve_model_path(cfg))
     frames: List[Optional[List[List[float]]]] = []
-    for result in model.predict(source=str(video_path), conf=conf, stream=True, verbose=False, device=cfg.device):
+    for result in model.predict(source=str(video_path), conf=conf, stream=True, verbose=False, device=cfg.device,
+                                imgsz=imgsz or cfg.pose_imgsz):
         kp = result.keypoints
         if kp is None or result.boxes is None or len(result.boxes) == 0 or kp.xyn is None:
             frames.append(None)

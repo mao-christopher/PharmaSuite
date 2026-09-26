@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BellIcon, InfoIcon, TrashIcon, WarningCircleIcon, WarningIcon } from '@phosphor-icons/react';
+import { BellIcon, ClockCountdownIcon, InfoIcon, PackageIcon, TrashIcon, TrendDownIcon, WarningCircleIcon, WarningIcon, XIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
+import { request } from '../lib/api';
 import { useDialogs } from '../lib/dialogs';
-import { ALERT_TYPES, SEVERITY_RANK, SEVERITY_TONE, formatDate, medLabel, regionLabel } from '../lib/format';
+import { ALERT_TYPES, SEVERITY_RANK, SEVERITY_TONE, formatDate, medLabel, plural, regionLabel } from '../lib/format';
 import { Badge, Card } from './ui';
 
 const ICONS = { red: WarningCircleIcon, amber: WarningIcon, blue: InfoIcon };
@@ -58,6 +59,70 @@ function AlertAction({ alert, onResolve, onConfirm, onReceive, onDispose }) {
   }
 }
 
+const SUGGESTION_ICONS = { low_stock: PackageIcon, last_bottle: PackageIcon, runout: TrendDownIcon, expiring_soon: ClockCountdownIcon };
+
+/** Proactive, derived suggestions: nothing has gone wrong yet, but acting now avoids an alert later. */
+function Suggestions({ suggestions, meds, onReceive }) {
+  const { refresh } = useLive();
+  const [busy, setBusy] = useState(null);
+  const dismiss = async (id) => {
+    setBusy(id);
+    try {
+      await request(`/api/suggestions/${encodeURIComponent(id)}/dismiss`, { method: 'POST' });
+      await refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+  if (suggestions.length === 0) return null;
+  return (
+    <>
+      <div className="suggestion-head">
+        <span>Suggested actions</span>
+        <span>{plural(suggestions.length, 'suggestion')}</span>
+      </div>
+      <ul className="notice-list">
+        {suggestions.map((sg) => {
+          const Icon = SUGGESTION_ICONS[sg.kind] || InfoIcon;
+          return (
+            <li key={sg.id} className="notice">
+              <span className={`notice-icon tone-${sg.severity === 'warning' ? 'amber' : 'blue'}`} aria-hidden="true">
+                <Icon />
+              </span>
+              <div className="notice-content">
+                <div className="notice-title">{sg.title}</div>
+                <div className="notice-med">{medLabel(meds, sg.medication_key)}</div>
+                <p className="notice-text">{sg.message}</p>
+              </div>
+              <div className="notice-action">
+                {sg.action === 'view_batch' ? (
+                  <Link className="btn btn-sm" to={`/inventory?receipt=${encodeURIComponent(sg.receipt_id)}`}>
+                    View batch
+                  </Link>
+                ) : (
+                  <button type="button" className="btn btn-sm" onClick={() => onReceive(sg.medication_key)}>
+                    Receive stock
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Dismiss: ${sg.title}, ${medLabel(meds, sg.medication_key)}`}
+                  title="Dismiss until the situation changes"
+                  disabled={busy === sg.id}
+                  onClick={() => dismiss(sg.id)}
+                >
+                  <XIcon aria-hidden="true" />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 export default function Notifications() {
   const { state, resolveAlert } = useLive();
   const { openDisposal, openConfirm, openReceive, openDisposeBatch } = useDialogs();
@@ -70,12 +135,21 @@ export default function Notifications() {
   const resolved = alerts.filter((a) => a.status !== 'open');
   const pendingDisposals = Object.values(state.disposals).filter((d) => d.status === 'pending_employee_entry');
   const count = open.length + pendingDisposals.length;
+  const suggestions = state.suggestions || [];
 
   return (
     <Card
       title="Notifications"
       className="area-alerts"
-      actions={count > 0 ? <Badge tone="red">{count} open</Badge> : <Badge tone="green">All clear</Badge>}
+      actions={
+        count > 0 ? (
+          <Badge tone="red">{count} open</Badge>
+        ) : suggestions.length > 0 ? (
+          <Badge tone="blue">{plural(suggestions.length, 'suggestion')}</Badge>
+        ) : (
+          <Badge tone="green">All clear</Badge>
+        )
+      }
       flush
       footer={
         resolved.length > 0 && (
@@ -98,7 +172,7 @@ export default function Notifications() {
       }
     >
       <div aria-live="polite">
-        {count === 0 && (
+        {count === 0 && suggestions.length === 0 && (
           <div className="notice-empty">
             <span className="notice-icon tone-green" aria-hidden="true">
               <BellIcon />
@@ -150,6 +224,7 @@ export default function Notifications() {
             );
           })}
         </ul>
+        <Suggestions suggestions={suggestions} meds={meds} onReceive={openReceive} />
       </div>
     </Card>
   );

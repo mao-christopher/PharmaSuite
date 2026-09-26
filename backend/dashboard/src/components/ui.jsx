@@ -133,7 +133,7 @@ export function Dialog({ title, onClose, children, footer, width = 520 }) {
   );
 }
 
-export function ConfirmDialog({ title, children, confirmLabel, busyLabel, busy, error, destructive, onConfirm, onClose }) {
+export function ConfirmDialog({ title, children, confirmLabel, busyLabel, busy, error, destructive, onConfirm, onClose, secondaryLabel, onSecondary }) {
   return (
     <Dialog
       title={title}
@@ -144,6 +144,11 @@ export function ConfirmDialog({ title, children, confirmLabel, busyLabel, busy, 
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
+          {onSecondary && (
+            <button type="button" className="btn" onClick={onSecondary} disabled={busy}>
+              {secondaryLabel}
+            </button>
+          )}
           <button
             type="button"
             className={`btn ${destructive ? 'btn-danger-solid' : 'btn-primary'}`}

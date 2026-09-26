@@ -56,6 +56,8 @@ function imageSize(file) {
   });
 }
 
+const recKey = (r) => `${r.name}::${r.camera_id || ''}`;
+
 function NumberInput({ value, onChange, min = 0, name }) {
   return (
     <input
@@ -189,6 +191,23 @@ function MedicationCard({ med, shelf, receipts, onChange, onRemove, onDrawShelf,
           </div>
         ))}
       </div>
+      <label className="field reorder-field">
+        <span className="label">Suggest reordering at</span>
+        <input
+          className="input"
+          type="number"
+          name="reorder-point"
+          autoComplete="off"
+          inputMode="numeric"
+          min="0"
+          placeholder={`${formatNumber(Math.round(units * 0.2))} (20% of opening stock)…`}
+          value={med.reorder_point ?? ''}
+          onChange={(e) => onChange({ reorder_point: e.target.value === '' ? null : Math.max(0, Math.floor(Number(e.target.value))) })}
+        />
+        <span className="hint">
+          A &ldquo;Running low&rdquo; suggestion appears when {med.unit} in stock fall to this. Leave blank for the default.
+        </span>
+      </label>
       <div className="med-footer">
         <span className="muted num">
           Opening stock: {bottles} bottles, {formatNumber(units)} {med.unit}
@@ -362,17 +381,19 @@ export default function Setup() {
     }
   };
 
-  const applyRecordingFrame = async (recording) => {
-    if (!recording) return;
+  // A recording (or one camera of a multi-camera recording) is picked as "name::camera".
+  const applyRecordingFrame = async (choice) => {
+    if (!choice) return;
+    const [recording, cameraId] = choice.split('::');
     setUploading(true);
     setMessage(null);
     try {
       const img = await request(`/api/layouts/${draft.layout_id}/background-from-recording`, {
         method: 'POST',
-        body: { recording },
+        body: { recording, camera_id: cameraId || null },
       });
       patch(() => ({ background_image: img.background_image, frame_width: img.width, frame_height: img.height }));
-      const label = videoRecs.find((r) => r.name === recording)?.label || recording;
+      const label = videoRecs.find((r) => recKey(r) === choice)?.label || recording;
       setMessage({ tone: 'green', text: `Using a ${img.width}×${img.height} frame from ${label}. Regions now line up with its video exactly; adjust them, then save.` });
     } catch (e) {
       setMessage({ tone: 'red', text: e.message });
@@ -468,7 +489,7 @@ export default function Setup() {
             {mismatched[0].width}×{mismatched[0].height}, but this view's photo is {draft.frame_width}×{draft.frame_height}.
             Regions will drift between Setup and the video.
           </span>
-          <button type="button" className="btn btn-sm push" disabled={uploading} onClick={() => applyRecordingFrame(mismatched[0].name)}>
+          <button type="button" className="btn btn-sm push" disabled={uploading} onClick={() => applyRecordingFrame(recKey(mismatched[0]))}>
             <FilmStripIcon size={13} aria-hidden="true" /> Use its frame
           </button>
         </div>
@@ -495,7 +516,7 @@ export default function Setup() {
                   >
                     <option value="">Use a recording frame…</option>
                     {videoRecs.map((r) => (
-                      <option key={r.name} value={r.name}>
+                      <option key={recKey(r)} value={recKey(r)}>
                         {r.label} ({r.width}×{r.height})
                       </option>
                     ))}

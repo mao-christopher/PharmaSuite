@@ -153,6 +153,7 @@ data/interim/
 
 # Uploaded recordings, extracted skeletons, and imported camera photos
 backend/data/scenarios/upload-*/
+backend/data/scenarios/.drafts/
 backend/data/scenarios/*/video.*
 backend/data/scenarios/*/poses.json
 backend/data/layouts/*/background-*
