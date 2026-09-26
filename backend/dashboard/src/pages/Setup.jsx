@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Grid3x3, ImageUp, MousePointer2, Plus, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { CursorIcon, GridFourIcon, ImageSquareIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { errorMessage, request } from '../lib/api';
-import { REGION_TYPES, medicationKeyFor, regionLabel, todayIso } from '../lib/format';
+import { REGION_TYPES, formatNumber, medicationKeyFor, regionLabel, todayIso } from '../lib/format';
 import RegionCanvas from '../components/RegionCanvas';
 import { Badge, Dialog, Empty, PageHeader } from '../components/ui';
 
 const TOOLS = [
-  { id: 'select', label: 'Select', icon: MousePointer2 },
+  { id: 'select', label: 'Select', icon: CursorIcon },
   { id: 'designated_shelf', label: 'Shelf' },
   { id: 'dispensing_counter', label: 'Counter' },
   { id: 'disposal', label: 'Disposal' },
@@ -50,11 +51,14 @@ function validate(draft) {
   return [...new Set(issues)];
 }
 
-function NumberInput({ value, onChange, min = 0 }) {
+function NumberInput({ value, onChange, min = 0, name }) {
   return (
     <input
       className="input"
       type="number"
+      name={name}
+      autoComplete="off"
+      inputMode="numeric"
       min={min}
       value={Number.isNaN(value) ? '' : value}
       onChange={(e) => onChange(e.target.value === '' ? NaN : Math.floor(Number(e.target.value)))}
@@ -82,15 +86,15 @@ function AddMedication({ existingKeys, onAdd }) {
       <div className="grid-3">
         <label className="field">
           <span className="label">Drug</span>
-          <input className="input" placeholder="Amoxicillin" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" name="drug" autoComplete="off" placeholder="Amoxicillin…" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="field">
           <span className="label">Strength</span>
-          <input className="input" placeholder="500mg" value={strength} onChange={(e) => setStrength(e.target.value)} />
+          <input className="input" name="strength" autoComplete="off" placeholder="500mg…" value={strength} onChange={(e) => setStrength(e.target.value)} />
         </label>
         <label className="field">
           <span className="label">Unit</span>
-          <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
+          <select className="input" name="unit" value={unit} onChange={(e) => setUnit(e.target.value)}>
             {UNITS.map((u) => (
               <option key={u}>{u}</option>
             ))}
@@ -102,7 +106,7 @@ function AddMedication({ existingKeys, onAdd }) {
           {duplicate ? `${key} already exists` : key || 'Each drug + strength is its own medication'}
         </span>
         <button className="btn btn-sm" type="submit" disabled={!key || duplicate}>
-          <Plus size={14} /> Add medication
+          <PlusIcon size={13} aria-hidden="true" /> Add medication
         </button>
       </div>
     </form>
@@ -115,25 +119,25 @@ function MedicationCard({ med, shelf, receipts, onChange, onRemove, onDrawShelf,
   return (
     <div className="med-card">
       <div className="med-head">
-        <input className="input input-strong" value={med.name} onChange={(e) => onChange({ name: e.target.value })} aria-label="Drug" />
-        <input className="input w-strength" value={med.strength} onChange={(e) => onChange({ strength: e.target.value })} aria-label="Strength" />
-        <select className="input w-unit" value={med.unit} onChange={(e) => onChange({ unit: e.target.value })} aria-label="Unit">
+        <input className="input input-strong" name="drug" autoComplete="off" value={med.name} onChange={(e) => onChange({ name: e.target.value })} aria-label="Drug" />
+        <input className="input w-strength" name="strength" autoComplete="off" value={med.strength} onChange={(e) => onChange({ strength: e.target.value })} aria-label="Strength" />
+        <select className="input w-unit" name="unit" value={med.unit} onChange={(e) => onChange({ unit: e.target.value })} aria-label="Unit">
           {UNITS.map((u) => (
             <option key={u}>{u}</option>
           ))}
         </select>
-        <button className="icon-btn" onClick={onRemove} aria-label={`Remove ${med.name}`}>
-          <Trash2 size={15} />
+        <button type="button" className="icon-btn" onClick={onRemove} aria-label={`Remove ${med.name} ${med.strength}`}>
+          <TrashIcon aria-hidden="true" />
         </button>
       </div>
       <div className="med-meta">
-        <span className="mono muted">{med.medication_key}</span>
+        <span className="mono muted" translate="no">{med.medication_key}</span>
         {shelf ? (
-          <button className="link-btn" onClick={onSelectShelf}>
-            Shelf {shelf.region_id}
+          <button type="button" className="link-btn" onClick={onSelectShelf}>
+            Show shelf
           </button>
         ) : (
-          <button className="btn btn-sm btn-warn" onClick={onDrawShelf}>
+          <button type="button" className="btn btn-sm btn-warn" onClick={onDrawShelf}>
             Draw shelf
           </button>
         )}
@@ -143,33 +147,35 @@ function MedicationCard({ med, shelf, receipts, onChange, onRemove, onDrawShelf,
         {receipts.map((r) => (
           <div key={r.receipt_id} className="receipt">
             <div className="receipt-head">
-              <span className="mono">{r.receipt_id}</span>
-              <button className="icon-btn" onClick={() => onRemoveReceipt(r.receipt_id)} aria-label={`Remove ${r.receipt_id}`}>
-                <Trash2 size={14} />
+              <span className="mono" translate="no">{r.receipt_id}</span>
+              <button type="button" className="icon-btn" onClick={() => onRemoveReceipt(r.receipt_id)} aria-label={`Remove batch ${r.receipt_id}`}>
+                <TrashIcon size={14} aria-hidden="true" />
               </button>
             </div>
             <div className="grid-2">
               <label className="field">
                 <span className="label">Bottles</span>
-                <NumberInput min={1} value={r.bottle_count} onChange={(v) => onChangeReceipt(r.receipt_id, { bottle_count: v })} />
+                <NumberInput min={1} name="bottles" value={r.bottle_count} onChange={(v) => onChangeReceipt(r.receipt_id, { bottle_count: v })} />
               </label>
               <label className="field">
                 <span className="label">{med.unit} per bottle</span>
-                <NumberInput value={r.tablets_per_bottle} onChange={(v) => onChangeReceipt(r.receipt_id, { tablets_per_bottle: v })} />
+                <NumberInput name="per-bottle" value={r.tablets_per_bottle} onChange={(v) => onChangeReceipt(r.receipt_id, { tablets_per_bottle: v })} />
               </label>
               <label className="field">
                 <span className="label">Expires</span>
-                <input className="input" type="date" value={r.expiry_date} onChange={(e) => onChangeReceipt(r.receipt_id, { expiry_date: e.target.value })} />
+                <input className="input" type="date" name="expiry" autoComplete="off" value={r.expiry_date} onChange={(e) => onChangeReceipt(r.receipt_id, { expiry_date: e.target.value })} />
               </label>
               <label className="field">
-                <span className="label">Lot</span>
-                <input className="input" value={r.lot_number || ''} placeholder="Optional" onChange={(e) => onChangeReceipt(r.receipt_id, { lot_number: e.target.value })} />
+                <span className="label">Lot (optional)</span>
+                <input className="input" name="lot" autoComplete="off" spellCheck={false} value={r.lot_number || ''} placeholder="LOT-12345…" onChange={(e) => onChangeReceipt(r.receipt_id, { lot_number: e.target.value })} />
               </label>
               <label className="field">
                 <span className="label">Received</span>
                 <input
                   className="input"
                   type="date"
+                  name="received"
+                  autoComplete="off"
                   value={r.received_at.slice(0, 10)}
                   onChange={(e) => e.target.value && onChangeReceipt(r.receipt_id, { received_at: `${e.target.value}T00:00:00Z` })}
                 />
@@ -179,11 +185,11 @@ function MedicationCard({ med, shelf, receipts, onChange, onRemove, onDrawShelf,
         ))}
       </div>
       <div className="med-footer">
-        <span className="muted">
-          {bottles} bottles · {units.toLocaleString()} {med.unit}
+        <span className="muted num">
+          Opening stock: {bottles} bottles, {formatNumber(units)} {med.unit}
         </span>
-        <button className="btn btn-sm" onClick={onAddReceipt}>
-          <Plus size={14} /> Add batch
+        <button type="button" className="btn btn-sm" onClick={onAddReceipt}>
+          <PlusIcon size={13} aria-hidden="true" /> Add batch
         </button>
       </div>
     </div>
@@ -199,9 +205,12 @@ export default function Setup() {
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState(null);
   const [pendingMed, setPendingMed] = useState(null);
-  const [tab, setTab] = useState('regions');
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'stock' ? 'stock' : 'regions';
+  const setTab = (next) => setParams(next === 'stock' ? { tab: 'stock' } : {}, { replace: true });
   const [showGrid, setShowGrid] = useState(true);
   const [confirming, setConfirming] = useState(false);
+  const [resetOnSave, setResetOnSave] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -345,9 +354,14 @@ export default function Setup() {
     setMessage(null);
     try {
       const body = { ...draft, receipts: draft.receipts.map((r) => ({ ...r, lot_number: r.lot_number?.trim() || null })) };
-      const res = await request(`/api/layouts/${draft.layout_id}`, { method: 'PUT', body });
+      const res = await request(`/api/layouts/${draft.layout_id}${resetOnSave ? '?reset_inventory=true' : ''}`, { method: 'PUT', body });
       adopt(res.layout);
-      setMessage({ tone: 'green', text: `Saved as calibration v${res.layout.calibration_version}${res.scenario_reloaded ? '. The scenario was reset.' : '.'}` });
+      const extra = res.inventory_reset
+        ? ' Inventory was reset to the opening stock.'
+        : res.notes?.length
+          ? ` Live inventory kept. ${res.notes.join(' ')}`
+          : ' Live inventory was kept.';
+      setMessage({ tone: 'green', text: `Saved as calibration v${res.layout.calibration_version}.${extra}` });
       await refresh();
     } catch (e) {
       setMessage({ tone: 'red', text: e.message });
@@ -380,20 +394,32 @@ export default function Setup() {
     <>
       <PageHeader
         title="Setup"
-        subtitle={`Annotate the fixed camera view and set preset stock. Layout "${draft.layout_id}" is shared by every recording that uses it.`}
+        subtitle={`Annotate the fixed camera view and set the opening stock. Layout "${draft.layout_id}" is shared by every recording.`}
       >
         <span className="save-status">
           {dirty ? <Badge tone="amber">Unsaved changes</Badge> : <span className="muted">Calibration v{draft.calibration_version}</span>}
         </span>
-        <button className="btn btn-ghost" disabled={!dirty || saving} onClick={() => adopt(JSON.parse(savedJson))}>
-          Discard
+        <button type="button" className="btn btn-ghost" disabled={!dirty || saving} onClick={() => adopt(JSON.parse(savedJson))}>
+          Discard changes
         </button>
-        <button className="btn btn-primary" disabled={!dirty || issues.length > 0 || saving} onClick={() => setConfirming(true)}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!dirty || issues.length > 0 || saving}
+          onClick={() => {
+            setResetOnSave(false);
+            setConfirming(true);
+          }}
+        >
           Save layout
         </button>
       </PageHeader>
 
-      {message && <div className={`banner banner-${message.tone}`}>{message.text}</div>}
+      {message && (
+        <div className={`banner banner-${message.tone}`} role="status">
+          {message.text}
+        </div>
+      )}
 
       <div className="setup">
         <div className="setup-main card">
@@ -404,25 +430,27 @@ export default function Setup() {
                 return (
                   <button
                     key={t.id}
+                    type="button"
                     className={tool === t.id ? 'active' : ''}
+                    aria-pressed={tool === t.id}
                     onClick={() => {
                       setTool(t.id);
                       setPendingMed(null);
                     }}
                   >
-                    {Icon ? <Icon size={14} /> : <span className="dot" style={{ background: REGION_TYPES[t.id].color }} />}
+                    {Icon ? <Icon size={14} aria-hidden="true" /> : <span className="dot" aria-hidden="true" style={{ background: REGION_TYPES[t.id].color }} />}
                     {t.label}
                   </button>
                 );
               })}
             </div>
             <div className="toolbar-right">
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => importPhoto(e.target.files[0])} />
-              <button className="btn btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                <ImageUp size={14} /> {uploading ? 'Importing…' : draft.background_image ? 'Replace photo' : 'Import photo'}
+              <input ref={fileRef} type="file" name="camera-photo" accept="image/png,image/jpeg" hidden onChange={(e) => importPhoto(e.target.files[0])} />
+              <button type="button" className="btn btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                <ImageSquareIcon size={14} aria-hidden="true" /> {uploading ? 'Importing…' : draft.background_image ? 'Replace photo' : 'Import photo'}
               </button>
-              <button className={`btn btn-ghost btn-sm ${showGrid ? 'active' : ''}`} onClick={() => setShowGrid((v) => !v)}>
-                <Grid3x3 size={14} /> Grid
+              <button type="button" className={`btn btn-ghost btn-sm ${showGrid ? 'active' : ''}`} aria-pressed={showGrid} onClick={() => setShowGrid((v) => !v)}>
+                <GridFourIcon size={14} aria-hidden="true" /> Grid
               </button>
             </div>
           </div>
@@ -447,16 +475,18 @@ export default function Setup() {
                 : `/api/video/still?v=${draft.calibration_version}`
             }
           />
-          <p className="hint canvas-hint">{hint}</p>
+          <p className="hint canvas-hint" aria-live="polite">
+            {hint}
+          </p>
         </div>
 
         <aside className="setup-side card">
           <div className="tabs" role="tablist">
-            <button role="tab" aria-selected={tab === 'regions'} className={tab === 'regions' ? 'active' : ''} onClick={() => setTab('regions')}>
+            <button type="button" role="tab" aria-selected={tab === 'regions'} className={tab === 'regions' ? 'active' : ''} onClick={() => setTab('regions')}>
               Regions <span className="count">{draft.regions.length}</span>
             </button>
-            <button role="tab" aria-selected={tab === 'stock'} className={tab === 'stock' ? 'active' : ''} onClick={() => setTab('stock')}>
-              Medications &amp; stock <span className="count">{draft.medications.length}</span>
+            <button type="button" role="tab" aria-selected={tab === 'stock'} className={tab === 'stock' ? 'active' : ''} onClick={() => setTab('stock')}>
+              Medications &amp; opening stock <span className="count">{draft.medications.length}</span>
             </button>
           </div>
 
@@ -478,7 +508,7 @@ export default function Setup() {
               {selected && (
                 <div className="selected-panel">
                   <div className="selected-head">
-                    <span className="dot" style={{ background: REGION_TYPES[selected.region_type].color }} />
+                    <span className="dot" aria-hidden="true" style={{ background: REGION_TYPES[selected.region_type].color }} />
                     <span className="strong">{labelFor(selected)}</span>
                     <span className="mono muted">{selected.region_id}</span>
                   </div>
@@ -487,6 +517,7 @@ export default function Setup() {
                       <span className="label">Medication on this shelf</span>
                       <select
                         className="input"
+                        name="shelf-medication"
                         value={draft.medications.some((m) => m.medication_key === selected.medication_key) ? selected.medication_key : ''}
                         onChange={(e) => assignShelf(selected.region_id, e.target.value)}
                       >
@@ -499,7 +530,7 @@ export default function Setup() {
                         ))}
                       </select>
                       {draft.medications.length === 0 && (
-                        <button className="link-btn" onClick={() => setTab('stock')}>
+                        <button type="button" className="link-btn" onClick={() => setTab('stock')}>
                           Add a medication first
                         </button>
                       )}
@@ -507,8 +538,8 @@ export default function Setup() {
                   )}
                   <div className="selected-foot">
                     <span className="muted">{selected.polygon.length} corners</span>
-                    <button className="btn btn-sm btn-danger" onClick={() => deleteRegion(selected.region_id)}>
-                      <Trash2 size={14} /> Delete region
+                    <button type="button" className="btn btn-sm btn-danger" onClick={() => deleteRegion(selected.region_id)}>
+                      <TrashIcon size={13} aria-hidden="true" /> Delete region
                     </button>
                   </div>
                 </div>
@@ -528,8 +559,8 @@ export default function Setup() {
                           const unassigned = type === 'designated_shelf' && labelFor(r) === 'Unassigned shelf';
                           return (
                             <li key={r.region_id}>
-                              <button className={r.region_id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(r.region_id)}>
-                                <span className="dot" style={{ background: meta.color }} />
+                              <button type="button" className={r.region_id === selectedId ? 'selected' : ''} aria-pressed={r.region_id === selectedId} onClick={() => setSelectedId(r.region_id)}>
+                                <span className="dot" aria-hidden="true" style={{ background: meta.color }} />
                                 <span className={unassigned ? 'text-red' : ''}>{labelFor(r)}</span>
                                 <span className="mono muted push">{r.region_id}</span>
                               </button>
@@ -581,25 +612,42 @@ export default function Setup() {
           onClose={() => setConfirming(false)}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => setConfirming(false)}>
+              <button type="button" className="btn btn-ghost" onClick={() => setConfirming(false)}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>
-                Save and reset scenario
+              <button type="button" className={`btn ${resetOnSave ? 'btn-danger-solid' : 'btn-primary'}`} onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : resetOnSave ? 'Save and reset inventory' : 'Save layout'}
               </button>
             </>
           }
         >
-          <p className="lead">
-            This saves calibration v{draft.calibration_version + 1} for every recording that uses layout "{draft.layout_id}".
-            {state.scenario && (
-              <>
-                {' '}
-                <strong>{state.scenario}</strong> will reload from the new presets, which resets its live inventory, alerts and
-                replay position.
-              </>
-            )}
-          </p>
+          <div className="form">
+            <p className="lead">
+              This saves calibration v{draft.calibration_version + 1} for every recording that uses layout "{draft.layout_id}".
+              New regions apply to signals from now on.
+            </p>
+            <div className="choice-list" role="radiogroup" aria-label="Live inventory">
+              <label className={`choice ${!resetOnSave ? 'selected' : ''}`}>
+                <input type="radio" name="save-mode" checked={!resetOnSave} onChange={() => setResetOnSave(false)} />
+                <span className="choice-main">
+                  <span className="row-title">Keep live inventory</span>
+                  <span className="row-sub">
+                    Counts, alerts and applied recordings stay. New medications start with their opening stock; bottles on a
+                    redrawn shelf move to its replacement.
+                  </span>
+                </span>
+              </label>
+              <label className={`choice ${resetOnSave ? 'selected' : ''}`}>
+                <input type="radio" name="save-mode" checked={resetOnSave} onChange={() => setResetOnSave(true)} />
+                <span className="choice-main">
+                  <span className="row-title">Reset inventory to opening stock</span>
+                  <span className="row-sub">
+                    Replaces live counts, shipments, alerts and disposals. Every recording becomes unapplied.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
         </Dialog>
       )}
     </>

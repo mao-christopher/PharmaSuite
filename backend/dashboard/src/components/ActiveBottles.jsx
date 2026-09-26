@@ -10,20 +10,22 @@ export default function ActiveBottles() {
   const active = uniqueSessions(state.sessions).filter((s) => ACTIVE.has(s.state));
 
   return (
-    <Card title="Off-shelf bottles">
+    <Card title="Off-shelf bottles" className="area-bottles" actions={active.length > 0 && <Badge tone="blue">{active.length}</Badge>} flush>
       {active.length === 0 ? (
         <Empty>Every tracked bottle is on its shelf.</Empty>
       ) : (
         <ul className="rows">
           {active.map((s) => {
             const meta = SESSION_STATES[s.state];
+            const elsewhere = s.state !== 'HELD' && s.current_location_id;
             return (
               <li key={s.session_id} className="row">
-                <div>
+                <div className="choice-main">
                   <div className="row-title">{medLabel(state.layout?.medications, s.medication_key)}</div>
                   <div className="row-sub">
-                    Belongs on {regionLabel(state.layout, s.original_shelf_id)}
-                    {s.state !== 'HELD' && s.current_location_id && ` · now at ${regionLabel(state.layout, s.current_location_id)}`}
+                    {elsewhere
+                      ? `Now at ${regionLabel(state.layout, s.current_location_id)}, belongs on ${regionLabel(state.layout, s.original_shelf_id)}`
+                      : `Belongs on ${regionLabel(state.layout, s.original_shelf_id)}`}
                   </div>
                 </div>
                 <Badge tone={meta.tone}>{meta.label}</Badge>

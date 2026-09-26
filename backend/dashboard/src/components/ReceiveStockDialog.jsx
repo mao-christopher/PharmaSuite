@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLive } from '../lib/live';
-import { designatedShelfId, todayIso } from '../lib/format';
+import { designatedShelfId, formatNumber, plural, todayIso } from '../lib/format';
 import { Dialog } from './ui';
 
 function nextYear() {
@@ -51,11 +51,11 @@ export default function ReceiveStockDialog({ medicationKey, onClose }) {
       width={480}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
           </button>
           <button className="btn btn-primary" type="submit" form="receive-form" disabled={!valid || !hasShelf || saving}>
-            Add to stock
+            {saving ? 'Adding…' : 'Add to stock'}
           </button>
         </>
       }
@@ -67,7 +67,7 @@ export default function ReceiveStockDialog({ medicationKey, onClose }) {
           <>
             <label className="field">
               <span className="label">Medication</span>
-              <select className="input" value={med} onChange={(e) => setMed(e.target.value)}>
+              <select className="input" name="medication" value={med} onChange={(e) => setMed(e.target.value)}>
                 {meds.map((m) => (
                   <option key={m.medication_key} value={m.medication_key}>
                     {m.name} {m.strength}
@@ -78,30 +78,34 @@ export default function ReceiveStockDialog({ medicationKey, onClose }) {
             <div className="grid-2">
               <label className="field">
                 <span className="label">Bottles</span>
-                <input className="input" type="number" min="1" value={bottles} onChange={(e) => setBottles(e.target.value)} />
+                <input className="input" type="number" name="bottles" autoComplete="off" inputMode="numeric" min="1" value={bottles} onChange={(e) => setBottles(e.target.value)} />
               </label>
               <label className="field">
                 <span className="label">{unit} per bottle</span>
-                <input className="input" type="number" min="0" value={perBottle} onChange={(e) => setPerBottle(e.target.value)} />
+                <input className="input" type="number" name="per-bottle" autoComplete="off" inputMode="numeric" min="0" value={perBottle} onChange={(e) => setPerBottle(e.target.value)} />
               </label>
               <label className="field">
                 <span className="label">Expires</span>
-                <input className="input" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+                <input className="input" type="date" name="expiry" autoComplete="off" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
               </label>
               <label className="field">
-                <span className="label">Lot</span>
-                <input className="input" value={lot} placeholder="Optional" onChange={(e) => setLot(e.target.value)} />
+                <span className="label">Lot (optional)</span>
+                <input className="input" name="lot" autoComplete="off" spellCheck={false} value={lot} placeholder="LOT-12345…" onChange={(e) => setLot(e.target.value)} />
               </label>
             </div>
             <p className="hint">
               {valid
-                ? `Adds ${bottleN} bottle${bottleN === 1 ? '' : 's'} (${(bottleN * perN).toLocaleString()} ${unit}) straight onto the shelf. Live counts are kept.`
+                ? `Adds ${plural(bottleN, 'bottle')} (${formatNumber(bottleN * perN)} ${unit}) straight onto the shelf. Live counts are kept.`
                 : 'Enter at least 1 bottle and a quantity per bottle.'}
             </p>
             {!hasShelf && <p className="form-error">This medication has no shelf. Draw one on the Setup page.</p>}
           </>
         )}
-        {error && <p className="form-error">{error}</p>}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
       </form>
     </Dialog>
   );

@@ -101,16 +101,74 @@ def test_ticks_while_paused_do_nothing(controller):
     assert ctrl.current_media_time_ms == 0 and not ctrl.processed_event_ids
 
 
-def test_restart_and_seek_rebuild_from_seed(controller):
+def test_seek_and_restart_never_reapply_or_undo_signals(controller):
     ctrl = controller
     ctrl.seek(7000)
     assert amox(ctrl).counter_bottles == 1
     ctrl.seek(7000)  # repeating must not double-apply
     assert amox(ctrl).counter_bottles == 1 and amox(ctrl).shelf_counts["shelf_amoxicillin_500mg"] == 4
-    ctrl.seek(2000)
-    assert amox(ctrl).counter_bottles == 0 and amox(ctrl).held_bottles == 1
+    ctrl.seek(2000)  # going back replays the video only; inventory keeps what already happened
+    assert amox(ctrl).counter_bottles == 1 and amox(ctrl).held_bottles == 0
     ctrl.restart()
-    assert amox(ctrl).held_bottles == 0 and ctrl.current_media_time_ms == 0
+    ctrl.seek(ctrl.duration_ms)
+    assert amox(ctrl).counter_bottles == 1 and ctrl.current_media_time_ms == ctrl.duration_ms
+    assert len(ctrl.activity) == 2
+
+
+def test_live_state_survives_server_restart_without_reapplying(controller, tmp_path):
+    controller.seek(7000)
+    assert amox(controller).counter_bottles == 1
+
+    restarted = ReplayController(scenarios_dir=tmp_path / "scenarios")
+    restarted.restore_player()
+    assert restarted.current_scenario_name == "demo_scenario_01"
+    assert amox(restarted).counter_bottles == 1 and amox(restarted).shelf_counts["shelf_amoxicillin_500mg"] == 4
+    restarted.seek(7000)
+    restarted.restart()
+    restarted.seek(restarted.duration_ms)
+    assert amox(restarted).counter_bottles == 1
+    assert len([a for a in restarted.engine.alerts.values() if a.alert_type == "expiry"]) == 1
+
+
+def test_inventory_carries_across_recordings_with_separate_sessions(controller, tmp_path):
+    shutil.copytree(tmp_path / "scenarios" / "demo_scenario_01", tmp_path / "scenarios" / "demo_copy")
+    ctrl = controller
+    ctrl.seek(ctrl.duration_ms)
+    ctrl.load_scenario("demo_copy")
+    assert not ctrl.processed_event_ids  # same event IDs, different recording
+    ctrl.seek(ctrl.duration_ms)
+    assert amox(ctrl).counter_bottles == 2 and amox(ctrl).shelf_counts["shelf_amoxicillin_500mg"] == 3
+    assert {"demo_scenario_01:sess_001", "demo_copy:sess_001"} <= set(ctrl.engine.sessions)
+    assert ctrl.apply_recording("demo_scenario_01") == 0
+
+
+def test_engine_state_round_trips_with_aliased_sessions(controller):
+    from pharma.services.inventory_engine import InventoryEngine
+
+    ctrl = controller
+    ctrl.seek(ctrl.duration_ms)  # bottle parked at the counter
+    engine = ctrl.engine
+    engine.handle_pickup("again", [(0.6, 0.2, 0.9)], 0)  # picks the parked bottle back up
+    assert engine.sessions["again"] is engine.sessions["demo_scenario_01:sess_001"]
+
+    clone = InventoryEngine.from_dict(engine.to_dict(), regions=ctrl.regions)
+    assert clone.sessions["again"] is clone.sessions["demo_scenario_01:sess_001"]
+    clone.handle_release("again", [(0.25, 0.25, 0.9)], 0)
+    assert clone.sessions["demo_scenario_01:sess_001"].state == "ON_DESIGNATED_SHELF"
+    assert clone.inventory["AMOXICILLIN_500MG"].shelf_counts["shelf_amoxicillin_500mg"] == 5
+    assert clone._alert_counter == engine._alert_counter
+
+
+def test_layout_sync_moves_counts_from_a_redrawn_shelf(controller):
+    ctrl = controller
+    layout = ctrl.layout.model_copy(deep=True)
+    shelf = next(r for r in layout.regions if r.region_id == "shelf_amoxicillin_500mg")
+    shelf.region_id = "shelf_01"
+    notes = ctrl.apply_layout(layout)
+    assert amox(ctrl).shelf_counts == {"shelf_01": 5}
+    assert any("shelf_01" in n for n in notes)
+    ctrl.seek(2000)  # the pickup now resolves to the redrawn shelf
+    assert amox(ctrl).shelf_counts == {"shelf_01": 4} and amox(ctrl).held_bottles == 1
 
 
 def test_stream_rendering_does_not_advance_the_clock(controller):

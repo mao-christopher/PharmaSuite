@@ -1,10 +1,17 @@
-"""Recording replay: media clock, event dispatch, MJPEG rendering, and WebSocket broadcast."""
+"""Recording library and player: media clock, event dispatch, MJPEG rendering, and WebSocket broadcast.
+
+Inventory lives in a PharmacyStore that carries across recordings. Loading a recording
+only puts it in the player; its signals change inventory the first time the playhead
+passes them (or when it is applied without playback), and never again.
+"""
 
 import asyncio
 import os
 import re
+import shutil
 import threading
 import time
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -13,24 +20,27 @@ import cv2
 import numpy as np
 from fastapi import WebSocket
 
-from pharma.db.models import Layout, PrescriptionTransaction, Region
+from pharma.db.models import Layout
 from pharma.services.fixture_loader import load_json, load_jsonl
-from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, Hand, InventoryEngine
-from pharma.services.layout import build_initial_state, load_layout
-from pharma.services.recordings import POSES_FILE, PoseTrack, VideoInfo, find_video, probe_video
+from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, Hand
+from pharma.services.layout import load_layout
+from pharma.services.recordings import EVENTS_FILE, POSES_FILE, PoseTrack, VideoInfo, find_video, probe_video
+from pharma.services.store import PharmacyStore, now_iso, session_key
 
 SCENARIO_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 SYNTHETIC_DURATION_MS = 10000
 SYNTHETIC_FPS = 30
 STREAM_MAX_WIDTH = 1280
+THUMB_FILE = "thumb.jpg"
+THUMB_WIDTH = 480
 CLOCK_TICK_S = 1 / 60
 CLOCK_BROADCAST_S = 0.25
 
 # BGR colors, matched to the dashboard's region palette.
 REGION_COLORS = {
-    "designated_shelf": (235, 99, 37),
-    "dispensing_counter": (6, 119, 217),
-    "disposal": (38, 38, 220),
+    "designated_shelf": (224, 108, 31),
+    "dispensing_counter": (10, 125, 196),
+    "disposal": (56, 52, 206),
 }
 SKELETON_EDGES = [
     (5, 7), (7, 9), (6, 8), (8, 10), (5, 6), (5, 11), (6, 12), (11, 12),
@@ -64,37 +74,106 @@ def synthetic_hand(media_time_ms: float) -> Hand:
     return (0.2 + 0.6 * progress, 0.25 + 0.1 * float(np.sin(progress * 2 * np.pi)), 0.9)
 
 
+@dataclass
+class Recording:
+    """One stored recording: its signals plus, for uploads, the video and pose track."""
+
+    name: str
+    path: Path
+    meta: Dict[str, Any]
+    events: List[Dict[str, Any]]
+    video_path: Optional[Path]
+    video: Optional[VideoInfo]
+    poses: Optional[PoseTrack]
+
+    @property
+    def label(self) -> str:
+        return self.meta.get("label") or self.name
+
+    @property
+    def duration_ms(self) -> int:
+        return self.video.duration_ms if self.video else SYNTHETIC_DURATION_MS
+
+    @property
+    def fps(self) -> float:
+        return self.video.fps if self.video else SYNTHETIC_FPS
+
+    def hands_at(self, media_time_ms: float) -> List[Hand]:
+        if self.poses:
+            return self.poses.hands_at(media_time_ms, MIN_KEYPOINT_CONF)
+        return [synthetic_hand(media_time_ms)]
+
+
 class ReplayController:
-    def __init__(self, scenarios_dir: Path, layouts_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        scenarios_dir: Path,
+        layouts_dir: Optional[Path] = None,
+        state_path: Optional[Path] = None,
+        layout_id: str = "default",
+    ):
         self.scenarios_dir = scenarios_dir
         self.layouts_dir = layouts_dir or scenarios_dir.parent / "layouts"
-        self.current_scenario_name: Optional[str] = None
-        self.scenario_path: Optional[Path] = None
-        self.engine: Optional[InventoryEngine] = None
-        self.events: List[Dict[str, Any]] = []
-        self.processed_event_ids: Set[str] = set()
-        self.activity: List[Dict[str, Any]] = []
-        self.layout: Optional[Layout] = None
-        self.regions: List[Region] = []
-        self.video_path: Optional[Path] = None
-        self.video: Optional[VideoInfo] = None
-        self.poses: Optional[PoseTrack] = None
-        self.background: Optional[np.ndarray] = None
-        self.duration_ms: int = SYNTHETIC_DURATION_MS
-        self.fps: float = SYNTHETIC_FPS
+        self.layout: Layout = load_layout(self.layouts_dir, layout_id)
+        self.store = PharmacyStore.open(state_path or scenarios_dir.parent / "state" / "pharmacy.json", self.layout)
+        self.engine.trigger_expiry_alerts(pharmacy_today())
+        self.background: Optional[np.ndarray] = self._load_background(self.layout)
+        self.current: Optional[Recording] = None
         self.active_websockets: Set[WebSocket] = set()
         self.is_playing: bool = False
         self.current_media_time_ms: float = 0
-        self.generation = 0  # bumps on every load so open streams reopen their source
+        self.generation = 0  # bumps whenever the player source or overlay changes
         self.processing: Dict[str, Dict[str, Any]] = {}
         self._last_tick: Optional[float] = None
 
-    # ------------------------------------------------------------------ loading
+    # ------------------------------------------------------------------ accessors
+
+    @property
+    def engine(self):
+        return self.store.engine
+
+    @property
+    def regions(self):
+        return list(self.layout.regions)
+
+    @property
+    def current_scenario_name(self) -> Optional[str]:
+        return self.current.name if self.current else None
+
+    @property
+    def processed_event_ids(self) -> Set[str]:
+        return self.store.applied_event_ids(self.current.name) if self.current else set()
+
+    @property
+    def activity(self) -> List[Dict[str, Any]]:
+        return self.store.recordings.get(self.current.name, {}).get("activity", []) if self.current else []
+
+    @property
+    def duration_ms(self) -> int:
+        return self.current.duration_ms if self.current else 0
+
+    @property
+    def fps(self) -> float:
+        return self.current.fps if self.current else SYNTHETIC_FPS
+
+    @property
+    def video_path(self) -> Optional[Path]:
+        return self.current.video_path if self.current else None
+
+    def frame_size_of(self, rec: Optional[Recording]) -> Tuple[int, int]:
+        if rec and rec.video:
+            return rec.video.width, rec.video.height
+        return self.layout.frame_width, self.layout.frame_height
+
+    def frame_size(self) -> Tuple[int, int]:
+        return self.frame_size_of(self.current)
+
+    # ------------------------------------------------------------------ recordings
 
     def scenario_dir(self, scenario_name: str) -> Path:
         path = self.scenarios_dir / scenario_name
         if not SCENARIO_NAME_PATTERN.fullmatch(scenario_name) or not path.is_dir():
-            raise FileNotFoundError(f"Scenario '{scenario_name}' not found")
+            raise FileNotFoundError(f"Recording '{scenario_name}' not found")
         return path
 
     def scenario_status(self, path: Path) -> str:
@@ -105,117 +184,236 @@ class ReplayController:
             return "unprocessed"
         return "ready"
 
-    def load_scenario(self, scenario_name: str) -> Dict[str, Any]:
-        path = self.scenario_dir(scenario_name)
+    def open_recording(self, name: str) -> Recording:
+        path = self.scenario_dir(name)
         status = self.scenario_status(path)
         if status != "ready":
-            raise ScenarioNotReady(f"Recording '{scenario_name}' is {status}; skeletons are not available yet.")
-        layout_id = scenario_layout_id(path)
+            raise ScenarioNotReady(f"Recording '{name}' is {status}; skeletons are not available yet.")
+        meta = scenario_meta(path)
+        layout_id = meta.get("layout_id")
         if not layout_id:
-            raise FileNotFoundError(f"Scenario '{scenario_name}' has no layout_id in scenario.json")
-        layout = load_layout(self.layouts_dir, layout_id)
-        regions, inventory, receipts = build_initial_state(layout)
-
+            raise FileNotFoundError(f"Recording '{name}' has no layout_id in scenario.json")
+        if layout_id != self.layout.layout_id:
+            raise ScenarioNotReady(
+                f"Recording '{name}' was made for layout '{layout_id}', but this pharmacy uses '{self.layout.layout_id}'."
+            )
         video_path = find_video(path)
-        if video_path:
-            self.video = probe_video(video_path)
-            self.poses = PoseTrack.load(path / POSES_FILE)
-            self.duration_ms = self.video.duration_ms
-            self.fps = self.video.fps
-            frame_size = (self.video.width, self.video.height)
-        else:
-            self.video = None
-            self.poses = None
-            self.duration_ms = SYNTHETIC_DURATION_MS
-            self.fps = SYNTHETIC_FPS
-            frame_size = (layout.frame_width, layout.frame_height)
-
-        tx_raw = load_json(path / "transactions.json")
-        transactions = {t["transaction_id"]: PrescriptionTransaction(**t) for t in tx_raw}
-
-        self.current_scenario_name = scenario_name
-        self.scenario_path = path
-        self.layout = layout
-        self.regions = regions
-        self.video_path = video_path
-        self.background = self._load_background(layout)
-        self.events = sorted(load_jsonl(path / "imu_events.jsonl"), key=lambda e: e["media_time_ms"])
-        self.processed_event_ids = set()
-        self.activity = []
-        self.engine = InventoryEngine(
-            inventory=inventory,
-            regions=regions,
-            receipts=receipts,
-            transactions=transactions,
-            frame_size=frame_size,
+        return Recording(
+            name=name,
+            path=path,
+            meta=meta,
+            events=sorted(load_jsonl(path / EVENTS_FILE), key=lambda e: e["media_time_ms"]),
+            video_path=video_path,
+            video=probe_video(video_path) if video_path else None,
+            poses=PoseTrack.load(path / POSES_FILE) if video_path else None,
         )
-        self.engine.trigger_expiry_alerts(pharmacy_today())
+
+    def load_scenario(self, scenario_name: str) -> Dict[str, Any]:
+        """Put a recording in the player. Inventory is untouched until its signals play."""
+        rec = self.open_recording(scenario_name)
+        self.store.merge_transactions(load_json(rec.path / "transactions.json"))
+        self.current = rec
+        self.store.current_recording = rec.name
+        self.store.save()
         self.current_media_time_ms = 0
         self.is_playing = False
         self.generation += 1
-
+        applied = self.processed_event_ids
         return {
-            "scenario_name": scenario_name,
-            "layout_id": layout.layout_id,
-            "calibration_version": layout.calibration_version,
-            "regions_count": len(self.regions),
-            "events_count": len(self.events),
-            "inventory_keys": list(inventory.keys()),
-            "has_video": video_path is not None,
-            "duration_ms": self.duration_ms,
+            "scenario_name": rec.name,
+            "label": rec.label,
+            "layout_id": self.layout.layout_id,
+            "calibration_version": self.layout.calibration_version,
+            "events_count": len(rec.events),
+            "events_applied": sum(1 for e in rec.events if e["event_id"] in applied),
+            "has_video": rec.video_path is not None,
+            "duration_ms": rec.duration_ms,
         }
+
+    def restore_player(self, fallback: Optional[str] = None) -> None:
+        """At startup, reopen whichever recording was in the player last."""
+        for name in (self.store.current_recording, fallback):
+            if not name:
+                continue
+            try:
+                self.load_scenario(name)
+                return
+            except (FileNotFoundError, ScenarioNotReady, ValueError, KeyError):
+                continue
+
+    def apply_recording(self, name: str) -> int:
+        """Apply every remaining signal of a recording without playing it."""
+        rec = self.current if self.current and self.current.name == name else self.open_recording(name)
+        self.store.merge_transactions(load_json(rec.path / "transactions.json"))
+        return self._apply(rec, float("inf"))
+
+    def delete_recording(self, name: str) -> None:
+        path = self.scenario_dir(name)
+        meta = scenario_meta(path)
+        if meta.get("source") != "upload":
+            raise PermissionError("Only uploaded recordings can be deleted; bundled fixtures stay.")
+        if self.processing.get(name, {}).get("state") == "processing":
+            raise PermissionError("Wait for skeleton extraction to finish before deleting.")
+        if self.current and self.current.name == name:
+            self.current = None
+            self.store.current_recording = None
+            self.is_playing = False
+            self.current_media_time_ms = 0
+            self.generation += 1
+        shutil.rmtree(path)
+        self.processing.pop(name, None)
+        entry = self.store.recordings.get(name)
+        if entry is not None:
+            entry["deleted_at"] = now_iso()
+        self.store.record("recording_deleted", f"Deleted recording {meta.get('label') or name}.", recording=name)
+        self.store.save()
+
+    def recording_summary(self, path: Path) -> Dict[str, Any]:
+        meta = scenario_meta(path)
+        job = self.processing.get(path.name, {})
+        events = load_jsonl(path / EVENTS_FILE)
+        applied = self.store.applied_event_ids(path.name)
+        prefix = session_key(path.name, "")
+        alerts = [a for a in self.engine.alerts.values() if str(a.metadata.get("session_id", "")).startswith(prefix)]
+        entry = self.store.recordings.get(path.name, {})
+        return {
+            "name": path.name,
+            "label": meta.get("label") or path.name,
+            "source": meta.get("source", "fixture"),
+            "layout_id": meta.get("layout_id"),
+            "uploaded_at": meta.get("uploaded_at"),
+            "video_filename": meta.get("video_filename"),
+            "events_filename": meta.get("events_filename"),
+            "duration_ms": meta.get("duration_ms") or (None if find_video(path) else SYNTHETIC_DURATION_MS),
+            "width": meta.get("width"),
+            "height": meta.get("height"),
+            "has_video": find_video(path) is not None,
+            "status": self.scenario_status(path),
+            "progress": job.get("progress"),
+            "error": job.get("error"),
+            "events_total": len(events),
+            "pickups": sum(1 for e in events if e.get("event_type") == "pickup"),
+            "releases": sum(1 for e in events if e.get("event_type") == "release"),
+            "events_applied": sum(1 for e in events if e["event_id"] in applied),
+            "first_applied_at": entry.get("first_applied_at"),
+            "last_applied_at": entry.get("last_applied_at"),
+            "alerts_total": len(alerts),
+            "alerts_open": sum(1 for a in alerts if a.status == "open"),
+            "in_player": self.current is not None and self.current.name == path.name,
+        }
+
+    def list_recordings(self) -> List[Dict[str, Any]]:
+        if not self.scenarios_dir.exists():
+            return []
+        items = [
+            self.recording_summary(p)
+            for p in self.scenarios_dir.iterdir()
+            if p.is_dir() and not p.name.startswith(".") and SCENARIO_NAME_PATTERN.fullmatch(p.name)
+        ]
+        # Newest uploads first; bundled fixtures (no upload time) last.
+        return sorted(items, key=lambda r: (r["uploaded_at"] is not None, r["uploaded_at"] or "", r["name"]), reverse=True)
+
+    def recording_detail(self, name: str) -> Dict[str, Any]:
+        path = self.scenario_dir(name)
+        summary = self.recording_summary(path)
+        applied = self.store.applied_event_ids(name)
+        prefix = session_key(name, "")
+        return {
+            **summary,
+            "events": [{**e, "processed": e["event_id"] in applied} for e in load_jsonl(path / EVENTS_FILE)],
+            "activity": self.store.recordings.get(name, {}).get("activity", []),
+            "alerts": [a.model_dump() for a in self.engine.alerts.values()
+                       if str(a.metadata.get("session_id", "")).startswith(prefix)],
+        }
+
+    def thumbnail_jpeg(self, name: str) -> bytes:
+        path = self.scenario_dir(name)
+        video_path = find_video(path)
+        if not video_path:
+            frame = self.annotate(self.base_frame(self.frame_size_of(None)), 0)
+        else:
+            cached = path / THUMB_FILE
+            if cached.exists():
+                return cached.read_bytes()
+            events = load_jsonl(path / EVENTS_FILE)
+            cap = cv2.VideoCapture(str(video_path))
+            try:
+                fps = cap.get(cv2.CAP_PROP_FPS) or SYNTHETIC_FPS
+                count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1)
+                at_ms = events[0]["media_time_ms"] if events else count / fps * 500
+                cap.set(cv2.CAP_PROP_POS_FRAMES, min(count - 1, int(at_ms * fps / 1000)))
+                ok, frame = cap.read()
+            finally:
+                cap.release()
+            if not ok:
+                raise FileNotFoundError("Could not read a frame from the video")
+        h, w = frame.shape[:2]
+        frame = cv2.resize(frame, (THUMB_WIDTH, int(h * THUMB_WIDTH / w)), interpolation=cv2.INTER_AREA)
+        ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 78])
+        if not ok:
+            raise RuntimeError("Failed to encode thumbnail")
+        if video_path:
+            (path / THUMB_FILE).write_bytes(jpeg.tobytes())
+        return jpeg.tobytes()
+
+    # ------------------------------------------------------------------ inventory-wide changes
+
+    def reset_inventory(self) -> None:
+        """Restore the layout's opening stock; every recording's signals become unapplied."""
+        self.store.reset(self.layout)
+        if self.current:
+            self.store.merge_transactions(load_json(self.current.path / "transactions.json"))
+        self.engine.trigger_expiry_alerts(pharmacy_today())
+        self.store.save()
+        self.is_playing = False
+        self.current_media_time_ms = 0
+
+    def apply_layout(self, layout: Layout, reset_inventory: bool = False) -> List[str]:
+        self.layout = layout
+        self.background = self._load_background(layout)
+        self.generation += 1
+        if reset_inventory:
+            self.reset_inventory()
+            return []
+        notes = self.store.sync_layout(layout)
+        self.engine.trigger_expiry_alerts(pharmacy_today())
+        self.store.save()
+        return notes
 
     def _load_background(self, layout: Layout) -> Optional[np.ndarray]:
         if not layout.background_image:
             return None
-        img = cv2.imread(str(self.layouts_dir / layout.layout_id / layout.background_image))
-        return img
+        return cv2.imread(str(self.layouts_dir / layout.layout_id / layout.background_image))
 
     # ------------------------------------------------------------------ clock & events
 
     def hands_at(self, media_time_ms: float) -> List[Hand]:
-        if self.poses:
-            return self.poses.hands_at(media_time_ms, MIN_KEYPOINT_CONF)
-        return [synthetic_hand(media_time_ms)]
+        return self.current.hands_at(media_time_ms) if self.current else []
+
+    def _apply(self, rec: Recording, until_ms: float) -> int:
+        applied_ids = self.store.applied_event_ids(rec.name)
+        frame_size = self.frame_size_of(rec)
+        changed = 0
+        for evt in rec.events:
+            if evt["media_time_ms"] > until_ms:
+                break
+            if evt["event_id"] in applied_ids:
+                continue
+            if self.store.apply_event(rec.name, evt, rec.hands_at(evt["media_time_ms"]), frame_size, rec.label):
+                changed += 1
+        if changed:
+            self.store.save()
+        return changed
 
     def process_events_until(self, media_time_ms: float) -> int:
-        """Dispatch every not-yet-processed event at or before media_time_ms, exactly once."""
-        if not self.engine:
-            return 0
-        applied = 0
-        for evt in self.events:
-            if evt["media_time_ms"] > media_time_ms:
-                break
-            if evt["event_id"] in self.processed_event_ids:
-                continue
-            self.processed_event_ids.add(evt["event_id"])
-            hands = self.hands_at(evt["media_time_ms"])
-            if evt["event_type"] == "pickup":
-                session = self.engine.handle_pickup(evt["session_id"], hands, evt.get("timestamp", 0.0))
-            elif evt["event_type"] == "release":
-                session = self.engine.handle_release(evt["session_id"], hands, evt.get("timestamp", 0.0))
-            else:
-                continue
-            evidence = session.evidence.get("pending_release", {}).get("evidence") or session.evidence
-            self.activity.append({
-                "event_id": evt["event_id"],
-                "media_time_ms": evt["media_time_ms"],
-                "event_type": evt["event_type"],
-                "session_id": evt["session_id"],
-                "medication_key": session.medication_key,
-                "state": session.state,
-                "held_pending": "pending_release" in session.evidence,
-                "nearest_region_id": evidence.get("nearest_region_id"),
-                "distance": evidence.get("distance"),
-                "reason": evidence.get("reason"),
-                "hands_seen": sum(1 for h in hands if h[2] >= MIN_KEYPOINT_CONF),
-            })
-            applied += 1
-        return applied
+        """Apply every not-yet-applied signal at or before media_time_ms, exactly once."""
+        return self._apply(self.current, media_time_ms) if self.current else 0
 
     def play(self):
+        if not self.current:
+            return
         if self.current_media_time_ms >= self.duration_ms:
-            self.restart()
+            self.current_media_time_ms = 0
         self.is_playing = True
         self._last_tick = time.monotonic()
 
@@ -223,18 +421,13 @@ class ReplayController:
         self.is_playing = False
 
     def restart(self):
-        """Replays start from the recording's own seed so events never apply twice."""
-        if self.current_scenario_name:
-            self.load_scenario(self.current_scenario_name)
+        self.seek(0)
 
     def seek(self, media_time_ms: float):
-        target = max(0.0, min(float(media_time_ms), float(self.duration_ms)))
-        was_playing = self.is_playing
-        self.restart()
-        self.current_media_time_ms = target
-        self.process_events_until(target)
-        if was_playing:
-            self.play()
+        """Move the playhead. Passing a signal applies it; going back never undoes one."""
+        self.current_media_time_ms = max(0.0, min(float(media_time_ms), float(self.duration_ms)))
+        self._last_tick = time.monotonic()
+        self.process_events_until(self.current_media_time_ms)
 
     def tick(self, now: float) -> bool:
         """Advance the media clock by real elapsed time. Returns True if inventory state changed."""
@@ -271,7 +464,7 @@ class ReplayController:
         path = self.scenario_dir(scenario_name)
         video_path = find_video(path)
         if not video_path:
-            raise FileNotFoundError(f"Scenario '{scenario_name}' has no video")
+            raise FileNotFoundError(f"Recording '{scenario_name}' has no video")
         if self.processing.get(scenario_name, {}).get("state") == "processing":
             return
         job = {"state": "processing", "progress": 0.0, "error": None}
@@ -299,18 +492,27 @@ class ReplayController:
 
     def state_dict(self) -> Dict[str, Any]:
         layout = self.layout
+        rec = self.current
+        applied = self.processed_event_ids
         return {
-            "scenario": self.current_scenario_name,
+            "scenario": rec.name if rec else None,
+            "recording": {
+                "name": rec.name,
+                "label": rec.label,
+                "source": rec.meta.get("source", "fixture"),
+                "uploaded_at": rec.meta.get("uploaded_at"),
+                "events_total": len(rec.events),
+                "events_applied": sum(1 for e in rec.events if e["event_id"] in applied),
+            } if rec else None,
             "media_time_ms": int(self.current_media_time_ms),
             "duration_ms": self.duration_ms,
             "is_playing": self.is_playing,
             "has_video": self.video_path is not None,
             "frame_size": list(self.frame_size()),
-            "events": [
-                {**e, "processed": e["event_id"] in self.processed_event_ids} for e in self.events
-            ],
+            "events": [{**e, "processed": e["event_id"] in applied} for e in (rec.events if rec else [])],
             "activity": self.activity,
             "max_region_distance": self.engine.max_region_distance,
+            "store": {"created_at": self.store.created_at, "history_count": len(self.store.history)},
             "layout": {
                 "layout_id": layout.layout_id,
                 "calibration_version": layout.calibration_version,
@@ -319,7 +521,7 @@ class ReplayController:
                 "background_image": layout.background_image,
                 "medications": [m.model_dump() for m in layout.medications],
                 "regions": [r.model_dump() for r in layout.regions],
-            } if layout else None,
+            },
             "inventory": {k: v.model_dump() for k, v in self.engine.inventory.items()},
             "sessions": {k: v.model_dump() for k, v in self.engine.sessions.items()},
             "disposals": {k: v.model_dump() for k, v in self.engine.disposals.items()},
@@ -327,6 +529,13 @@ class ReplayController:
             "receipts": [r.model_dump() for r in self.engine.receipts.values()],
             "transactions": {k: v.model_dump() for k, v in self.engine.transactions.items()},
         }
+
+    async def commit(self, kind: Optional[str] = None, summary: str = "", **detail: Any):
+        """Persist an employee action, record it in the history, and push the new state."""
+        if kind:
+            self.store.record(kind, summary, **detail)
+        self.store.save()
+        await self.broadcast_state_snapshot()
 
     async def register_websocket(self, websocket: WebSocket):
         await websocket.accept()
@@ -344,40 +553,32 @@ class ReplayController:
                 self.active_websockets.discard(ws)
 
     async def broadcast_state_snapshot(self):
-        if not self.engine:
-            return
         await self.broadcast_json({"type": "state_snapshot", **self.state_dict()})
 
     # ------------------------------------------------------------------ rendering
 
-    def frame_size(self) -> Tuple[int, int]:
-        if self.video:
-            return self.video.width, self.video.height
-        if self.layout:
-            return self.layout.frame_width, self.layout.frame_height
-        return 1280, 720
-
-    def base_frame(self) -> np.ndarray:
+    def base_frame(self, size: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """Layout background photo if one was imported, otherwise a flat placeholder."""
-        width, height = self.frame_size()
+        width, height = size or self.frame_size()
         if self.background is not None:
             return cv2.resize(self.background, (width, height))
         frame = np.zeros((height, width, 3), dtype=np.uint8)
-        frame[:] = (236, 232, 229)
+        frame[:] = (240, 240, 240)
         return frame
 
-    def annotate(self, frame: np.ndarray, media_time_ms: float) -> np.ndarray:
+    def annotate(self, frame: np.ndarray, media_time_ms: float, rec: Optional[Recording] = None) -> np.ndarray:
         height, width = frame.shape[:2]
-        meds = {m.medication_key: f"{m.name} {m.strength}" for m in (self.layout.medications if self.layout else [])}
+        meds = {m.medication_key: f"{m.name} {m.strength}" for m in self.layout.medications}
 
         fill = frame.copy()
         polys = []
-        for r in self.regions:
+        for r in self.layout.regions:
             pts = np.array([[int(x * width), int(y * height)] for x, y in r.polygon], dtype=np.int32)
             polys.append((r, pts))
             cv2.fillPoly(fill, [pts], REGION_COLORS[r.region_type])
         frame = cv2.addWeighted(fill, 0.12, frame, 0.88, 0)
         scale = max(0.5, width / 1280)
+        text_scale = max(0.8, max(width, height) / 1280)
         for r, pts in polys:
             color = REGION_COLORS[r.region_type]
             cv2.polylines(frame, [pts], True, color, max(2, int(2 * scale)), cv2.LINE_AA)
@@ -386,11 +587,16 @@ class ReplayController:
             else:
                 label = "Counter" if r.region_type == "dispensing_counter" else "Disposal"
             x0, y0 = int(pts[:, 0].min()), int(pts[:, 1].min())
-            cv2.putText(frame, label, (x0 + 8, y0 + int(22 * scale)), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.55 * scale, color, max(1, int(scale)), cv2.LINE_AA)
+            font, size = cv2.FONT_HERSHEY_SIMPLEX, 0.6 * text_scale
+            thick = max(1, round(text_scale))
+            (tw, th), base = cv2.getTextSize(label, font, size, thick)
+            pad = max(3, int(5 * text_scale))
+            cv2.rectangle(frame, (x0, y0), (x0 + tw + 2 * pad, y0 + th + base + 2 * pad), color, -1)
+            cv2.putText(frame, label, (x0 + pad, y0 + pad + th), font, size, (255, 255, 255), thick, cv2.LINE_AA)
 
-        if self.poses:
-            kps = self.poses.keypoints_at(media_time_ms)
+        hands: List[Tuple[int, int]] = []
+        if rec and rec.poses:
+            kps = rec.poses.keypoints_at(media_time_ms)
             if kps:
                 px = [(int(x * width), int(y * height), c) for x, y, c in kps]
                 for a, b in SKELETON_EDGES:
@@ -401,9 +607,7 @@ class ReplayController:
                     if c >= MIN_KEYPOINT_CONF and i not in (9, 10):
                         cv2.circle(frame, (x, y), max(3, int(3 * scale)), (255, 255, 255), -1, cv2.LINE_AA)
                 hands = [(x, y) for i, (x, y, c) in enumerate(px) if i in (9, 10) and c >= MIN_KEYPOINT_CONF]
-            else:
-                hands = []
-        else:
+        elif rec:
             hx, hy, _ = synthetic_hand(media_time_ms)
             hands = [(int(hx * width), int(hy * height))]
         for x, y in hands:
@@ -420,17 +624,16 @@ class ReplayController:
         try:
             while True:
                 t = self.current_media_time_ms
-                if self.video_path and (cap is None or cap_generation != self.generation):
+                rec = self.current
+                video_path = rec.video_path if rec else None
+                if cap_generation != self.generation:
                     if cap is not None:
                         cap.release()
-                    cap = cv2.VideoCapture(str(self.video_path))
+                    cap = cv2.VideoCapture(str(video_path)) if video_path else None
                     cap_generation, last_index, last_frame = self.generation, -1, None
-                if not self.video_path and cap is not None:
-                    cap.release()
-                    cap = None
 
                 if cap is not None:
-                    index = int(t * self.fps / 1000.0)
+                    index = int(t * rec.fps / 1000.0)
                     if index != last_index or last_frame is None:
                         if index != last_index + 1:
                             cap.set(cv2.CAP_PROP_POS_FRAMES, index)
@@ -441,7 +644,7 @@ class ReplayController:
                 else:
                     frame = self.base_frame()
 
-                frame = self.annotate(frame, t)
+                frame = self.annotate(frame, t, rec)
                 if frame.shape[1] > STREAM_MAX_WIDTH:
                     h = int(frame.shape[0] * STREAM_MAX_WIDTH / frame.shape[1])
                     frame = cv2.resize(frame, (STREAM_MAX_WIDTH, h), interpolation=cv2.INTER_AREA)
@@ -454,7 +657,7 @@ class ReplayController:
                 cap.release()
 
     def still_jpeg(self) -> bytes:
-        """Annotation background: imported photo, else the recording's first frame, else placeholder."""
+        """Annotation background: imported photo, else the player's first frame, else placeholder."""
         frame = None
         if self.background is None and self.video_path:
             cap = cv2.VideoCapture(str(self.video_path))

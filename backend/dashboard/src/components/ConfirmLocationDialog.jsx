@@ -41,11 +41,11 @@ export default function ConfirmLocationDialog({ alert, onClose }) {
       width={460}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
             Later
           </button>
           <button className="btn btn-primary" type="submit" form="confirm-form" disabled={!regionId || saving}>
-            Confirm location
+            {saving ? 'Saving…' : 'Confirm location'}
           </button>
         </>
       }
@@ -62,12 +62,16 @@ export default function ConfirmLocationDialog({ alert, onClose }) {
           {regions.map((r) => (
             <label key={r.region_id} className={`choice ${regionId === r.region_id ? 'selected' : ''}`}>
               <input type="radio" name="region" checked={regionId === r.region_id} onChange={() => setRegionId(r.region_id)} />
-              <span className="dot" style={{ background: REGION_TYPES[r.region_type].color, marginTop: 5 }} />
+              <span className="dot" aria-hidden="true" style={{ background: REGION_TYPES[r.region_type].color, marginTop: 6 }} />
               <span className="choice-main">{regionLabel(state.layout, r.region_id)}</span>
             </label>
           ))}
         </div>
-        {error && <p className="form-error">{error}</p>}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
       </form>
     </Dialog>
   );

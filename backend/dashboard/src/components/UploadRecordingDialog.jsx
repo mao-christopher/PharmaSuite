@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { UploadSimpleIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { errorMessage, request } from '../lib/api';
+import { plural } from '../lib/format';
 import { Dialog } from './ui';
 
 const EXAMPLE = 'time_s,event\n2.4,pickup\n7.9,release';
 
 export default function UploadRecordingDialog({ onClose }) {
-  const { loadScenario } = useLive();
+  const { loadRecording } = useLive();
+  const navigate = useNavigate();
   const [video, setVideo] = useState(null);
   const [events, setEvents] = useState(null);
   const [name, setName] = useState('');
@@ -20,15 +23,15 @@ export default function UploadRecordingDialog({ onClose }) {
     if (phase !== 'processing' || !job) return undefined;
     const timer = setInterval(async () => {
       try {
-        const { scenarios } = await request('/api/scenarios');
-        const s = scenarios.find((x) => x.name === job.name);
-        if (!s) return;
-        setProgress(s.progress ?? 0);
-        if (s.status === 'error') {
-          setError(`Skeleton extraction failed: ${s.error}`);
+        const { recordings } = await request('/api/recordings');
+        const r = recordings.find((x) => x.name === job.name);
+        if (!r) return;
+        setProgress(r.progress ?? 0);
+        if (r.status === 'error') {
+          setError(`Skeleton extraction failed: ${r.error}. The recording is saved; retry it from Recordings.`);
           setPhase('form');
-        } else if (s.status === 'ready') {
-          await loadScenario(job.name);
+        } else if (r.status === 'ready') {
+          await loadRecording(job.name);
           setPhase('done');
         }
       } catch (e) {
@@ -36,10 +39,14 @@ export default function UploadRecordingDialog({ onClose }) {
       }
     }, 700);
     return () => clearInterval(timer);
-  }, [phase, job, loadScenario]);
+  }, [phase, job, loadRecording]);
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!video || !events) {
+      setError('Choose both a video and a timestamps file.');
+      return;
+    }
     setError(null);
     setPhase('uploading');
     const body = new FormData();
@@ -64,66 +71,106 @@ export default function UploadRecordingDialog({ onClose }) {
     <Dialog
       title="Upload recording"
       onClose={onClose}
-      width={500}
+      width={520}
       footer={
         phase === 'done' ? (
-          <button className="btn btn-primary" onClick={onClose}>
-            Done
-          </button>
+          <>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                onClose();
+                navigate('/');
+              }}
+            >
+              Go to player
+            </button>
+          </>
         ) : (
           <>
-            <button className="btn btn-ghost" onClick={onClose}>
-              {busy ? 'Close (keeps processing)' : 'Cancel'}
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              {busy ? 'Close, keep processing' : 'Cancel'}
             </button>
-            <button className="btn btn-primary" type="submit" form="upload-form" disabled={!video || !events || busy}>
-              <Upload size={15} /> Upload and process
+            <button className="btn btn-primary" type="submit" form="upload-form" disabled={busy}>
+              <UploadSimpleIcon size={14} aria-hidden="true" />
+              {phase === 'uploading' ? 'Uploading…' : phase === 'processing' ? 'Processing…' : 'Upload and process'}
             </button>
           </>
         )
       }
     >
       {phase === 'done' ? (
-        <div className="form">
+        <div className="form" role="status">
           <p className="lead">
-            <strong>{job.label}</strong> is loaded with {job.events} timestamp{job.events === 1 ? '' : 's'}. Press Play on
-            the dashboard to run it.
+            <strong>{job.label}</strong> is stored and open in the player with {plural(job.events, 'signal')}. Its signals
+            update inventory when it plays, or apply them without playing from Recordings.
           </p>
           {job.warnings?.map((w) => (
-            <p key={w} className="form-error">
+            <p key={w} className="banner banner-amber">
               {w}
             </p>
           ))}
         </div>
       ) : (
-        <form id="upload-form" className="form" onSubmit={submit}>
+        <form id="upload-form" className="form" onSubmit={submit} noValidate>
           <label className="field">
             <span className="label">Video</span>
-            <input className="file-input" type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm" disabled={busy} onChange={(e) => setVideo(e.target.files[0] || null)} />
+            <input
+              className="file-input"
+              type="file"
+              name="video"
+              accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
+              disabled={busy}
+              onChange={(e) => setVideo(e.target.files[0] || null)}
+            />
           </label>
           <label className="field">
-            <span className="label">Pickup / release timestamps</span>
-            <input className="file-input" type="file" accept=".csv,.json,.jsonl,.txt" disabled={busy} onChange={(e) => setEvents(e.target.files[0] || null)} />
+            <span className="label">Pickup and put-down timestamps</span>
+            <input
+              className="file-input"
+              type="file"
+              name="events"
+              accept=".csv,.json,.jsonl,.txt"
+              disabled={busy}
+              onChange={(e) => setEvents(e.target.files[0] || null)}
+            />
             <span className="hint">
-              CSV, JSON or JSONL with a time (<code>time_s</code> or <code>media_time_ms</code>) and an event
-              (<code>pickup</code>/<code>grab</code> or <code>release</code>/<code>drop</code>). Example:
+              CSV, JSON or JSONL with a time (<code>time_s</code> or <code>media_time_ms</code>) and an event (
+              <code>pickup</code>/<code>grab</code> or <code>release</code>/<code>drop</code>). For example:
             </span>
             <pre className="code-sample">{EXAMPLE}</pre>
           </label>
           <label className="field">
-            <span className="label">Name</span>
-            <input className="input" placeholder="Optional, defaults to the file name" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+            <span className="label">Name (optional)</span>
+            <input
+              className="input"
+              name="recording-name"
+              autoComplete="off"
+              placeholder="Morning restock…"
+              value={name}
+              disabled={busy}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <span className="hint">Defaults to the video's file name.</span>
           </label>
           {busy && (
-            <div className="field">
+            <div className="field" role="status">
               <span className="hint">
                 {phase === 'uploading' ? 'Uploading…' : `Running pose estimation… ${Math.round(progress * 100)}%`}
               </span>
-              <div className="timeline-track">
-                <div className="timeline-fill" style={{ width: `${phase === 'uploading' ? 5 : Math.max(5, progress * 100)}%` }} />
+              <div className="progress">
+                <div className="progress-fill" style={{ width: `${phase === 'uploading' ? 5 : Math.max(5, progress * 100)}%` }} />
               </div>
             </div>
           )}
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
         </form>
       )}
     </Dialog>

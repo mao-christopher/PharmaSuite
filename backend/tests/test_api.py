@@ -5,23 +5,45 @@ from fastapi.testclient import TestClient
 from pharma.api.main import app
 
 
+def make_controller(tmp_path):
+    """Controller over a private copy of the data directory (layouts, recordings, state)."""
+    import shutil
+    from pathlib import Path
+    from pharma.api.replay_stream import ReplayController
+
+    data_dir = Path(__file__).resolve().parents[1] / "data"
+    skip = shutil.ignore_patterns("upload-*", "video.*", "poses.json", "thumb.jpg")
+    for sub in ("scenarios", "layouts"):
+        if not (tmp_path / sub).exists():
+            shutil.copytree(data_dir / sub, tmp_path / sub, ignore=skip)
+    return ReplayController(scenarios_dir=tmp_path / "scenarios")
+
+
 @pytest.fixture
-def client():
+def client(tmp_path):
+    from pharma.api import routes
+
     with TestClient(app) as c:
+        routes.controller = make_controller(tmp_path)
+        routes.controller.load_scenario("demo_scenario_01")
         yield c
 
 
-def test_list_scenarios(client):
-    response = client.get("/api/scenarios")
+isolated_client = client
+
+
+def test_list_recordings(client):
+    response = client.get("/api/recordings")
     assert response.status_code == 200
     data = response.json()
-    assert "scenarios" in data
-    assert len(data["scenarios"]) > 0
-    assert data["scenarios"][0]["name"] == "demo_scenario_01"
+    assert data["current"] == "demo_scenario_01"
+    demo = next(r for r in data["recordings"] if r["name"] == "demo_scenario_01")
+    assert demo["label"] == "Scripted demo (no video)"
+    assert (demo["events_total"], demo["events_applied"], demo["in_player"]) == (2, 0, True)
 
 
 def test_load_scenario(client):
-    response = client.post("/api/scenarios/demo_scenario_01/load")
+    response = client.post("/api/recordings/demo_scenario_01/load")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -30,7 +52,7 @@ def test_load_scenario(client):
 
 def test_get_inventory(client):
     # Ensure scenario loaded
-    client.post("/api/scenarios/demo_scenario_01/load")
+    client.post("/api/recordings/demo_scenario_01/load")
     response = client.get("/api/inventory")
     assert response.status_code == 200
     data = response.json()
@@ -41,7 +63,7 @@ def test_get_inventory(client):
 
 
 def test_replay_control(client):
-    client.post("/api/scenarios/demo_scenario_01/load")
+    client.post("/api/recordings/demo_scenario_01/load")
 
     # Play action
     res_play = client.post("/api/replay/control", json={"action": "play"})
@@ -60,7 +82,7 @@ def test_replay_control(client):
 
 
 def test_update_transaction_status(client):
-    client.post("/api/scenarios/demo_scenario_01/load")
+    client.post("/api/recordings/demo_scenario_01/load")
 
     # Initial pooled tablets = 500, tx quantity = 30
     res = client.post("/api/transactions/TX_RX_1001/status", json={"status": "confirmed_fill"})
@@ -77,25 +99,8 @@ def test_update_transaction_status(client):
     assert res_repeat.json()["deduction_applied"] is False
 
 
-@pytest.fixture
-def isolated_client(tmp_path):
-    """Client whose controller reads/writes a temporary copy of the data directory."""
-    import shutil
-    from pathlib import Path
-    from pharma.api import routes
-    from pharma.api.replay_stream import ReplayController
-
-    data_dir = Path(__file__).resolve().parents[1] / "data"
-    shutil.copytree(data_dir / "scenarios", tmp_path / "scenarios")
-    shutil.copytree(data_dir / "layouts", tmp_path / "layouts")
-    with TestClient(app) as c:
-        routes.controller = ReplayController(scenarios_dir=tmp_path / "scenarios")
-        routes.controller.load_scenario("demo_scenario_01")
-        yield c
-
-
 def test_inventory_includes_layout_and_derived_stock(client):
-    client.post("/api/scenarios/demo_scenario_01/load")
+    client.post("/api/recordings/demo_scenario_01/load")
     data = client.get("/api/inventory").json()
     assert data["layout"]["layout_id"] == "default"
     keys = {m["medication_key"] for m in data["layout"]["medications"]}
@@ -104,9 +109,9 @@ def test_inventory_includes_layout_and_derived_stock(client):
     assert all(len(r["polygon"]) >= 3 for r in data["layout"]["regions"])
 
 
-def test_scenarios_report_layout(client):
-    scenario = client.get("/api/scenarios").json()["scenarios"][0]
-    assert scenario["layout_id"] == "default"
+def test_recordings_report_layout(client):
+    recording = client.get("/api/recordings").json()["recordings"][0]
+    assert recording["layout_id"] == "default"
 
 
 def test_video_still_is_jpeg(client):
@@ -116,7 +121,7 @@ def test_video_still_is_jpeg(client):
     assert res.content[:2] == b"\xff\xd8"
 
 
-def test_put_layout_saves_new_version_and_resets_scenario(isolated_client):
+def test_put_layout_keeps_live_inventory_unless_reset(isolated_client):
     c = isolated_client
     c.post("/api/transactions/TX_RX_1001/status", json={"status": "confirmed_fill"})
     assert c.get("/api/inventory").json()["inventory"]["AMOXICILLIN_500MG"]["pooled_tablets"] == 470
@@ -130,14 +135,19 @@ def test_put_layout_saves_new_version_and_resets_scenario(isolated_client):
     res = c.put("/api/layouts/default", json=layout)
     assert res.status_code == 200
     body = res.json()
-    assert body["scenario_reloaded"] is True
+    assert body["inventory_reset"] is False
     assert body["layout"]["calibration_version"] == layout["calibration_version"] + 1
-
     state = c.get("/api/inventory").json()
     assert state["layout"]["calibration_version"] == body["layout"]["calibration_version"]
-    # Reload rebuilt state from the presets: prior deduction is gone, new batch included.
+    # Opening stock only matters on reset; the live count and deduction are kept.
+    assert state["inventory"]["AMOXICILLIN_500MG"]["pooled_tablets"] == 470
+
+    res = c.put("/api/layouts/default?reset_inventory=true", json=body["layout"])
+    assert res.status_code == 200 and res.json()["inventory_reset"] is True
+    state = c.get("/api/inventory").json()
     assert state["inventory"]["AMOXICILLIN_500MG"]["pooled_tablets"] == 500 + 120
     assert state["inventory"]["AMOXICILLIN_500MG"]["total_bottles"] == 7
+    assert state["transactions"]["TX_RX_1001"]["deducted"] is False
 
 
 def test_put_layout_rejects_invalid_setup_without_writing(isolated_client):
@@ -182,7 +192,7 @@ def wait_ready(c, name, timeout=10.0):
 
     deadline = time.time() + timeout
     while time.time() < deadline:
-        s = next(s for s in c.get("/api/scenarios").json()["scenarios"] if s["name"] == name)
+        s = next(s for s in c.get("/api/recordings").json()["recordings"] if s["name"] == name)
         if s["status"] in ("ready", "error"):
             return s
         time.sleep(0.05)
@@ -212,7 +222,7 @@ def test_upload_recording_extracts_skeletons_and_replays(isolated_client, tmp_pa
 
     status = wait_ready(c, name)
     assert status["status"] == "ready", status
-    assert c.post(f"/api/scenarios/{name}/load").status_code == 200
+    assert c.post(f"/api/recordings/{name}/load").status_code == 200
     assert c.post("/api/replay/control", json={"action": "seek", "media_time_ms": 3000}).status_code == 200
 
     state = c.get("/api/inventory").json()
@@ -267,7 +277,7 @@ def test_receive_stock_endpoint_adds_live_stock(isolated_client):
 
 
 def test_expired_batch_in_layout_raises_alert_on_load(client):
-    client.post("/api/scenarios/demo_scenario_01/load")
+    client.post("/api/recordings/demo_scenario_01/load")
     alerts = client.get("/api/inventory").json()["alerts"].values()
     expiry = [a for a in alerts if a["alert_type"] == "expiry"]
     assert [a["metadata"]["receipt_id"] for a in expiry] == ["REC_IBU_2026_01"]
@@ -311,3 +321,84 @@ def test_background_upload_and_save(isolated_client):
 
     res = c.post("/api/layouts/default/background", files={"image": ("x.png", b"not an image")})
     assert res.status_code == 400
+
+
+def upload(c, tmp_path, label, csv=b"time_s,event\n0.5,pickup\n2.0,drop\n"):
+    make_video(tmp_path / "clip.mp4")
+    with open(tmp_path / "clip.mp4", "rb") as video:
+        res = c.post(
+            "/api/recordings",
+            files={"video": ("clip.mp4", video, "video/mp4"), "events": ("events.csv", csv, "text/csv")},
+            data={"name": label},
+        )
+    assert res.status_code == 200, res.text
+    name = res.json()["name"]
+    assert wait_ready(c, name)["status"] == "ready"
+    return name
+
+
+def test_recordings_are_stored_and_inventory_carries_across_them(isolated_client, tmp_path, monkeypatch):
+    import pharma.pose
+
+    monkeypatch.setattr(pharma.pose, "extract_video_keypoints", fake_keypoints)
+    c = isolated_client
+    first = upload(c, tmp_path, "First shift")
+    second = upload(c, tmp_path, "Second shift")
+
+    # Applying without playback is idempotent per recording.
+    assert c.post(f"/api/recordings/{first}/apply").json()["applied"] == 2
+    assert c.post(f"/api/recordings/{first}/apply").json()["applied"] == 0
+    assert c.post(f"/api/recordings/{second}/apply").json()["applied"] == 2
+
+    state = c.get("/api/inventory").json()
+    # Both recordings moved one Amoxicillin bottle onto the Ibuprofen shelf: counts accumulate.
+    assert state["inventory"]["AMOXICILLIN_500MG"]["shelf_counts"] == {
+        "shelf_amoxicillin_500mg": 3, "shelf_ibuprofen_200mg": 2,
+    }
+    misplaced = [a for a in state["alerts"].values() if a["alert_type"] == "misplacement"]
+    assert len({a["metadata"]["session_id"] for a in misplaced}) == 2  # sess_001 of each, kept apart
+
+    listing = {r["name"]: r for r in c.get("/api/recordings").json()["recordings"]}
+    assert list(listing)[:2] == [second, first]  # newest upload first
+    assert (listing[first]["events_applied"], listing[first]["alerts_open"]) == (2, 1)
+    assert listing[first]["source"] == "upload" and listing[first]["video_filename"] == "clip.mp4"
+
+    # Replaying an applied recording shows it again but changes nothing.
+    assert c.post(f"/api/recordings/{first}/load").status_code == 200
+    c.post("/api/replay/control", json={"action": "seek", "media_time_ms": 3000})
+    c.post("/api/replay/control", json={"action": "restart"})
+    again = c.get("/api/inventory").json()["inventory"]["AMOXICILLIN_500MG"]["shelf_counts"]
+    assert again == state["inventory"]["AMOXICILLIN_500MG"]["shelf_counts"]
+
+    detail = c.get(f"/api/recordings/{first}").json()
+    assert [a["event_type"] for a in detail["activity"]] == ["pickup", "release"]
+    assert len(detail["alerts"]) == 1 and all(e["processed"] for e in detail["events"])
+
+    thumb = c.get(f"/api/recordings/{first}/thumbnail")
+    assert thumb.status_code == 200 and thumb.content[:2] == b"\xff\xd8"
+
+    kinds = {h["kind"] for h in c.get("/api/history").json()["history"]}
+    assert {"recording_uploaded", "signal"} <= kinds
+
+    assert c.delete(f"/api/recordings/{second}").status_code == 200
+    assert second not in {r["name"] for r in c.get("/api/recordings").json()["recordings"]}
+    assert c.get("/api/inventory").json()["inventory"]["AMOXICILLIN_500MG"]["total_bottles"] == 5
+    assert c.delete("/api/recordings/demo_scenario_01").status_code == 409  # bundled fixture
+    assert c.delete("/api/recordings/nope").status_code == 404
+
+
+def test_reset_inventory_restores_opening_stock_and_unapplies_signals(client):
+    client.post("/api/replay/control", json={"action": "seek", "media_time_ms": 7000})
+    client.post("/api/inventory/receipts", json={
+        "medication_key": "AMOXICILLIN_500MG", "bottle_count": 1, "tablets_per_bottle": 10, "expiry_date": "2030-01-01",
+    })
+    amx = client.get("/api/inventory").json()["inventory"]["AMOXICILLIN_500MG"]
+    assert (amx["counter_bottles"], amx["total_bottles"]) == (1, 6)
+
+    assert client.post("/api/inventory/reset").status_code == 200
+    state = client.get("/api/inventory").json()
+    amx = state["inventory"]["AMOXICILLIN_500MG"]
+    assert (amx["counter_bottles"], amx["total_bottles"], amx["pooled_tablets"]) == (0, 5, 500)
+    assert not any(e["processed"] for e in state["events"]) and state["activity"] == []
+    # The expired opening batch raises its alert again after the reset.
+    assert [a["alert_type"] for a in state["alerts"].values()] == ["expiry"]

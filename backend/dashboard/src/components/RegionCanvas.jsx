@@ -128,7 +128,7 @@ export default function RegionCanvas({
 
   return (
     <div className="canvas" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc((100vh - 260px) * ${W / H}))` }}>
-      <img src={imageUrl} alt="Camera frame" draggable={false} />
+      <img src={imageUrl} alt="Fixed camera view used for annotation" width={W} height={H} draggable={false} />
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}

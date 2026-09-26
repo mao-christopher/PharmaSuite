@@ -53,17 +53,25 @@ export function LiveProvider({ children }) {
       await refresh();
       return result;
     };
+    const id = encodeURIComponent;
     return {
       refresh,
       control: (action) => post('/api/replay/control', { action }),
-      loadScenario: (name) => post(`/api/scenarios/${encodeURIComponent(name)}/load`),
-      resolveAlert: (alertId) => post(`/api/inventory/confirmations/${alertId}`),
+      loadRecording: (name) => post(`/api/recordings/${id(name)}/load`),
+      applyRecording: (name) => post(`/api/recordings/${id(name)}/apply`),
+      deleteRecording: async (name) => {
+        const result = await request(`/api/recordings/${id(name)}`, { method: 'DELETE' });
+        await refresh();
+        return result;
+      },
+      resetInventory: () => post('/api/inventory/reset'),
+      resolveAlert: (alertId) => post(`/api/inventory/confirmations/${id(alertId)}`),
       confirmLocation: (alertId, regionId) =>
-        post(`/api/inventory/confirmations/${alertId}`, { resolved_region_id: regionId }),
+        post(`/api/inventory/confirmations/${id(alertId)}`, { resolved_region_id: regionId }),
       receiveStock: (body) => post('/api/inventory/receipts', body),
-      setTransactionStatus: (txId, status) => post(`/api/transactions/${txId}/status`, { status }),
+      setTransactionStatus: (txId, status) => post(`/api/transactions/${id(txId)}/status`, { status }),
       submitDisposal: (disposalId, receiptId, quantity) =>
-        post(`/api/inventory/disposals/${disposalId}`, {
+        post(`/api/inventory/disposals/${id(disposalId)}`, {
           selected_receipt_id: receiptId,
           explicit_quantity: quantity,
         }),

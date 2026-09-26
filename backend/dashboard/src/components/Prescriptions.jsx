@@ -1,18 +1,28 @@
-import React from 'react';
-import { Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { TX_STATUS, medLabel } from '../lib/format';
 import { Badge, Card, Empty } from './ui';
 
 export default function Prescriptions() {
   const { state, setTransactionStatus } = useLive();
+  const [busy, setBusy] = useState(null);
   const meds = state.layout?.medications;
   const txs = Object.values(state.transactions);
 
+  const update = async (txId, status) => {
+    setBusy(txId);
+    try {
+      await setTransactionStatus(txId, status);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <Card title="Prescriptions">
+    <Card title="Prescriptions" className="area-rx" flush>
       {txs.length === 0 ? (
-        <Empty>No prescriptions in this scenario.</Empty>
+        <Empty>No prescriptions yet.</Empty>
       ) : (
         <ul className="rows">
           {txs.map((tx) => {
@@ -23,13 +33,18 @@ export default function Prescriptions() {
               <li key={tx.transaction_id} className="row row-wrap">
                 <div>
                   <div className="row-title">
-                    {medLabel(meds, tx.medication_key)} · {tx.quantity} {unit}
+                    {medLabel(meds, tx.medication_key)}
+                    <span className="muted num">
+                      {tx.quantity} {unit}
+                    </span>
                   </div>
                   <div className="row-sub">
-                    {tx.transaction_id}
+                    <span className="mono" translate="no">
+                      {tx.transaction_id}
+                    </span>
                     {tx.deducted && (
                       <span className="inline-ok">
-                        <Check size={13} /> deducted from stock
+                        <CheckIcon size={13} aria-hidden="true" /> Deducted from stock
                       </span>
                     )}
                   </div>
@@ -37,12 +52,12 @@ export default function Prescriptions() {
                 <div className="row-actions">
                   <Badge tone={status.tone}>{status.label}</Badge>
                   {tx.status === 'created' && (
-                    <button className="btn btn-sm" onClick={() => setTransactionStatus(tx.transaction_id, 'confirmed_fill')}>
+                    <button type="button" className="btn btn-sm" disabled={busy === tx.transaction_id} onClick={() => update(tx.transaction_id, 'confirmed_fill')}>
                       Confirm fill
                     </button>
                   )}
                   {!closed && (
-                    <button className="btn btn-sm" onClick={() => setTransactionStatus(tx.transaction_id, 'paid')}>
+                    <button type="button" className="btn btn-sm" disabled={busy === tx.transaction_id} onClick={() => update(tx.transaction_id, 'paid')}>
                       Mark paid
                     </button>
                   )}

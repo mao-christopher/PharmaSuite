@@ -1,7 +1,7 @@
 export const REGION_TYPES = {
-  designated_shelf: { label: 'Shelf', plural: 'Shelves', color: '#2563eb', prefix: 'shelf' },
-  dispensing_counter: { label: 'Counter', plural: 'Counters', color: '#d97706', prefix: 'counter' },
-  disposal: { label: 'Disposal', plural: 'Disposal', color: '#dc2626', prefix: 'disposal' },
+  designated_shelf: { label: 'Shelf', plural: 'Shelves', color: '#1f6ce0', prefix: 'shelf' },
+  dispensing_counter: { label: 'Counter', plural: 'Counters', color: '#c47d0a', prefix: 'counter' },
+  disposal: { label: 'Disposal', plural: 'Disposal', color: '#ce3438', prefix: 'disposal' },
 };
 
 export function medicationKeyFor(name, strength) {
@@ -54,7 +54,7 @@ export function stockStatus(layout, inv) {
   if (inv.uncertain_location) return { label: 'Location uncertain', tone: 'amber' };
   if (c.misplaced > 0) return { label: 'Misplaced bottle', tone: 'red' };
   if (inv.pooled_tablets === 0) return { label: 'Check tablet count', tone: 'amber' };
-  if (c.onShelf === 0 && c.atCounter > 0) return { label: 'None on shelf · at counter', tone: 'amber' };
+  if (c.onShelf === 0 && c.atCounter > 0) return { label: 'Shelf empty, bottle at counter', tone: 'amber' };
   if (c.offShelf > 0) return { label: 'Bottle off shelf', tone: 'blue' };
   return { label: 'In stock', tone: 'green' };
 }
@@ -101,10 +101,63 @@ export function isExpired(expiryDate) {
   return Boolean(expiryDate) && expiryDate < todayIso();
 }
 
+export const NONE = '-';
+
+const dateFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+const dateTimeFmt = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+const numberFmt = new Intl.NumberFormat();
+
 export function formatDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return NONE;
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return dateFmt.format(new Date(y, m - 1, d));
+}
+
+export function formatDateTime(iso) {
+  if (!iso) return NONE;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
+}
+
+export function formatNumber(n) {
+  return n == null ? NONE : numberFmt.format(n);
+}
+
+export function plural(n, one, many = `${one}s`) {
+  return `${formatNumber(n)} ${n === 1 ? one : many}`;
+}
+
+export function inventoryTotals(state) {
+  const totals = { bottles: 0, onShelf: 0, offShelf: 0, misplaced: 0, out: 0 };
+  (state.layout?.medications || []).forEach((m) => {
+    const inv = state.inventory[m.medication_key];
+    if (!inv) return;
+    const c = bottleCounts(state.layout, inv);
+    totals.bottles += c.total;
+    totals.onShelf += c.onShelf + c.misplaced;
+    totals.misplaced += c.misplaced;
+    totals.offShelf += c.offShelf;
+    if (c.total === 0) totals.out += 1;
+  });
+  const alerts = Object.values(state.alerts);
+  totals.expired = alerts.filter((a) => a.alert_type === 'expiry' && a.status === 'open').length;
+  totals.attention =
+    alerts.filter((a) => a.status === 'open').length +
+    Object.values(state.disposals).filter((d) => d.status === 'pending_employee_entry').length;
+  return totals;
+}
+
+export function appliedState(rec) {
+  if (!rec || rec.events_total === 0) return { label: 'No signals', tone: 'gray' };
+  if (rec.events_applied === 0) return { label: 'Not applied', tone: 'amber' };
+  if (rec.events_applied < rec.events_total)
+    return { label: `${rec.events_applied} of ${rec.events_total} applied`, tone: 'blue' };
+  return { label: 'Applied', tone: 'green' };
 }
 
 export function uniqueSessions(sessions) {

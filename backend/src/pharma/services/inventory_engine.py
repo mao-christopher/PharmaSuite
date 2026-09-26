@@ -119,6 +119,47 @@ class InventoryEngine:
         self._alert_counter = 1
         self._receipt_counter = 1
 
+    # ------------------------------------------------------------------ persistence
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializable state. Regions come from the layout and are not included."""
+        groups: Dict[int, Dict[str, Any]] = {}
+        for key, session in self.sessions.items():
+            group = groups.setdefault(id(session), {"keys": [], "session": session.model_dump()})
+            group["keys"].append(key)
+        return {
+            "inventory": {k: v.model_dump() for k, v in self.inventory.items()},
+            "receipts": [r.model_dump() for r in self.receipts.values()],
+            "transactions": {k: v.model_dump() for k, v in self.transactions.items()},
+            # Aliased sessions (a parked bottle picked up again) share one object.
+            "sessions": list(groups.values()),
+            "disposals": {k: v.model_dump() for k, v in self.disposals.items()},
+            "alerts": {k: v.model_dump() for k, v in self.alerts.items()},
+            "alert_counter": self._alert_counter,
+            "receipt_counter": self._receipt_counter,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], regions: List[Region], **kwargs: Any) -> "InventoryEngine":
+        sessions: Dict[str, MovementSession] = {}
+        for group in data.get("sessions", []):
+            session = MovementSession(**group["session"])
+            for key in group["keys"]:
+                sessions[key] = session
+        engine = cls(
+            inventory={k: InventoryState(**v) for k, v in data.get("inventory", {}).items()},
+            regions=regions,
+            receipts=[Receipt(**r) for r in data.get("receipts", [])],
+            transactions={k: PrescriptionTransaction(**v) for k, v in data.get("transactions", {}).items()},
+            sessions=sessions,
+            disposals={k: DisposalRecord(**v) for k, v in data.get("disposals", {}).items()},
+            alerts={k: Alert(**v) for k, v in data.get("alerts", {}).items()},
+            **kwargs,
+        )
+        engine._alert_counter = data.get("alert_counter", len(engine.alerts) + 1)
+        engine._receipt_counter = data.get("receipt_counter", 1)
+        return engine
+
     # ------------------------------------------------------------------ helpers
 
     def _add_alert(self, alert_type: str, severity: str, medication_key: str, description: str,

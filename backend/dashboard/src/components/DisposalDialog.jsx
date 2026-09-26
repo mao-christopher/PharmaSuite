@@ -38,11 +38,11 @@ export default function DisposalDialog({ disposal, onClose }) {
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn-ghost" onClick={onClose}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
             Later
           </button>
           <button className="btn btn-primary" form="disposal-form" type="submit" disabled={!receiptId || saving}>
-            Confirm disposal
+            {saving ? 'Saving…' : 'Confirm disposal'}
           </button>
         </>
       }
@@ -74,8 +74,8 @@ export default function DisposalDialog({ disposal, onClose }) {
                       {isExpired(r.expiry_date) && <Badge tone="red">Expired</Badge>}
                     </div>
                     <div className="row-sub">
-                      Expires {formatDate(r.expiry_date)} · {r.remaining_bottles} of {r.bottle_count} bottles left ·{' '}
-                      {r.receipt_id}
+                      Expires {formatDate(r.expiry_date)}, {r.remaining_bottles} of {r.bottle_count} bottles left
+                      <span className="mono"> {r.receipt_id}</span>
                     </div>
                   </div>
                 </label>
@@ -89,9 +89,11 @@ export default function DisposalDialog({ disposal, onClose }) {
           <input
             className="input"
             type="number"
+            name="discarded-quantity"
+            autoComplete="off"
             min="0"
             inputMode="numeric"
-            placeholder={`Leave blank to keep ${defaultQty}`}
+            placeholder={`Blank keeps ${defaultQty}…`}
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
           />
@@ -101,7 +103,11 @@ export default function DisposalDialog({ disposal, onClose }) {
               : `Other bottles remain, so a blank entry assumes this bottle was empty (0 ${unit}). You can correct it later.`}
           </span>
         </label>
-        {error && <p className="form-error">{error}</p>}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
       </form>
     </Dialog>
   );

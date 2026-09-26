@@ -20,17 +20,10 @@ async def lifespan(app: FastAPI):
     scenarios_dir = cfg.data_dir / "scenarios"
     scenarios_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize ReplayController
+    # Live inventory is persisted under data/state and carries across recordings.
     controller = ReplayController(scenarios_dir=scenarios_dir)
     routes.controller = controller
-
-    # Auto-load demo scenario if present
-    demo_path = scenarios_dir / "demo_scenario_01"
-    if demo_path.exists():
-        try:
-            controller.load_scenario("demo_scenario_01")
-        except Exception as e:
-            print(f"Warning loading demo scenario on startup: {e}")
+    controller.restore_player(fallback="demo_scenario_01")
 
     clock = asyncio.create_task(controller.run_clock())
     yield
@@ -118,7 +111,7 @@ def root_dashboard():
               <ul>
                 <li><a href="/docs">Swagger API Documentation (/docs)</a></li>
                 <li><a href="/api/inventory">Current Inventory API (/api/inventory)</a></li>
-                <li><a href="/api/scenarios">Scenario List (/api/scenarios)</a></li>
+                <li><a href="/api/recordings">Recordings (/api/recordings)</a></li>
                 <li><a href="/api/video/feed">Live MJPEG Video Feed (/api/video/feed)</a></li>
               </ul>
             </div>

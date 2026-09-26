@@ -1,23 +1,23 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Bell, CircleAlert, Info, Trash2 } from 'lucide-react';
+import { BellIcon, InfoIcon, TrashIcon, WarningCircleIcon, WarningIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
 import { ALERT_TYPES, SEVERITY_RANK, SEVERITY_TONE, formatDate, medLabel, regionLabel } from '../lib/format';
 import { Badge, Card } from './ui';
 
-const ICONS = { red: CircleAlert, amber: AlertTriangle, blue: Info };
+const ICONS = { red: WarningCircleIcon, amber: WarningIcon, blue: InfoIcon };
 
 function describe(alert, layout, receipts) {
   const m = alert.metadata || {};
   switch (alert.alert_type) {
     case 'misplacement':
-      return `Placed on the ${regionLabel(layout, m.placed_shelf)}. It belongs on the ${regionLabel(layout, m.original_shelf)}.`;
+      return `Put on the ${regionLabel(layout, m.placed_shelf)}. It belongs on the ${regionLabel(layout, m.original_shelf)}.`;
     case 'out_of_stock':
       return 'No undisposed bottles remain in the pharmacy.';
     case 'expiry': {
       const r = receipts.find((x) => x.receipt_id === m.receipt_id);
-      return `Batch ${m.receipt_id}${r?.lot_number ? ` (lot ${r.lot_number})` : ''} expired ${formatDate(m.expiry_date)}. Find and dispose of these bottles.`;
+      return `Batch ${m.receipt_id}${r?.lot_number ? ` (lot ${r.lot_number})` : ''} expired ${formatDate(m.expiry_date)}. Find these bottles and dispose of them.`;
     }
     default:
       return alert.description;
@@ -28,8 +28,8 @@ function AlertAction({ alert, onResolve, onConfirm, onReceive }) {
   switch (alert.alert_type) {
     case 'uncertainty':
       return (
-        <button className="btn btn-sm btn-primary" onClick={onConfirm}>
-          Confirm
+        <button type="button" className="btn btn-sm btn-primary" onClick={onConfirm}>
+          Confirm location
         </button>
       );
     case 'expiry':
@@ -40,14 +40,14 @@ function AlertAction({ alert, onResolve, onConfirm, onReceive }) {
       );
     case 'out_of_stock':
       return (
-        <button className="btn btn-sm" onClick={onReceive}>
+        <button type="button" className="btn btn-sm" onClick={onReceive}>
           Receive stock
         </button>
       );
     default:
       return (
-        <button className="btn btn-sm" onClick={onResolve}>
-          Resolve
+        <button type="button" className="btn btn-sm" onClick={onResolve}>
+          Mark resolved
         </button>
       );
   }
@@ -69,67 +69,82 @@ export default function Notifications() {
   return (
     <Card
       title="Notifications"
+      className="area-alerts"
       actions={count > 0 ? <Badge tone="red">{count} open</Badge> : <Badge tone="green">All clear</Badge>}
       flush
-    >
-      {count === 0 && (
-        <div className="notice-empty">
-          <Bell size={18} />
-          <span>Nothing needs attention.</span>
-        </div>
-      )}
-      <ul className="notice-list">
-        {pendingDisposals.map((d) => (
-          <li key={d.disposal_id} className="notice notice-red">
-            <Trash2 size={17} className="notice-icon" />
-            <div className="notice-content">
-              <div className="notice-title">Identify disposed bottle</div>
-              <div className="notice-med">{medLabel(meds, d.medication_key)}</div>
-              <p>A bottle went into the trash. Choose the batch it came from and enter any discarded tablets.</p>
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={() => openDisposal(d.disposal_id)}>
-              Identify
+      footer={
+        resolved.length > 0 && (
+          <>
+            <button type="button" className="link-btn" aria-expanded={showResolved} onClick={() => setShowResolved((v) => !v)}>
+              {showResolved ? 'Hide' : 'Show'} resolved ({resolved.length})
             </button>
-          </li>
-        ))}
-        {open.map((a) => {
-          const tone = SEVERITY_TONE[a.severity] || 'amber';
-          const Icon = ICONS[tone] || AlertTriangle;
-          return (
-            <li key={a.alert_id} className={`notice notice-${tone}`}>
-              <Icon size={17} className="notice-icon" />
+            {showResolved && (
+              <ul className="resolved-list">
+                {resolved.map((a) => (
+                  <li key={a.alert_id}>
+                    <span>{ALERT_TYPES[a.alert_type] || a.alert_type}</span>
+                    <span className="muted">{medLabel(meds, a.medication_key)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )
+      }
+    >
+      <div aria-live="polite">
+        {count === 0 && (
+          <div className="notice-empty">
+            <span className="notice-icon tone-green" aria-hidden="true">
+              <BellIcon />
+            </span>
+            <span>Nothing needs attention.</span>
+          </div>
+        )}
+        <ul className="notice-list">
+          {pendingDisposals.map((d) => (
+            <li key={d.disposal_id} className="notice">
+              <span className="notice-icon tone-red" aria-hidden="true">
+                <TrashIcon />
+              </span>
               <div className="notice-content">
-                <div className="notice-title">{ALERT_TYPES[a.alert_type] || a.alert_type}</div>
-                <div className="notice-med">{medLabel(meds, a.medication_key)}</div>
-                <p>{describe(a, state.layout, state.receipts)}</p>
+                <div className="notice-title">Identify disposed bottle</div>
+                <div className="notice-med">{medLabel(meds, d.medication_key)}</div>
+                <p className="notice-text">A bottle went into the trash. Choose its batch and enter any discarded tablets.</p>
               </div>
-              <AlertAction
-                alert={a}
-                onResolve={() => resolveAlert(a.alert_id)}
-                onConfirm={() => openConfirm(a.alert_id)}
-                onReceive={() => openReceive(a.medication_key)}
-              />
+              <div className="notice-action">
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => openDisposal(d.disposal_id)}>
+                  Identify
+                </button>
+              </div>
             </li>
-          );
-        })}
-      </ul>
-      {resolved.length > 0 && (
-        <div className="notice-footer">
-          <button className="link-btn" onClick={() => setShowResolved((v) => !v)}>
-            {showResolved ? 'Hide' : 'Show'} resolved ({resolved.length})
-          </button>
-          {showResolved && (
-            <ul className="resolved-list">
-              {resolved.map((a) => (
-                <li key={a.alert_id}>
-                  <span>{ALERT_TYPES[a.alert_type] || a.alert_type}</span>
-                  <span className="muted">{medLabel(meds, a.medication_key)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+          ))}
+          {open.map((a) => {
+            const tone = SEVERITY_TONE[a.severity] || 'amber';
+            const Icon = ICONS[tone] || WarningIcon;
+            return (
+              <li key={a.alert_id} className="notice">
+                <span className={`notice-icon tone-${tone}`} aria-hidden="true">
+                  <Icon />
+                </span>
+                <div className="notice-content">
+                  <div className="notice-title">{ALERT_TYPES[a.alert_type] || a.alert_type}</div>
+                  <div className="notice-med">{medLabel(meds, a.medication_key)}</div>
+                  <p className="notice-text">{describe(a, state.layout, state.receipts)}</p>
+                </div>
+                <div className="notice-action">
+                  <AlertAction
+                    alert={a}
+                    onResolve={() => resolveAlert(a.alert_id)}
+                    onConfirm={() => openConfirm(a.alert_id)}
+                    onReceive={() => openReceive(a.medication_key)}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </Card>
   );
 }

@@ -191,10 +191,13 @@ plus `scenario.json` naming its `layout_id`.
 - A medication is one drug + strength (`AMOXICILLIN_500MG`); each has exactly one
   shelf and each shelf holds exactly one medication. Any number of counter and
   disposal regions are allowed. The API rejects layouts that break these rules.
-- Starting inventory is derived from the preset batches on scenario load: pooled
-  tablets = sum of bottles x units per bottle, and all bottles start on the shelf.
-- Saving from the Setup page bumps `calibration_version` and reloads the active
-  recording, which resets its live inventory, alerts, and replay position.
+- The preset batches are the opening stock: pooled tablets = sum of bottles x units
+  per bottle, and all bottles start on the shelf. They seed live inventory the first
+  time and on an explicit reset.
+- Saving from the Setup page bumps `calibration_version`. By default live inventory
+  is kept: new medications start with their opening stock, and bottles counted on a
+  deleted or reassigned shelf (not explained by a misplaced bottle) move to their
+  medication's current shelf. The save dialog can instead reset inventory.
 - The Setup page imports a photo taken from the camera angle as the annotation
   background (`background_image`); the layout takes the photo's frame size.
 
@@ -221,20 +224,45 @@ background and stores the most confident person's 17 keypoints in `poses.json`.
   be that bottle (the correction). It keeps its original medication, and putting it
   down anywhere closes the earlier misplacement alert.
 - Receiving stock adds a batch to live counts (bottles go straight onto the shelf)
-  without resetting. All state is in memory; restarting or reloading a recording
-  returns to the layout presets. MongoDB persistence is deferred.
+  without resetting.
 - The replay clock runs server-side on real elapsed time, independent of viewers,
-  stops at the end of the clip, and dispatches each event ID exactly once. Restart
-  and seek rebuild state from the recording's seed. State changes are pushed over
-  the WebSocket, and the dashboard shows a per-signal log of the decision.
+  and stops at the end of the clip. State changes are pushed over the WebSocket, and
+  the dashboard shows a per-signal log of the decision.
 - Measured on this dev Mac (CPU): YOLO11n-pose extraction ran at about 17 frames/s
   including model load. This is processing speed only, not pose accuracy.
+
+### Recording library and persistent inventory (implemented)
+
+Decided 2026-09-26 (defaults chosen without a review round; revisit if wrong).
+Uploaded recordings are kept in `data/scenarios/upload-*` with their metadata
+(label, original file names, upload time, duration, frame size, calibration version)
+and listed on a Recordings page. Inventory is one live state that carries across
+recordings instead of resetting per recording.
+
+- Live state is saved to `data/state/pharmacy.json` (atomic write, gitignored) after
+  every change and reloaded on server start. This JSON store stands in for MongoDB;
+  moving it into the collections above remains open.
+- A recording's signals change inventory the first time the playhead passes them, or
+  all at once with "Apply". Applied event IDs are recorded per recording, so replays,
+  seeks backward, restarts, and repeated Apply calls never apply a signal twice and
+  never undo one. Movement sessions are namespaced `<recording>:<session>` because
+  every upload numbers its sessions from `sess_001`.
+- Recordings apply in whatever order they are played or applied, not by capture time.
+  A partially played recording leaves its bottle in hand until the rest is applied.
+- Deleting an uploaded recording removes its files; inventory changes it made stay.
+  Bundled fixtures cannot be deleted.
+- "Reset to opening stock" restores the layout's preset batches, clears alerts,
+  disposals and prescription deductions, and marks every recording unapplied.
+- An append-only history records signals, shipments, disposals, confirmations,
+  prescription changes, uploads, deletions, layout saves, and resets.
 
 Use unique IDs and atomic/idempotent processing so replay, retries, and restart do
 not repeat mutations. Keep event acceptance and its stock update consistent across
 crashes. Choose a MongoDB transaction-capable setup or a documented recoverable
-event-ledger approach before implementing multi-document writes. Isolate replay runs
-so repeating a demo starts from its own seed rather than corrupting prior inventory.
+event-ledger approach before implementing multi-document writes. The JSON store
+writes the whole state in one atomic replace, so an event and its stock update land
+together; a crash between applying and saving can lose the latest change but not
+split it.
 
 ## Implementation milestones
 
@@ -308,6 +336,20 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
   not been evaluated against ground truth on rendered footage.
 - Only the most confident person per frame is tracked; a second person in view can
   be picked instead of the technician.
+- Live inventory now depends on the order recordings are applied. Clips recorded out
+  of order, or applied twice under different uploads of the same footage, will be
+  counted as separate real events.
+
+## Dashboard design (implemented)
+
+Decided 2026-09-26. The UI follows the Vercel DESIGN.md from awesome-design-md
+(Geist and Geist Mono, ink on near-white, hairline borders, 6px controls, 8px cards),
+the taste-skill redesign and minimalist rules (one accent, pastel status tones only,
+no em-dashes, Phosphor icons instead of Lucide), and was audited against the Vercel
+web interface guidelines (focus-visible rings, labelled icon buttons, skip link,
+`aria-live` for updates, `Intl` formatting, confirm dialogs for destructive actions).
+Headings and buttons use sentence case (the guidelines prefer Title Case; the other
+two sources and the existing copy use sentence case). Light mode only, per request.
 
 ## Renderer references
 
