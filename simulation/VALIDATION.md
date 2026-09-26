@@ -1,78 +1,83 @@
-# Simulation validation — 2026-09-26
+# Stateful simulation validation — 2026-09-26
 
-## Environment and scope
+## Implementation verified
 
-- Unity **6000.6.3f1**, built-in rendering, graphics-enabled batch capture.
-- Apple M5, ARM64, 16 GB RAM; pose inference explicitly used **CPU**.
+The character follows guarded task states and tracks each bottle's ownership and
+location. Unity navigation paths route around furniture. Each 30 Hz tick checks
+body capsule movement, arm/hand sweeps, and carried-bottle clearance against the
+scene's solid collision geometry. Actions commit only after arrival, reachable
+contact, valid ownership, and a supporting surface when applicable.
+
+A newly blocked route stops the actor at its last safe pose and emits no false
+completion event. The hollow disposal bin accepts dropped bottles, which remain
+in a disposed state and stop at its bottom. Seeking replays intermediate ticks.
+Stationary tasks rest in place rather than making a spurious navigation loop.
+
+## Environment and measured video results
+
+- Unity **6000.6.3f1**, built-in rendering and navigation, graphics-enabled batch export.
+- Apple M5, ARM64, 16 GB RAM; pose inference explicitly used CPU.
 - Python 3.12.14, Ultralytics 8.4.163, `yolo11n-pose.pt`.
-- Each final recording: **1280 × 720, 30 FPS, 38 seconds, 1,140 frames**.
-- The evaluator called the existing `backend/src/pharma/pose.py` helper on each
-  complete MP4. Default inference resolution was 640 (384 × 640 letterboxed tensor).
-- Region scoring used the right wrist at ten scripted pickup/release timestamps,
-  a provisional confidence threshold of 0.5, and exactly one matching rectangle.
-  This is a feasibility check, not production event fusion or inventory validation.
-
-## Final rendered-video results
+- Both final recordings: **1280 × 720, 30 FPS, 44 seconds, 1,320 frames**.
+- The existing backend pose helper processed each complete MP4. Default model input
+  was 640 (384 × 640 letterboxed tensor). Ten action timestamps were scored using
+  the right wrist, threshold 0.5, and exactly one matching region rectangle.
 
 | Measurement | Clean workflow | Occluded-return variant |
 | --- | ---: | ---: |
-| Decoded/inferred frames | 1,140 | 1,140 |
-| Frames with a detected person | 1,110 | 1,019 |
+| Decoded/inferred frames | 1320 | 1320 |
+| Frames with a detected person | 1320 | 1229 |
 | Action timestamps scored | 10 | 10 |
 | Correct region identifications | 10 | 9 |
 | Abstentions | 0 | 1 |
 | Confident wrong regions | 0 | 0 |
-| End-to-end inference time | 22.36 s | 23.88 s |
-| Measured processing throughput | 50.99 FPS | 47.74 FPS |
+| End-to-end inference time | 26.38 s | 27.18 s |
+| Measured processing throughput | 50.03 FPS | 48.56 FPS |
 
-The occluded action is the designated-shelf return at **18 seconds**. In the final
-variant no person pose was available at that frame, so the evaluator abstained.
-The clean action-frame wrist confidences ranged from approximately 0.868 to 0.952.
-These timings are one local run each, not a stable hardware performance guarantee.
+The deliberately occluded action is the shelf return at **20 seconds**. Its panel
+sits between the camera and technician, outside the technician's physical route.
+Clean action-frame wrist confidences ranged from 0.860 to 0.953.
+Timings are individual local runs, not hardware guarantees. These scores evaluate
+scripted synthetic footage, not real-camera reliability or inventory correctness.
 
-The recorded clips still contain missed detections between action timestamps.
-Do not interpret ten successful action frames as continuous tracking accuracy.
-An earlier, smaller occluder produced a guessed wrist with confidence approximately
-0.564 even though the hand was hidden. A confidence threshold alone therefore does
-not guarantee safe handling of occlusion. Temporal association and confirmation
-behavior belong in the future runtime implementation.
+## Automated and visual checks
 
-## Checks performed
+- Unity imported/compiled the project and rendered both full recordings successfully.
+- **2,642 simulation-frame checks** passed across both variants, including endpoints:
+  collision-free body paths, arm/bottle guards, bounded walking speed, and ten
+  completed legal actions per run.
+- Negative tests passed: inserting an aisle blocker after path planning stops the
+  actor without an impossible release; releasing without ownership, picking up a
+  second bottle while holding one, and picking up a disposed bottle are rejected.
+- Counter rest, misplacement state, first/last disposal, bin-bottom landing,
+  deterministic seeking, repeated restart, and an unreachable wall target passed.
+- **13 Python recording-contract tests passed.** The unchanged backend helper also
+  processed both complete recordings; its two existing smoke tests passed in the
+  preceding implementation pass.
+- Both replay bundles validated their frame clock, 15 actual mock sensor events,
+  eight calibrated regions, receiving fixtures, input boundaries, and video hash.
+- Rendered frames and YOLO overlays were visually inspected. The technician now
+  walks around the counter with a carried bottle rather than cutting through it.
 
-- Unity imported and compiled the project, built the generated scene, rendered both
-  full recordings, and exited successfully.
-- Unity `SimulationChecks.Run` passed: distinct regions, action ordering, frame-clock
-  alignment, contact reach within 8 cm, history-independent seeking, counter rest,
-  first/last disposal, restart restoration, and occluder activation/deactivation.
-- **13 Python contract tests passed**, including duplicate sensor events, malformed
-  clocks, second pickup, truth leakage, video hash mismatch, and receiving totals.
-- **2 existing backend tests passed**, including YOLO inference on its sample image.
-- Both replay bundles passed validation: 15 mock sensor events, eight regions,
-  matching image dimensions, stock fixtures, video hash, and relative runtime paths.
-- Actual rendered frames and YOLO overlays were visually inspected. Corrected
-  excessive lighting, label scale, stale offline skinning, unreachable disposal
-  reach, and physical labels drawing through scene geometry before final export.
+## Evidence and limitations
 
-## Evidence and reproducibility
+Per-event metrics are committed in `validation/clean.json` and
+`validation/occluded.json`. Generated bundles include those metrics, pose overlays,
+separate ground truth, and `evaluator_only/simulation_states.jsonl` containing the
+agent/bottle state at every rendered frame. Runtime manifests never reference this
+internal state. Reproduce using the render and evaluate tools in the simulator README.
 
-The generated replay bundles contain `manifest.json`, sensor/calibration/business
-inputs, and `evaluator_only/pose_metrics.json` with per-event results. Pose overlays
-are under `evaluator_only/pose/`. The final metrics are also committed in `validation/clean.json` and
-`validation/occluded.json`. Generated media are excluded from Git.
-Reproduce using `simulation/tools/render.py` and `simulation/tools/evaluate_pose.py`
-as described in the simulator README. The character source revision and file
-hashes are committed under `Assets/ThirdParty/Rocketbox/`.
+This is a deterministic kinematic demo, not motion-capture animation or a complete
+contact-force physics simulator. Collisions use approximate body/limb/bottle volumes
+and the **PharmaSolid (layer 8)** geometry. Bottle-to-bottle contact forces, crowds,
+and continuous replanning around moving obstacles are not implemented. Add room
+obstacles on the solid layer and rebuild paths; unexpected blockers stop the actor.
 
-## Remaining limits
-
-- Procedural body/step motion is basic; it is not motion-capture quality.
-- Only one technician, one handled bottle, and one single-medication prescription.
-- Only the lower shelf row is exercised by this script; upper shelves are visual
-  stock and calibrated regions, not validated reach scenarios.
-- Sensor events are ideal mock actions, not physical IMU classification results.
-- The camera view is fixed. No real pharmacy footage was evaluated.
-- Expiry/disposal/prescription outcomes are fixtures and expected downstream actions.
-  No MongoDB service, event-fusion service, alert workflow, or working dashboard was
-  implemented. The visible terminal is a prop.
-- The existing backend helper retains video results in RAM. Larger datasets should
-  use a future streaming inference path rather than scale this evaluator unchanged.
+An earlier smaller occluder could cause YOLO to guess a hidden wrist confidently.
+The final variant's abstention does not make confidence alone a reliable occlusion
+test. Production temporal event fusion and employee confirmation remain necessary.
+Only the lower shelf row is exercised; upper shelves are stocked and calibrated.
+Mock sensor events represent accepted actions, not real IMU classification accuracy.
+The inventory service, MongoDB, and working dashboard remain future work. The
+existing video pose helper retains results in memory, so larger datasets need a
+streaming evaluation path.

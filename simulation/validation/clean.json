@@ -1,12 +1,12 @@
 {
-  "video_frames": 1140,
-  "frames_with_person": 1110,
+  "video_frames": 1320,
+  "frames_with_person": 1320,
   "action_samples": 10,
   "correct": 10,
   "abstained": 0,
   "wrong": 0,
-  "inference_seconds": 22.36,
-  "frames_per_second": 50.99,
+  "inference_seconds": 26.38,
+  "frames_per_second": 50.03,
   "model": "yolo11n-pose.pt",
   "ultralytics": "8.4.163",
   "device": "cpu",
@@ -15,162 +15,162 @@
   "scope": "Scripted synthetic footage; point-in-region feasibility check, not production event fusion or real-camera accuracy.",
   "events": [
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0000",
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0000",
       "frame": 60,
       "expected_region": "shelf-a",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.9200838804244995,
+      "wrist_confidence": 0.9173914194107056,
       "predicted_region": "shelf-a",
       "candidate_regions": [
         "shelf-a"
       ],
       "wrist_pixels": [
-        565.8322143554688,
-        340.2738952636719
+        567.07470703125,
+        341.3564147949219
       ],
       "outcome": "correct"
     },
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0002",
-      "frame": 180,
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0002",
+      "frame": 210,
       "expected_region": "counter",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.9493342638015747,
+      "wrist_confidence": 0.9325860738754272,
       "predicted_region": "counter",
       "candidate_regions": [
         "counter"
       ],
       "wrist_pixels": [
-        390.8555908203125,
-        365.3656311035156
+        358.9004821777344,
+        361.8437805175781
       ],
       "outcome": "correct"
     },
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0003",
-      "frame": 240,
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0003",
+      "frame": 270,
       "expected_region": "counter",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.9515042304992676,
+      "wrist_confidence": 0.9311765432357788,
       "predicted_region": "counter",
       "candidate_regions": [
         "counter"
       ],
       "wrist_pixels": [
-        390.5470886230469,
-        365.4786071777344
+        357.6705627441406,
+        361.4327697753906
       ],
       "outcome": "correct"
     },
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0005",
-      "frame": 360,
-      "expected_region": "shelf-b",
-      "intentionally_occluded": false,
-      "wrist_confidence": 0.8725175261497498,
-      "predicted_region": "shelf-b",
-      "candidate_regions": [
-        "shelf-b"
-      ],
-      "wrist_pixels": [
-        677.6826782226562,
-        364.9631652832031
-      ],
-      "outcome": "correct"
-    },
-    {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0006",
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0005",
       "frame": 420,
       "expected_region": "shelf-b",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.8679744005203247,
+      "wrist_confidence": 0.8652938008308411,
       "predicted_region": "shelf-b",
       "candidate_regions": [
         "shelf-b"
       ],
       "wrist_pixels": [
-        677.5601806640625,
-        365.0056457519531
+        677.6182250976562,
+        364.7161865234375
       ],
       "outcome": "correct"
     },
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0008",
-      "frame": 540,
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0006",
+      "frame": 480,
+      "expected_region": "shelf-b",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8603165745735168,
+      "predicted_region": "shelf-b",
+      "candidate_regions": [
+        "shelf-b"
+      ],
+      "wrist_pixels": [
+        676.7515258789062,
+        365.3354187011719
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0008",
+      "frame": 600,
       "expected_region": "shelf-a",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.9130579829216003,
+      "wrist_confidence": 0.9058656692504883,
       "predicted_region": "shelf-a",
       "candidate_regions": [
         "shelf-a"
       ],
       "wrist_pixels": [
-        565.8705444335938,
-        337.09332275390625
+        566.274169921875,
+        337.4180603027344
       ],
       "outcome": "correct"
     },
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0009",
-      "frame": 630,
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0009",
+      "frame": 690,
       "expected_region": "shelf-a",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.9127659797668457,
+      "wrist_confidence": 0.9154267311096191,
       "predicted_region": "shelf-a",
       "candidate_regions": [
         "shelf-a"
       ],
       "wrist_pixels": [
-        565.1751708984375,
-        338.61212158203125
+        565.8977661132812,
+        340.44659423828125
       ],
       "outcome": "correct"
     },
     {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0011",
-      "frame": 780,
-      "expected_region": "disposal",
-      "intentionally_occluded": false,
-      "wrist_confidence": 0.9119171500205994,
-      "predicted_region": "disposal",
-      "candidate_regions": [
-        "disposal"
-      ],
-      "wrist_pixels": [
-        836.7698364257812,
-        457.7980651855469
-      ],
-      "outcome": "correct"
-    },
-    {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0012",
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0011",
       "frame": 870,
-      "expected_region": "shelf-a",
-      "intentionally_occluded": false,
-      "wrist_confidence": 0.9495678544044495,
-      "predicted_region": "shelf-a",
-      "candidate_regions": [
-        "shelf-a"
-      ],
-      "wrist_pixels": [
-        583.8148803710938,
-        346.1898498535156
-      ],
-      "outcome": "correct"
-    },
-    {
-      "event_id": "pharmacy-demo-ff79a5ed2571-0014",
-      "frame": 1050,
       "expected_region": "disposal",
       "intentionally_occluded": false,
-      "wrist_confidence": 0.9068859815597534,
+      "wrist_confidence": 0.9331492781639099,
       "predicted_region": "disposal",
       "candidate_regions": [
         "disposal"
       ],
       "wrist_pixels": [
-        836.2425537109375,
-        457.75494384765625
+        827.486328125,
+        462.7538757324219
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0012",
+      "frame": 1050,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9531114101409912,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        583.8917236328125,
+        346.2456970214844
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-stateful-demo-c5679645bd58-0014",
+      "frame": 1230,
+      "expected_region": "disposal",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9423659443855286,
+      "predicted_region": "disposal",
+      "candidate_regions": [
+        "disposal"
+      ],
+      "wrist_pixels": [
+        832.8223266601562,
+        464.0419921875
       ],
       "outcome": "correct"
     }

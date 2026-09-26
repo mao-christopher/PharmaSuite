@@ -8,41 +8,75 @@ namespace Pharma.Simulation.Editor
 {
     public static class SimulationChecks
     {
-        [MenuItem("Pharma/3. Verify deterministic simulation")]
+        [MenuItem("Pharma/3. Verify state, collision, and deterministic playback")]
         public static void Run()
         {
             EditorSceneManager.OpenScene(PharmacySceneBuilder.ScenePath);
             var sim=UnityEngine.Object.FindFirstObjectByType<PharmacySimulation>();
             sim.Initialize();
             Require(sim.Cues.Count==10,"Expected ten pickup/release actions");
-            Require(sim.regions.Length==8,"Expected six shelves, one counter, one disposal region");
-            Require(sim.regions.Select(r=>r.id).Distinct().Count()==8,"Region IDs must be unique");
-            bool held=false;
-            foreach(var cue in sim.Cues)
+            Require(sim.regions.Length==8 && sim.regions.Select(r=>r.id).Distinct().Count()==8,"Eight unique regions required");
+            foreach(bool occluded in new[]{false,true})
             {
-                Require(cue.time*30==Mathf.Round(cue.time*30),"Cue must align with media frame");
-                Require(cue.type=="pickup"?!held:held,"Single-bottle pickup/release order");
-                held=cue.type=="pickup";
-                sim.Evaluate(cue.time);
-                Require(Vector3.Distance(sim.RightWrist.position,cue.contact)<.08f,"Reach cannot reach contact: "+cue.scenario+" distance="+Vector3.Distance(sim.RightWrist.position,cue.contact)+" wrist="+sim.RightWrist.position+" contact="+cue.contact);
+                sim.Evaluate(0); sim.ambiguousReturn=occluded;
+                Vector3 last=sim.technician.position;
+                for(int frame=0;frame<=PharmacySimulation.Duration*30;frame++)
+                {
+                    sim.Evaluate(frame/30f);
+                    Require(sim.State!=PharmacySimulation.TaskState.Blocked,$"Blocked at {frame/30f}: {sim.BlockedReason}");
+                    Require(sim.World.CanMove(last,sim.technician.position,out var obstacle),"Body tunnels through "+obstacle);
+                    Require(Vector3.Distance(last,sim.technician.position)*30<1.81f,"Walking speed exceeds limit");
+                    last=sim.technician.position;
+                }
+                Require(sim.State==PharmacySimulation.TaskState.Complete && sim.CompletedActions==10,"Sequence did not complete");
+                Require(sim.SensorEvents.Count(e=>e.type=="pickup")==5 && sim.SensorEvents.Count(e=>e.type=="release")==5,"Accepted event count mismatch");
+                Require(sim.GetBottleState("bottle-a1")==PharmacySimulation.BottleState.Disposed && sim.GetBottleState("bottle-a2")==PharmacySimulation.BottleState.Disposed,"Both bottles must be disposed");
+                Require(Mathf.Abs(sim.bottleOne.position.y-.21f)<.001f,"Bottle must stop at bin bottom");
             }
-            sim.Evaluate(12); Vector3 position=sim.bottleOne.position, wrist=sim.RightWrist.position;
-            sim.Evaluate(35); sim.Evaluate(2); sim.Evaluate(12);
-            Require(Vector3.Distance(position,sim.bottleOne.position)<.0001f,"Seek changed bottle position");
-            Require(Vector3.Distance(wrist,sim.RightWrist.position)<.0001f,"Seek changed skeleton pose");
-            sim.Evaluate(6.5f);
-            Require(Vector3.Distance(sim.bottleOne.position,sim.Cues[1].contact-Vector3.up*.065f)<.0001f,"Counter must retain bottle");
-            sim.Evaluate(27);
-            Require(!sim.bottleOne.gameObject.activeSelf && sim.bottleTwo.gameObject.activeSelf,"First disposal must remove only one bottle");
-            sim.Evaluate(36);
-            Require(!sim.bottleOne.gameObject.activeSelf && !sim.bottleTwo.gameObject.activeSelf,"Last disposal must remove remaining bottle");
+            sim.ambiguousReturn=false;
+            sim.Evaluate(14); Vector3 bottle=sim.bottleOne.position,wrist=sim.RightWrist.position;
+            Require(sim.GetBottleState("bottle-a1")==PharmacySimulation.BottleState.Misplaced,"Wrong shelf must remain a distinct state");
+            sim.Evaluate(41); sim.Evaluate(2); sim.Evaluate(14);
+            Require(Vector3.Distance(bottle,sim.bottleOne.position)<.0001f && Vector3.Distance(wrist,sim.RightWrist.position)<.0001f,"Seek must reproduce identical state and pose");
+            sim.Evaluate(7.6f);
+            Require(sim.State==PharmacySimulation.TaskState.AtCounter,"Counter rest must not create a spurious walking loop");
+            Require(sim.HeldBottle==null && sim.GetBottleState("bottle-a1")==PharmacySimulation.BottleState.AtCounter,"Counter must retain ownership/location without a held bottle");
+            sim.Evaluate(30);
+            Require(sim.GetBottleState("bottle-a1")==PharmacySimulation.BottleState.Disposed && sim.GetBottleState("bottle-a2")==PharmacySimulation.BottleState.OnShelf,"First disposal must preserve second bottle");
+
+            // Change the world AFTER path planning. Swept guards must still stop safely.
+            sim.Evaluate(11); Vector3 obstruction=sim.technician.position+Vector3.up;
             sim.Evaluate(0);
-            Require(sim.bottleOne.gameObject.activeSelf && sim.bottleTwo.gameObject.activeSelf,"Restart must restore both bottles");
-            sim.ambiguousReturn=true; sim.Evaluate(18);
-            Require(sim.occluder.gameObject.activeSelf,"Ambiguous variant must activate occluder");
-            sim.Evaluate(20);
-            Require(!sim.occluder.gameObject.activeSelf,"Occluder must leave after return");
-            Debug.Log("PHARMA_SIMULATION_CHECKS_PASSED");
+            var wall=GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wall.name="Injected aisle blocker"; wall.layer=CollisionWorld.SolidLayer;
+            wall.transform.position=obstruction; wall.transform.localScale=new Vector3(.7f,2,.7f);
+            Physics.SyncTransforms(); sim.Evaluate(15);
+            Require(sim.State==PharmacySimulation.TaskState.Blocked,"Dynamic obstacle must block action");
+            Require(!sim.SensorEvents.Any(e=>e.type=="release" && e.time>=14),"Blocked character emitted an impossible release");
+            Require(sim.World.CanStand(sim.technician.position,out _),"Blocked character must remain outside obstacle");
+            UnityEngine.Object.DestroyImmediate(wall); Physics.SyncTransforms();
+
+            sim.Evaluate(0);
+            string original=sim.Cues[0].type; sim.Cues[0].type="release";
+            sim.Evaluate(2);
+            Require(sim.State==PharmacySimulation.TaskState.Blocked && sim.SensorEvents.Count==0,"Cannot release without owning a bottle");
+            sim.Cues[0].type=original; sim.Evaluate(0);
+            original=sim.Cues[1].type; sim.Cues[1].type="pickup"; sim.Evaluate(7);
+            Require(sim.State==PharmacySimulation.TaskState.Blocked && sim.CompletedActions==1,"Cannot pick up a second bottle while holding one");
+            sim.Cues[1].type=original; sim.Evaluate(0);
+            original=sim.Cues[8].bottle; sim.Cues[8].bottle="bottle-a1"; sim.Evaluate(35);
+            Require(sim.State==PharmacySimulation.TaskState.Blocked && sim.CompletedActions==8,"Cannot pick up a disposed bottle");
+            sim.Cues[8].bottle=original; sim.Evaluate(0); sim.Evaluate(44);
+            Require(sim.CompletedActions==10,"Restart must recover a valid scenario");
+            bool unreachable=false;
+            try { sim.World.Route(sim.technician.position,new Vector3(0,0,1.9f)); }
+            catch(InvalidOperationException) { unreachable=true; }
+            Require(unreachable,"Cannot route into a wall");
+            sim.Restart();
+            Require(sim.CompletedActions==0 && sim.SensorEvents.Count==0 && sim.HeldBottle==null,"Restart clears accepted events and ownership");
+            sim.Restart();
+            Require(sim.State==PharmacySimulation.TaskState.Idle,"Restart works even at time zero");
+            Debug.Log("PHARMA_STATE_COLLISION_CHECKS_PASSED: 2642 frame samples, blocked route, invalid ownership, and deterministic replay");
         }
         static void Require(bool condition,string message)
         { if(!condition) throw new InvalidOperationException(message); }

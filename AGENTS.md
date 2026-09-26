@@ -55,6 +55,11 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
     bottle at the counter is a different condition. Preserve conflicting pill/bottle
     balances as reconciliation issues rather than inventing missing quantities.
 
+12. Simulation agents must obey explicit task and bottle-ownership states. Use
+    collision-aware paths and swept body/arm/bottle checks; do not interpolate bodies
+    through furniture. Blocked/unreachable actions must not emit completion events.
+    Re-render footage and repeat collision/CV checks when movement logic changes.
+
 ## Repository conventions
 
 - Existing code: `backend/src/pharma/{config,detect,pose,train}.py`; thin CLIs in `backend/scripts/`.

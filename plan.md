@@ -5,7 +5,7 @@
 The agreed product requirements below remain the implementation baseline.
 
 The `simulation/` Unity project now implements the fixed-camera room, a textured
-rigged technician, scripted bottle handling, offline frame/video export, synchronized
+rigged technician, stateful bottle handling with navigation and collision guards, offline frame/video export, synchronized
 mock sensor events, calibration, synthetic receiving/prescription fixtures, and
 separate evaluator ground truth. It includes a deliberate occlusion variant and an
 offline evaluation script that calls the existing backend pose helper. See
@@ -70,6 +70,18 @@ that a bottle was grasped, released, or counted. This demo assumes the mock IMU
 adapter supplies those action events. Real IMU action recognition is unvalidated
 separate work. The one-bottle constraint allows an accepted action to change the
 count by one; do not describe this as visual counting of arbitrary bottle piles.
+
+## Simulation agent behavior
+
+The Unity character has explicit idle/walk/carry/reach/pick/place/counter/dispose/
+blocked states and tracks whether a bottle is held, resting, misplaced, or disposed.
+Navigation paths respect the room and furniture; swept body, arm, and carried-bottle
+checks guard each fixed simulation tick. Tasks commit only after arrival, reachable
+contact, valid ownership, and (for placement) a supporting surface. A blocked action
+stops the actor and emits no completion signal. Export rejects an incomplete run.
+The scenario currently takes 44 seconds to allow bounded-speed routes around furniture.
+Agent/world state belongs only to the simulator and evaluator; the production CV
+pipeline still receives rendered camera footage and abstract mock IMU events.
 
 ## Stock and workflow rules
 

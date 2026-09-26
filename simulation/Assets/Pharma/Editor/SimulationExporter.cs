@@ -23,6 +23,13 @@ namespace Pharma.Simulation.Editor
             public Vector3 right_wrist_pixels;
             public bool intentionally_occluded;
         }
+        [Serializable] class StateFrame
+        {
+            public int frame, completed_actions;
+            public double media_time_ms;
+            public string technician_state, held_bottle, bottle_one_state, bottle_two_state;
+            public Vector3 body_position;
+        }
         [Serializable] class RegionData
         {
             public string region_id, kind, medication_id;
@@ -31,31 +38,31 @@ namespace Pharma.Simulation.Editor
         [Serializable] class Calibration
         {
             public int schema_version=1, width,height;
-            public string camera_id="room-camera-01", calibration_version="pharmacy-v1", coordinates="normalized_top_left";
+            public string camera_id="room-camera-01", calibration_version="pharmacy-v2", coordinates="normalized_top_left";
             public RegionData[] regions;
         }
         [Serializable] class Capture
         {
             public int schema_version=1, width,height,fps,frame_count;
-            public string session_id, camera_id="room-camera-01", calibration_version="pharmacy-v1";
+            public string session_id, camera_id="room-camera-01", calibration_version="pharmacy-v2";
             public string frames="frames/%06d.png", imu_events="imu_events.jsonl", calibration="calibration.json";
             public string initial_inventory="initial_inventory.json", business_events="business_events.jsonl";
             public string coordinate_system="top_left_pixels";
         }
-        [MenuItem("Pharma/2. Export recording (38 seconds, 30 FPS)")]
+        [MenuItem("Pharma/2. Export recording (44 seconds, 30 FPS)")]
         public static void ExportFromMenu() { Export(); }
         public static void Export()
         {
             if(!File.Exists(PharmacySceneBuilder.ScenePath)) PharmacySceneBuilder.Build();
             EditorSceneManager.OpenScene(PharmacySceneBuilder.ScenePath);
             var sim=UnityEngine.Object.FindFirstObjectByType<PharmacySimulation>();
-            sim.Initialize(); sim.ambiguousReturn=Has("-pharmaAmbiguous");
+            sim.ambiguousReturn=Has("-pharmaAmbiguous"); sim.Initialize();
             string output=Argument("-pharmaOutput",Path.GetFullPath("Exports/"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")));
             bool preview=Has("-pharmaPreview");
             int fps=int.Parse(Argument("-pharmaFps","30"));
             int width=int.Parse(Argument("-pharmaWidth","1280"));
             int height=int.Parse(Argument("-pharmaHeight","720"));
-            if(fps<1 || width<64 || height<64) throw new ArgumentException("Invalid capture settings");
+            if(fps!=PharmacySimulation.SimulationFps || width<64 || height<64) throw new ArgumentException("Invalid capture settings");
             if(Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
                 throw new IOException("Output directory must be new or empty: "+output);
             Directory.CreateDirectory(output); Directory.CreateDirectory(Path.Combine(output,"frames"));
@@ -83,10 +90,20 @@ namespace Pharma.Simulation.Editor
             {
                 // Warm up the skinning/render pipeline before the first saved frame.
                 sim.Evaluate(0); bake(); camera.Render();
-                float[] times=preview?new[]{0f,2f,6f,8f,12f,14f,18f,21f,26f,29f,35f}:Enumerable.Range(0,(int)(PharmacySimulation.Duration*fps)).Select(i=>(float)i/fps).ToArray();
+                float[] times=preview?new[]{0f,2f,7f,9f,14f,16f,20f,23f,29f,35f,41f}:Enumerable.Range(0,(int)(PharmacySimulation.Duration*fps)).Select(i=>(float)i/fps).ToArray();
+                using var stateLog = new StreamWriter(Path.Combine(output,"evaluator_only","simulation_states.jsonl"));
                 for(int i=0;i<times.Length;i++)
                 {
-                    sim.Evaluate(times[i]); bake(); camera.Render();
+                    sim.Evaluate(times[i]);
+                    if(sim.State==PharmacySimulation.TaskState.Blocked)
+                        throw new InvalidOperationException("Export stopped at "+sim.MediaTime+"s: "+sim.BlockedReason);
+                    stateLog.WriteLine(JsonUtility.ToJson(new StateFrame{
+                        frame=(int)Math.Round(times[i]*fps), media_time_ms=times[i]*1000,
+                        technician_state=sim.State.ToString(), held_bottle=sim.HeldBottle,
+                        completed_actions=sim.CompletedActions, body_position=sim.technician.position,
+                        bottle_one_state=sim.GetBottleState("bottle-a1").ToString(),
+                        bottle_two_state=sim.GetBottleState("bottle-a2").ToString()}));
+                    bake(); camera.Render();
                     RenderTexture.active=rt;
                     texture.ReadPixels(new Rect(0,0,width,height),0,0); texture.Apply();
                     File.WriteAllBytes(Path.Combine(output,"frames",i.ToString("D6")+".png"),texture.EncodeToPNG());
@@ -102,16 +119,19 @@ namespace Pharma.Simulation.Editor
                     File.WriteAllText(Path.Combine(output,"capture.json"),JsonUtility.ToJson(capture,true));
                 }
                 WriteCalibration(sim,width,height,output);
+                if(sim.CompletedActions != sim.Cues.Count)
+                    throw new InvalidOperationException("Export did not complete every action");
+                var actualEvents=sim.SensorEvents.ToArray();
                 var sensors=new List<string>(); var truth=new List<string>();
                 int eventIndex=0;
-                foreach(var cue in sim.Cues)
+                foreach(var action in actualEvents)
                 {
                     string id=session+"-"+(eventIndex++).ToString("D4");
-                    sensors.Add(JsonUtility.ToJson(new SensorEvent{event_id=id,session_id=session,event_type=cue.type,media_time_ms=cue.time*1000}));
-                    sim.Evaluate(cue.time); Vector3 wrist=camera.WorldToViewportPoint(sim.RightWrist.position);
-                    truth.Add(JsonUtility.ToJson(new TruthEvent{event_id=id,region_id=cue.region,bottle_id=cue.bottle,scenario=cue.scenario,media_time_ms=cue.time*1000,right_wrist_pixels=new Vector3(wrist.x*width,(1-wrist.y)*height,wrist.z),intentionally_occluded=sim.ambiguousReturn && cue.time==18}));
-                    if(cue.type=="pickup")
-                        sensors.Add(JsonUtility.ToJson(new SensorEvent{event_id=session+"-"+(eventIndex++).ToString("D4"),session_id=session,event_type="movement",media_time_ms=(cue.time+.5)*1000}));
+                    sensors.Add(JsonUtility.ToJson(new SensorEvent{event_id=id,session_id=session,event_type=action.type,media_time_ms=action.time*1000}));
+                    if(action.type=="movement") continue;
+                    var cue=sim.Cues.First(c=>Mathf.Abs(c.time-action.time)<.01f);
+                    sim.Evaluate(action.time); Vector3 wrist=camera.WorldToViewportPoint(sim.RightWrist.position);
+                    truth.Add(JsonUtility.ToJson(new TruthEvent{event_id=id,region_id=cue.region,bottle_id=cue.bottle,scenario=cue.scenario,media_time_ms=action.time*1000,right_wrist_pixels=new Vector3(wrist.x*width,(1-wrist.y)*height,wrist.z),intentionally_occluded=sim.ambiguousReturn && cue.time==20}));
                 }
                 File.WriteAllLines(Path.Combine(output,"imu_events.jsonl"),sensors);
                 File.WriteAllLines(Path.Combine(output,"evaluator_only","ground_truth.jsonl"),truth);

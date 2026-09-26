@@ -87,8 +87,10 @@ namespace Pharma.Simulation.Editor
             Label("INVENTORY",new Vector3(-2.97f,1.39f,-.6f),.026f,Color.white);
             Label("DEMO",new Vector3(-2.97f,1.31f,-.6f),.023f,Color.cyan);
             regionList.Add(new ShelfRegion{id="counter",kind="counter",medication="",center=new Vector3(-2.5f,1.15f,-.8f),size=new Vector3(1.15f,.45f,.7f)});
-            Box("Disposal bin",new Vector3(2.5f,.37f,-.55f),new Vector3(.7f,.74f,.7f),Material("Waste blue",new Color(.12f,.31f,.45f)));
-            Box("Bin opening",new Vector3(2.5f,.75f,-.55f),new Vector3(.59f,.02f,.58f),dark);
+            var waste = Material("Waste blue",new Color(.12f,.31f,.45f));
+            Box("Bin bottom",new Vector3(2.5f,.08f,-.55f),new Vector3(.7f,.06f,.7f),dark);
+            foreach(float x in new[]{2.17f,2.83f}) Box("Bin side",new Vector3(x,.42f,-.55f),new Vector3(.04f,.7f,.7f),waste);
+            foreach(float z in new[]{-.88f,-.22f}) Box("Bin face",new Vector3(2.5f,.42f,z),new Vector3(.7f,.7f,.04f),waste);
             foreach(float x in new[]{2.15f,2.85f}) Box("Bin rim",new Vector3(x,.8f,-.55f),new Vector3(.055f,.11f,.77f),metal);
             Label("DISPOSAL",new Vector3(2.5f,.48f,-.908f),.05f,Color.white);
             Label("LOG CONTENTS",new Vector3(2.5f,.34f,-.909f),.028f,Color.white);
@@ -126,7 +128,7 @@ namespace Pharma.Simulation.Editor
             simulation.bottleOne=GameObject.Find("Tracked bottle A1").transform;
             simulation.bottleTwo=GameObject.Find("Tracked bottle A2").transform;
             simulation.regions=regionList.ToArray();
-            var screen=Box("Optional shelf occluder",new Vector3(-1.55f,1.25f,.5f),new Vector3(1.6f,1.05f,.07f),white);
+            var screen=Box("Optional shelf occluder",new Vector3(.65f,1.9f,-2.1f),new Vector3(1.3f,1.05f,.07f),white);
             simulation.occluder=screen.transform; screen.SetActive(false);
             AssetDatabase.SaveAssets();
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(),ScenePath);
@@ -146,6 +148,8 @@ namespace Pharma.Simulation.Editor
         {
             var obj=GameObject.CreatePrimitive(PrimitiveType.Cube); obj.name=name;
             obj.transform.position=p; obj.transform.localScale=scale;
+            obj.layer = name=="Floor" ? CollisionWorld.FloorLayer : CollisionWorld.SolidLayer;
+            if(name=="Floor seam") { obj.layer=0; UnityEngine.Object.DestroyImmediate(obj.GetComponent<Collider>()); }
             obj.GetComponent<Renderer>().sharedMaterial=mat; return obj;
         }
         static Transform Bottle(string name,Vector3 p,string label)

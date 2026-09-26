@@ -2,7 +2,7 @@
 
 A fixed room-camera scene with six medication shelf regions, a dispensing counter,
 central terminal prop, disposal bin, and one textured, rigged medical character.
-The deterministic 38-second sequence handles one bottle at a time. It exports
+The deterministic 44-second sequence handles one bottle at a time. It exports
 prerecorded footage and synchronized mock IMU events for the existing Python CV
 pipeline. It does not implement the inventory service, MongoDB, or dashboard.
 
@@ -43,7 +43,7 @@ The output directory must be new or empty. Repeat runs use separate directories 
 Options:
 
 - `--preview`: render only the start and ten action frames; no MP4 is packaged.
-- `--ambiguous`: a temporary panel obscures the correct return at 18 seconds.
+- `--ambiguous`: a temporary panel obscures the correct return at 20 seconds.
 - `--rebuild`: regenerate the scene from its editor builder before exporting.
 
 The editor menu **Pharma > 2. Export recording** writes a timestamped frame export
@@ -57,11 +57,40 @@ The CLI wrapper performs that packaging step automatically. Playback UI and pose
 annotations are not burned into the camera recording. CPU-baked skinned meshes
 ensure offline frames reflect their exact sampled animation pose.
 
+## Character state and physical constraints
+
+The technician follows a scheduled task plan through explicit states: idle, walking,
+carrying, reaching, pickup, placement, counter rest, disposal, complete, or blocked.
+Each bottle has its own location/ownership state: on shelf, held, at counter,
+misplaced, or disposed. The deliberate wrong return is an allowed scenario action;
+it does not erase the bottle's identity or imply the placement is correct.
+
+Unity builds navigation paths around walls and furniture. The walkable surface
+includes extra clearance for carrying arms. A fixed 30 Hz simulation checks swept
+body capsules, arm/hand motion, and the carried bottle against solid geometry.
+Pickup requires arrival, reachable contact, an available bottle at that location,
+and an empty hand. Placement requires ownership and a supporting surface; disposal
+uses a hollow bin and a gravity drop that stops on its bottom. Bottles do not move
+just because a scheduled timestamp has arrived.
+
+If a live obstacle blocks a planned path or reach, the agent enters **Blocked** and
+keeps its last safe pose. It does not emit the failed action's IMU event. Export
+fails rather than packaging a completed-looking invalid demonstration. Clear the
+obstacle and restart, or rebuild the scene/path plan for a changed room layout.
+This prototype stops on unexpected obstacles; it does not continuously replan around
+moving people. Navigation and collision are deterministic kinematic constraints,
+not a full contact-force or grasp-physics simulation.
+
+The longer 44-second schedule provides time to route around the counter at bounded
+walking speed. Seeking replays all intermediate simulation ticks; it cannot skip
+collision checks or inventory-object transitions. The technician's internal state
+is exported only to `evaluator_only/simulation_states.jsonl`, never to the CV input.
+
 ## Replay bundle
 
 | File | Intended consumer |
 | --- | --- |
-| `camera.mp4` | CV input: 1280 × 720, 30 FPS, 1,140 frames |
+| `camera.mp4` | CV input: 1280 × 720, 30 FPS, 1,320 frames |
 | `imu_events.jsonl` | Mock pickup, movement, and release events; no object/location answers |
 | `calibration.json` | Eight fixed region rectangles, normalized from top-left |
 | `initial_inventory.json` | Synthetic receiving records, expiry, and pooled stock |
@@ -84,17 +113,17 @@ Static calibration is intentional setup information, not a detected answer.
 | Time | Action |
 | --- | --- |
 | 2 s | Pick up vitamin D, 50,000 IU, from shelf A |
-| 6 s | Release at dispensing counter; keep the movement session active |
-| 7 s | Prescription confirmed filled: 30 tablets |
-| 8 s | Pick up the same bottle from the counter |
-| 9 s | Payment/receipt for the same transaction; must not deduct twice |
-| 12 s | Release at wrong shelf B |
-| 14 s | Pick up misplaced bottle to correct it |
-| 18 s | Return to designated shelf A |
-| 21 s | Pick up the expired bottle from shelf A |
-| 26 s | Release into disposal; employee should identify the receipt and enter 70 tablets |
-| 29 s | Pick up the final vitamin D bottle |
-| 35 s | Dispose of it; absent quantity uses the last-bottle balance rule |
+| 7 s | Release at dispensing counter; keep the movement session active |
+| 8 s | Prescription confirmed filled: 30 tablets |
+| 9 s | Pick up the same bottle from the counter |
+| 10 s | Payment/receipt for the same transaction; must not deduct twice |
+| 14 s | Release at wrong shelf B |
+| 16 s | Pick up misplaced bottle to correct it |
+| 20 s | Return to designated shelf A |
+| 23 s | Pick up the expired bottle from shelf A |
+| 29 s | Release into disposal; employee should identify the receipt and enter 70 tablets |
+| 35 s | Pick up the final vitamin D bottle |
+| 41 s | Dispose of it; absent quantity uses the last-bottle balance rule |
 
 There are two vitamin D bottles and four bottles of each other configured medication.
 Each received bottle starts with 100 tablets. One vitamin D receipt is expired
@@ -110,9 +139,9 @@ python -m pytest simulation/tests -q
 python simulation/tools/validate_recording.py simulation/Exports/demo-001
 ```
 
-**Pharma > 3. Verify deterministic simulation** checks the Unity scene, event order,
-contact reachability, seek/restart determinism, counter placement, disposal, and the
-occlusion variant. It also runs in batch mode through
+**Pharma > 3. Verify state, collision, and deterministic playback** checks every
+frame of both variants, path speed, seek/restart determinism, counter and disposal
+states, invalid ownership transitions, and a newly inserted aisle blocker. It also runs in batch mode through
 `-executeMethod Pharma.Simulation.Editor.SimulationChecks.Run`.
 
 Install the backend dependencies to use the existing pose helper on the recording:
@@ -133,14 +162,18 @@ The existing helper retains results in memory, so allow several GB for a full cl
 
 - `PharmacySceneBuilder.cs`: room geometry, materials, camera, labeled regions,
   imported character, and the generated scene.
-- `PharmacySimulation.cs`: deterministic choreography, skeletal reach/step motion,
+- `CollisionWorld.cs`: Unity navigation mesh, complete paths, capsule/swept collision guards.
+- `PharmacySimulation.cs`: guarded task/bottle states, skeletal reach/step motion,
   bottle locations, and playback controls. `Evaluate(t)` is independent of history.
 - `SimulationExporter.cs`: fixed-clock frame sampling, abstract sensor events,
   calibration, and separated truth export.
 - `tools/`: pinned asset retrieval, batch rendering, video packaging, validation,
   and evaluation through the existing backend.
 
-Rebuild the scene after changing shelf/camera geometry and export new calibration.
+New walls/furniture must have colliders on **PharmaSolid (layer 8)**; floor geometry
+uses **PharmaWalkable (layer 9)**. Rebuild the scene/path plan after changing geometry
+and export new calibration. Decorative props and bottle geometry are not navigation
+obstacles; this prototype does not model bottle-to-bottle contact forces.
 Animation is procedural and repeatable, not motion-capture quality. This initial
 recording uses the lower shelf row; the upper row is stocked and calibrated but not
 an evaluated reach scenario. No real IMU code, real prescription integration, patient

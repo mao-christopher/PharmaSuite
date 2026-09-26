@@ -25,7 +25,8 @@ Pharmacy inventory project with a working YOLO pose-estimation scaffold and a Un
 See [simulation/README.md](simulation/README.md) for opening the Unity project,
 playing the scene, exporting a recording, and running pose evaluation. The demo
 contains one technician, labeled shelves, a dispensing counter, and a disposal bin.
-It records a repeatable pickup/counter/wrong-return/correction/disposal sequence.
+It records a 44-second pickup/counter/wrong-return/correction/disposal sequence
+with explicit agent/bottle states, paths around obstacles, and per-tick collision guards.
 
 ```sh
 python3 simulation/tools/fetch_character.py
