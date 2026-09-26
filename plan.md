@@ -349,7 +349,13 @@ no em-dashes, Phosphor icons instead of Lucide), and was audited against the Ver
 web interface guidelines (focus-visible rings, labelled icon buttons, skip link,
 `aria-live` for updates, `Intl` formatting, confirm dialogs for destructive actions).
 Headings and buttons use sentence case (the guidelines prefer Title Case; the other
-two sources and the existing copy use sentence case). Light mode only, per request.
+two sources and the existing copy use sentence case). A top-bar toggle switches light
+and dark themes; it follows the OS setting until the user picks one, then remembers it
+in the browser.
+
+The upload dialog accepts pickup/put-down times either as a file or through a manual
+form. The form previews the chosen video so times can be marked at the playhead, and
+it is sent to the server as the same CSV a file upload would be.
 
 ## Renderer references
 

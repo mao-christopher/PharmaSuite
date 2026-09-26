@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { IconContext, PillIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import { IconContext, MoonIcon, PillIcon, SunIcon, UploadSimpleIcon } from '@phosphor-icons/react';
 import { LiveProvider, useLive } from './lib/live';
 import { DialogProvider, useDialogs } from './lib/dialogs';
+import { useTheme } from './lib/theme';
 import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
@@ -14,6 +15,7 @@ function Shell() {
   const { state, connected, error } = useLive();
   const { openDisposal, openUpload } = useDialogs();
   const location = useLocation();
+  const [theme, toggleTheme] = useTheme();
   const seenDisposals = useRef(new Set());
 
   const pending = state ? Object.values(state.disposals).filter((d) => d.status === 'pending_employee_entry') : [];
@@ -60,6 +62,15 @@ function Shell() {
               <span className="conn-dot" aria-hidden="true" />
               {connected ? 'Live' : 'Reconnecting…'}
             </span>
+            <button
+              type="button"
+              className="icon-btn bordered theme-toggle"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}
+            </button>
             <button type="button" className="btn btn-primary btn-sm" onClick={openUpload}>
               <UploadSimpleIcon size={14} aria-hidden="true" /> Upload recording
             </button>

@@ -67,8 +67,11 @@ def test_pose_track_hands_fall_back_to_nearby_frame():
 
 @pytest.fixture
 def controller(tmp_path):
-    shutil.copytree(DATA / "scenarios", tmp_path / "scenarios")
-    shutil.copytree(DATA / "layouts", tmp_path / "layouts")
+    from tests.conftest import FIXTURE_LAYOUTS
+
+    skip = shutil.ignore_patterns("upload-*", "video.*", "poses.json", "thumb.jpg")
+    shutil.copytree(DATA / "scenarios", tmp_path / "scenarios", ignore=skip)
+    shutil.copytree(FIXTURE_LAYOUTS, tmp_path / "layouts")
     ctrl = ReplayController(scenarios_dir=tmp_path / "scenarios")
     ctrl.load_scenario("demo_scenario_01")
     return ctrl

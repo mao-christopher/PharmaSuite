@@ -11,11 +11,14 @@ def make_controller(tmp_path):
     from pathlib import Path
     from pharma.api.replay_stream import ReplayController
 
+    from tests.conftest import FIXTURE_LAYOUTS
+
     data_dir = Path(__file__).resolve().parents[1] / "data"
     skip = shutil.ignore_patterns("upload-*", "video.*", "poses.json", "thumb.jpg")
-    for sub in ("scenarios", "layouts"):
-        if not (tmp_path / sub).exists():
-            shutil.copytree(data_dir / sub, tmp_path / sub, ignore=skip)
+    if not (tmp_path / "scenarios").exists():
+        shutil.copytree(data_dir / "scenarios", tmp_path / "scenarios", ignore=skip)
+    if not (tmp_path / "layouts").exists():
+        shutil.copytree(FIXTURE_LAYOUTS, tmp_path / "layouts")
     return ReplayController(scenarios_dir=tmp_path / "scenarios")
 
 
