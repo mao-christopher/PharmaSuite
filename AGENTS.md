@@ -5,7 +5,8 @@
 Build a pharmacy inventory demo that combines YOLO pose estimation on prerecorded
 room-camera footage with synchronized mock IMU events. Read `plan.md` before
 implementation; it records agreed product behavior, milestones, and open decisions.
-These documents are a plan, not evidence that the features are implemented.
+The plan distinguishes implemented simulation work from future inventory features.
+Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
 
 ## Scope
 
@@ -13,7 +14,7 @@ These documents are a plan, not evidence that the features are implemented.
   and one active prescription containing one medication and strength.
 - Preconfigured shelf rectangles, each assigned one medication + strength;
   separately configured dispensing-counter and disposal regions.
-- Use an actual CV pipeline on rendered footage. Unity is the proposed renderer.
+- Use an actual CV pipeline on rendered footage. The simulator uses Unity 6000.6.3f1.
   Render offline, then replay the video and mock sensor events together.
 - Store inventory, receipts, events, alerts, and employee corrections in MongoDB.
 - Physical IMU hardware, firmware, and real pickup/release recognition are separate
@@ -58,6 +59,9 @@ These documents are a plan, not evidence that the features are implemented.
 
 - Existing code: `backend/src/pharma/{config,detect,pose,train}.py`; thin CLIs in `backend/scripts/`.
   `backend/scripts/pose.py` runs the existing pose helper with `yolo11n-pose.pt` by default.
+- Unity code lives in `simulation/Assets/Pharma/`; the generated scene/materials
+  and stable asset metadata are committed. Fetch the pinned character assets using
+  `simulation/tools/fetch_character.py`; do not commit large source art or recordings.
 - Keep CV, replay, event association, inventory rules, persistence, and dashboard
   interfaces separate. Extend this Python package rather than duplicate inference.
 - Implement one milestone at a time. Record assumptions and measured results in

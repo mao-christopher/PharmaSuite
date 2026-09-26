@@ -2,11 +2,20 @@
 
 ## Status and objective
 
-Planning baseline from the product discussion. No milestones below are implemented
-by this documentation change. Repository inspected at `59bd867`: Python YOLO11
-pose/detection/training helpers, CLI scripts, Docker configuration, and detection
-smoke tests exist. Inventory persistence, dashboard, replay fusion, and simulation
-are new work.
+The agreed product requirements below remain the implementation baseline.
+
+The `simulation/` Unity project now implements the fixed-camera room, a textured
+rigged technician, scripted bottle handling, offline frame/video export, synchronized
+mock sensor events, calibration, synthetic receiving/prescription fixtures, and
+separate evaluator ground truth. It includes a deliberate occlusion variant and an
+offline evaluation script that calls the existing backend pose helper. See
+[simulation/VALIDATION.md](simulation/VALIDATION.md) for measured results.
+
+This covers the simulation feasibility work in milestone 1 and the recording/fixture
+portion of milestone 2. It does not implement the downstream replay/event-fusion
+service, inventory mutations, MongoDB persistence, or working dashboard. The terminal
+in the scene is a visual prop. Generic runtime replay/pause and recovery beyond Unity
+scene playback remain separate work.
 
 Demonstrate medication pickup, valid temporary counter placement, correct/incorrect
 return, disposal, expiry notification, and transaction-based tablet inventory using
@@ -189,7 +198,7 @@ so repeating a demo starts from its own seed rather than corrupting prior invent
 
 1. **Pose feasibility gate.** Build a minimal Unity scene with one textured, clothed,
    rigged human, shelves, counter, trash region, and fixed camera. Render a reach,
-   counter placement, return, and disposal. Run `scripts/pose.py` on the clip and
+   counter placement, return, and disposal. Run `backend/scripts/pose.py` on the clip and
    inspect wrist overlays at action times. Adjust camera/animation/assets before
    building the full scene. Record hardware, model, resolution, and processing speed.
 2. **Fixtures and replay contracts.** Define schemas, initial stock, rectangles,
@@ -239,11 +248,12 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 
 ## Remaining technical decisions and risks
 
-- Unity version, character/animation assets and their licenses, camera geometry,
-  hardware, dashboard framework, and numerical CV thresholds remain to be selected.
-- Unity is the default proposal, not a claim of measured performance. Godot is an
-  alternative if the feasibility spike exposes setup/resource problems. Prerecorded
-  playback removes the requirement to render and run inference simultaneously.
+- The simulator uses Unity 6000.6.3f1, the MIT-licensed Microsoft Rocketbox Medical_Male_03
+  character, procedural animation, and a fixed camera recorded at 1280 x 720 / 30 FPS.
+  Dashboard framework and production CV thresholds remain to be selected.
+- Unity is implemented for the simulation. The measured prototype results are in
+  the simulation validation report; they do not establish real-camera performance.
+  Prerecorded playback separates rendering from inference.
 - A single 2D camera can have overlapping projected shelf regions or hidden hands.
   Place the demo camera to reduce those failures; retain confirmation for the rest.
 - Initial bottle counts come from receiving/setup. Event tracking cannot guarantee

@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Unity serializes empty YAML values with trailing spaces. Preserve its native output.
+simulation/**/*.unity text eol=lf whitespace=-blank-at-eol linguist-generated=true
+simulation/**/*.mat text eol=lf whitespace=-blank-at-eol linguist-generated=true
+simulation/**/*.meta text eol=lf whitespace=-blank-at-eol linguist-generated=true
+simulation/**/*.asset text eol=lf whitespace=-blank-at-eol linguist-generated=true

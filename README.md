@@ -1,6 +1,6 @@
 # Pharma YOLO & Inventory Platform
 
-Pharmacy inventory tracking platform combining YOLO pose estimation CV pipeline with mock IMU event fusion and transaction management.
+Pharmacy inventory project with a working YOLO pose-estimation scaffold and a Unity simulation that exports camera footage and synchronized mock IMU events. Event fusion, inventory management, MongoDB persistence, and the dashboard remain planned work.
 
 ## Project Structure
 
@@ -14,12 +14,27 @@ Pharmacy inventory tracking platform combining YOLO pose estimation CV pipeline 
 │   ├── pyproject.toml        # Package setup and build configuration
 │   ├── requirements.txt      # Production dependencies
 │   └── requirements-dev.txt  # Development dependencies
+├── simulation/               # Unity pharmacy scene, offline capture, fixtures & evaluation
 ├── plan.md                   # System architecture and product specification
 ├── AGENTS.md                 # Agent guidelines and conventions
 └── README.md                 # Project overview and quickstart
 ```
 
-> **Note**: Future hardware integration (`hardware_imu/`) and rendering environment (`unity/`) will be placed in top-level directories as integration work proceeds.
+## Unity Simulation
+
+See [simulation/README.md](simulation/README.md) for opening the Unity project,
+playing the scene, exporting a recording, and running pose evaluation. The demo
+contains one technician, labeled shelves, a dispensing counter, and a disposal bin.
+It records a repeatable pickup/counter/wrong-return/correction/disposal sequence.
+
+```sh
+python3 simulation/tools/fetch_character.py
+# Add simulation/ in Unity Hub; open Assets/Pharma/Generated/Pharmacy.unity and press Play.
+```
+
+The simulator uses Unity 6000.6.3f1. Large character assets are fetched from a pinned
+MIT-licensed source; recordings and model weights are not committed. Physical IMU
+hardware/firmware remain separate from this project change.
 
 ## Quick Start (Local Backend)
 
