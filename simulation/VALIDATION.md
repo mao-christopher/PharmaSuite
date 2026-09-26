@@ -125,3 +125,26 @@ The previous [84-second report](validation/layered-report.md) and
 The optional-panel variant passed current motion checks but was not separately
 rendered/evaluated for this release; the delivered clip demonstrates natural shelf
 occlusion and the always-visible simulation rig.
+
+## Integrated MongoDB and multi-camera validation — 2026-09-26
+
+The combined dashboard/simulation branch now persists live pharmacy state in MongoDB.
+129 tests passed with isolated databases on a real MongoDB 7.0.14 server, including
+legacy import, stale-writer rejection, failed/uncertain write recovery, prescription
+idempotency, restart, and camera-switch event deduplication. The dashboard production
+build passed. Browser inspection verified the MongoDB-backed dashboard showing the
+side camera; API-served assets and direct SPA page routes have regression coverage.
+
+The side camera rendered the same 3,180-frame / 106-second scenario. Actual YOLO
+inference was performed separately for each camera. A causal selector switched
+front→side at 6.033 s and side→front at 33.833 s when the active arm evidence was lost.
+There were 75 frames without a reliable arm in the selected view; these retain
+uncertainty. The selector uses no Unity skeleton/truth input.
+
+All 10 bottle-action regions were correct in the integrated MongoDB inventory replay,
+with no action abstentions or wrong regions. Replaying and reopening the controller
+left inventory and applied-event counts unchanged. The two new presentation videos
+both decoded all 3,180 frames at 30 FPS, 1920 × 1080. Metrics are in
+`validation/multicamera-handoff.json`, `multicamera-inventory.json`, and
+`multicamera-videos.json`. These measurements cover one synthetic technician/workflow;
+confidence is not proof of visibility and real-camera reliability is unmeasured.

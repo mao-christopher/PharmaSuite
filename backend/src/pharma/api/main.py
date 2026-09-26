@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
 from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarge
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -113,9 +113,13 @@ async def websocket_events(websocket: WebSocket):
 
 dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
 if dashboard_dist.exists():
+    app.mount("/assets", StaticFiles(directory=str(dashboard_dist / "assets")), name="dashboard-assets")
     app.mount("/dashboard", StaticFiles(directory=str(dashboard_dist), html=True), name="dashboard")
 
 
+@app.get("/recordings", response_class=HTMLResponse)
+@app.get("/inventory", response_class=HTMLResponse)
+@app.get("/setup", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def root_dashboard():
     """Root landing page linking to API docs and Dashboard."""
@@ -152,3 +156,9 @@ def root_dashboard():
         """,
         status_code=200,
     )
+
+
+@app.get("/favicon.svg")
+def dashboard_favicon():
+    path = dashboard_dist / "favicon.svg"
+    return FileResponse(path) if path.exists() else HTMLResponse("", status_code=404)

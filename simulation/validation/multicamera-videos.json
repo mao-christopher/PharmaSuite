@@ -1,0 +1,12 @@
+[
+  {
+    "video": "automatic-pov.mp4",
+    "frames": 3180,
+    "fps": 30.0
+  },
+  {
+    "video": "camera-handoff-comparison.mp4",
+    "frames": 3180,
+    "fps": 30.0
+  }
+]

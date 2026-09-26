@@ -553,3 +553,16 @@ def test_database_failure_pauses_changes_and_returns_503(client, monkeypatch):
     assert client.get('/api/inventory').json()['inventory']['AMOXICILLIN_500MG']['pooled_tablets'] == 500
     assert client.post('/api/transactions/TX_RX_1001/status', json={'status': 'paid'}).json()['deduction_applied']
     assert client.get('/api/inventory').json()['inventory']['AMOXICILLIN_500MG']['pooled_tablets'] == 470
+
+
+def test_built_dashboard_serves_assets_and_page_routes(client):
+    import re
+    from pharma.api.main import dashboard_dist
+    if not (dashboard_dist / 'index.html').exists():
+        pytest.skip('Build the dashboard to verify its static assets')
+    for page in ('/', '/recordings', '/inventory', '/setup'):
+        response = client.get(page)
+        assert response.status_code == 200
+        assert 'id="root"' in response.text
+    for asset in re.findall(r'(?:src|href)="(/assets/[^"]+)"', response.text):
+        assert client.get(asset).status_code == 200

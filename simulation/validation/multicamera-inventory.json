@@ -1,0 +1,88 @@
+{
+  "actions": [
+    {
+      "time_ms": 43000.0,
+      "camera": "room-camera-01",
+      "state": "HELD",
+      "prediction": "shelf_vitamin_d_50000iu",
+      "expected": "shelf_vitamin_d_50000iu",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 50500.0,
+      "camera": "room-camera-01",
+      "state": "AT_COUNTER",
+      "prediction": "counter",
+      "expected": "counter",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 53500.0,
+      "camera": "room-camera-01",
+      "state": "HELD",
+      "prediction": "counter",
+      "expected": "counter",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 61000.0,
+      "camera": "room-camera-01",
+      "state": "MISPLACED",
+      "prediction": "shelf_amoxicillin_500mg",
+      "expected": "shelf_amoxicillin_500mg",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 64000.0,
+      "camera": "room-camera-01",
+      "state": "HELD",
+      "prediction": "shelf_amoxicillin_500mg",
+      "expected": "shelf_amoxicillin_500mg",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 70000.0,
+      "camera": "room-camera-01",
+      "state": "ON_DESIGNATED_SHELF",
+      "prediction": "shelf_vitamin_d_50000iu",
+      "expected": "shelf_vitamin_d_50000iu",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 74500.0,
+      "camera": "room-camera-01",
+      "state": "HELD",
+      "prediction": "shelf_vitamin_d_50000iu",
+      "expected": "shelf_vitamin_d_50000iu",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 83500.0,
+      "camera": "room-camera-01",
+      "state": "DISPOSED",
+      "prediction": "disposal",
+      "expected": "disposal",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 92500.0,
+      "camera": "room-camera-01",
+      "state": "HELD",
+      "prediction": "shelf_vitamin_d_50000iu",
+      "expected": "shelf_vitamin_d_50000iu",
+      "outcome": "correct"
+    },
+    {
+      "time_ms": 101500.0,
+      "camera": "room-camera-01",
+      "state": "DISPOSED",
+      "prediction": "disposal",
+      "expected": "disposal",
+      "outcome": "correct"
+    }
+  ],
+  "correct": 10,
+  "wrong": 0,
+  "abstained": 0,
+  "replay_and_restart_unchanged": true
+}

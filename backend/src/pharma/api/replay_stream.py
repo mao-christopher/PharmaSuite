@@ -315,8 +315,11 @@ class ReplayController:
     def apply_recording(self, name: str) -> int:
         """Apply every remaining signal of a recording without playing it."""
         rec = self.current if self.current and self.current.name == name else self.open_recording(name)
-        self.store.merge_transactions(load_json(rec.path / "transactions.json"))
-        return self._apply(rec, float("inf"))
+        added = self.store.merge_transactions(load_json(rec.path / "transactions.json"))
+        changed = self._apply(rec, float("inf"))
+        if added and not changed:
+            self.store.save()
+        return changed
 
     def delete_recording(self, name: str) -> None:
         path = self.scenario_dir(name)

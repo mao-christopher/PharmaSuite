@@ -481,3 +481,15 @@ clock and event identity preserve bottle ownership and prevent duplicate invento
 updates. If no view has reliable arm evidence, request confirmation. The eventual
 presentation mixes real and simulated footage seamlessly; editing that mix is
 future presentation work, not part of this storage migration.
+
+### Implemented camera demonstration
+
+Two synchronized Unity cameras now feed separate YOLO passes. The dashboard and
+exported POV use a causal arm-confidence selector with loss/acquisition debounce.
+The 106-second recording switches at 6.033 s and 33.833 s; 75 frames have no reliable
+arm in the selected view and remain uncertain. All 10 scripted bottle-action regions
+were correct in the integrated inventory replay, with no action abstentions/wrong
+regions. MongoDB state and applied-event counts remained unchanged after replay and
+controller restart. This does not validate real-camera performance. The multi-camera
+upload form and unsynchronized live capture remain future work; synchronized groups
+are generated/imported using the documented bundle format in `backend/MULTICAMERA.md`.

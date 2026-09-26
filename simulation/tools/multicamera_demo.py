@@ -4,6 +4,7 @@ Only camera videos, calibration/setup, initial stock, sensor events and YOLO
 observations are inputs. This tool never reads evaluator_only or simulation bones.
 """
 import argparse
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -43,7 +44,8 @@ def package(front, side, front_cv, side_cv, output):
     for index, (source, cv, camera_id, layout_id) in enumerate(sources):
         manifest = json.loads((source/'manifest.json').read_text())
         summary = json.loads((cv/'summary.json').read_text())
-        if summary['source_video_sha256'] != manifest['video_sha256']: raise ValueError('CV/video provenance mismatch')
+        if summary['source_video_sha256'] != manifest['video_sha256'] or hashlib.sha256((source/'camera.mp4').read_bytes()).hexdigest() != manifest['video_sha256']:
+            raise ValueError('CV/video provenance mismatch')
         current = (manifest['fps'], manifest['frame_count'], manifest['duration_ms'])
         if clock and current != clock: raise ValueError('Unsynchronized videos')
         clock = current
@@ -73,6 +75,8 @@ def package(front, side, front_cv, side_cv, output):
                                 polygon=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]]))
         write(data/f'layouts/{layout_id}/layout.json',dict(layout_id=layout_id, name=camera_id, calibration_version=1,
               frame_width=manifest['width'],frame_height=manifest['height'], regions=regions,updated_at='2026-09-26T00:00:00Z'))
+    clocks = [[(r['media_time_ms'],r['event_type']) for r in map(json.loads,(source/'imu_events.jsonl').read_text().splitlines())] for source in (front,side)]
+    if clocks[0] != clocks[1]: raise ValueError('Camera recordings do not share the same sensor schedule')
     inventory = json.loads((front/'initial_inventory.json').read_text())
     write(data/'catalog.json', dict(medications=[dict(medication_key=medication_key_for(name,strength),name=name,strength=strength,unit='tablets') for name,strength in MEDICATIONS.values()],
           receipts=[dict(receipt_id=r['receipt_id'],medication_key=medication_key_for(*MEDICATIONS[r['medication_id']]),bottle_count=r['bottle_count'],tablets_per_bottle=r['initial_tablets'],expiry_date=r['expires_on'],lot_number=r['lot'],received_at='2026-09-26T00:00:00Z') for r in inventory['receipts']]))
@@ -83,7 +87,7 @@ def package(front, side, front_cv, side_cv, output):
         events.append({**event,'session_id':f'movement-{session:03d}', 'timestamp':event['media_time_ms']/1000})
     (recording/'imu_events.jsonl').write_text(''.join(json.dumps(e)+'\n' for e in events))
     write(recording/'transactions.json', [dict(transaction_id='demo-rx-001',medication_key=medication_key_for(*MEDICATIONS['vitamin-d-50000-iu']),quantity=30,status='created',deducted=False)])
-    write(recording/'scenario.json',dict(label='Synchronized pharmacy cameras',source='multicamera',layout_id='default'))
+    write(recording/'scenario.json',dict(label='Synchronized pharmacy cameras',source='multicamera',layout_id='default',duration_ms=clock[2],fps=clock[0],width=1920,height=1080,view_confirmed=True))
     write(recording/'multicam.json',dict(schema_version=1,clock='shared_zero_origin',cameras=specs))
     group=CameraGroup.load(recording)
     captures={key:cv2.VideoCapture(str(cam.video_path)) for key,cam in group.cameras.items()}
