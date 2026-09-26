@@ -2,11 +2,20 @@
 
 ## Status and objective
 
-Planning baseline from the product discussion. No milestones below are implemented
-by this documentation change. Repository inspected at `59bd867`: Python YOLO11
-pose/detection/training helpers, CLI scripts, Docker configuration, and detection
-smoke tests exist. Inventory persistence, dashboard, replay fusion, and simulation
-are new work.
+The agreed product requirements below remain the implementation baseline.
+
+The `simulation/` Unity project now implements the fixed-camera room, a textured
+rigged technician, stateful bottle handling with navigation and collision guards, offline frame/video export, synchronized
+mock sensor events, calibration, synthetic receiving/prescription fixtures, and
+separate evaluator ground truth. It includes a deliberate occlusion variant and an
+offline evaluation script that calls the existing backend pose helper. See
+[simulation/VALIDATION.md](simulation/VALIDATION.md) for measured results.
+
+This covers the simulation feasibility work in milestone 1 and the recording/fixture
+portion of milestone 2. It does not implement the downstream replay/event-fusion
+service, inventory mutations, MongoDB persistence, or working dashboard. The terminal
+in the scene is a visual prop. Generic runtime replay/pause and recovery beyond Unity
+scene playback remain separate work.
 
 Demonstrate medication pickup, valid temporary counter placement, correct/incorrect
 return, disposal, expiry notification, and transaction-based tablet inventory using
@@ -61,6 +70,30 @@ that a bottle was grasped, released, or counted. This demo assumes the mock IMU
 adapter supplies those action events. Real IMU action recognition is unvalidated
 separate work. The one-bottle constraint allows an accepted action to change the
 count by one; do not describe this as visual counting of arbitrary bottle piles.
+
+## Simulation agent behavior
+
+The Unity character has explicit idle/walk/carry/reach/pick/place/counter/dispose/
+blocked states and tracks whether a bottle is held, resting, misplaced, or disposed.
+Navigation paths respect the room and furniture; swept body, arm, and carried-bottle
+checks guard each fixed simulation tick. Tasks commit only after arrival, reachable
+contact, valid ownership, and (for placement) a supporting surface. A blocked action
+stops the actor and emits no completion signal. Export rejects an incomplete run.
+The scenario currently takes 106 seconds: a 40-second collision-checked walkthrough
+through two aisles, then 66 seconds of bottle handling. Three physical shelf banks
+provide realistic depth and occlusion; only the front bank has mapped medication
+regions and handling tasks. Rear banks are currently reserve-stock scenery.
+Separate raw, CV-overlay, skeleton-only, and comparison videos demonstrate the
+render-to-inference path, with per-frame keypoint/confidence data. CV skeleton videos
+use YOLO estimates from pixels. The user also requires a separate always-visible
+simulation X-ray skeleton from Unity rig truth, explicitly labeled and kept out of
+CV/inventory inputs. Its projected joints are exported only under evaluator_only.
+Planted-foot IK, predictive steps, smoother turns, arm swing, and eased reaches
+improve the procedural animation; a 1.5× slower handling schedule allows natural pacing. This is scripted traversal,
+not autonomous semantic search. A single 2D camera cannot reliably distinguish
+front/rear depth or recover hidden hands from pose alone.
+Agent/world state belongs only to the simulator and evaluator; the production CV
+pipeline still receives rendered camera footage and abstract mock IMU events.
 
 ## Stock and workflow rules
 
@@ -189,7 +222,7 @@ so repeating a demo starts from its own seed rather than corrupting prior invent
 
 1. **Pose feasibility gate.** Build a minimal Unity scene with one textured, clothed,
    rigged human, shelves, counter, trash region, and fixed camera. Render a reach,
-   counter placement, return, and disposal. Run `scripts/pose.py` on the clip and
+   counter placement, return, and disposal. Run `backend/scripts/pose.py` on the clip and
    inspect wrist overlays at action times. Adjust camera/animation/assets before
    building the full scene. Record hardware, model, resolution, and processing speed.
 2. **Fixtures and replay contracts.** Define schemas, initial stock, rectangles,
@@ -211,6 +244,29 @@ so repeating a demo starts from its own seed rather than corrupting prior invent
 7. **Later work.** Employee-drawn calibration UI, real IMU adapter, real-camera
    validation, richer receiving/transaction integrations, multiple workers, and
    broader prescription workflows. Do not implement these as first-demo prerequisites.
+
+## Task flexibility and final action recordings
+
+The current simulator is a scripted, stateful demo, not a general-purpose agent
+that interprets arbitrary instructions. Its action schedule, two handled bottles,
+contact positions, timing, and animation assumptions are defined in code. Navigation
+and action guards are reusable, but new workflows require explicit scenario changes
+and collision/CV validation. New skills (for example opening containers or counting
+pills) require additional behavior and animation implementation. A configurable
+scenario format and reusable action library would be the next step toward supporting
+user-specified task sequences; these are not implemented yet.
+
+**Required when the simulation is finalized:** record every individual action
+separately, in addition to the complete workflow recordings. Produce one labeled
+room-camera MP4 per action occurrence in the finalized scenario suite, including
+repeated actions in different contexts (shelf pickup, counter placement/pickup,
+correct and incorrect return, correction, and disposal). Include enough lead-in and
+follow-through to observe the action, preserve its valid starting state, and provide
+synchronized mock IMU events with clip-relative timestamps and camera calibration.
+Keep an index mapping each clip to its scenario/action and source time range; keep
+expected outcomes and simulator state evaluator-only. Run the CV pipeline on each
+clip and report results. This is a pending finalization deliverable, not a claim that
+individual-action videos have already been exported.
 
 ## Acceptance scenarios and proposed evaluation gates
 
@@ -239,11 +295,12 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 
 ## Remaining technical decisions and risks
 
-- Unity version, character/animation assets and their licenses, camera geometry,
-  hardware, dashboard framework, and numerical CV thresholds remain to be selected.
-- Unity is the default proposal, not a claim of measured performance. Godot is an
-  alternative if the feasibility spike exposes setup/resource problems. Prerecorded
-  playback removes the requirement to render and run inference simultaneously.
+- The simulator uses Unity 6000.6.3f1, the MIT-licensed Microsoft Rocketbox Medical_Male_03
+  character, procedural animation, and a fixed camera recorded at 1920 x 1080 / 30 FPS.
+  Dashboard framework and production CV thresholds remain to be selected.
+- Unity is implemented for the simulation. The measured prototype results are in
+  the simulation validation report; they do not establish real-camera performance.
+  Prerecorded playback separates rendering from inference.
 - A single 2D camera can have overlapping projected shelf regions or hidden hands.
   Place the demo camera to reduce those failures; retain confirmation for the rest.
 - Initial bottle counts come from receiving/setup. Event tracking cannot guarantee
@@ -259,3 +316,13 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 - [Unity Recorder](https://docs.unity.com/en-us/engine/6000.3/manual/packages-list/packages-all/pack-safe/com-unity-recorder)
 - [Godot animation](https://docs.godotengine.org/en/stable/tutorials/animation/animation_tree.html)
 - [Godot offline movie capture](https://docs.godotengine.org/en/stable/tutorials/animation/creating_movies.html)
+
+## Visual detail pass — 2026-09-26
+
+Added surface texture and construction details throughout the existing room,
+normal-mapped character clothing/skin, bone-attached staff ID and pocket pens,
+cap grips/barcodes, shelf/cabinet fittings, counter equipment, signage, and bin
+hardware. This is a visual upgrade to the same deterministic scenario; it does
+not implement new employee tasks or change the fixed camera calibration.
+The simulation remains stylized and procedural, not photorealistic or mocap.
+New rendered-footage checks are recorded in `simulation/VALIDATION.md`.

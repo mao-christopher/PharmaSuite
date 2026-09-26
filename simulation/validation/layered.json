@@ -1,0 +1,179 @@
+{
+  "video_frames": 2520,
+  "frames_with_person": 1969,
+  "action_samples": 10,
+  "correct": 10,
+  "abstained": 0,
+  "wrong": 0,
+  "inference_seconds": 120.84,
+  "frames_per_second": 20.85,
+  "model": "yolo11n-pose.pt",
+  "inference_image_size": 960,
+  "ultralytics": "8.4.163",
+  "device": "cpu",
+  "machine": "arm64",
+  "wrist_confidence_threshold": 0.5,
+  "scope": "Scripted synthetic footage; point-in-region feasibility check, not production event fusion or real-camera accuracy.",
+  "events": [
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0000",
+      "frame": 1260,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9027175903320312,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        758.8132934570312,
+        496.1902770996094
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0002",
+      "frame": 1410,
+      "expected_region": "counter",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8838970065116882,
+      "predicted_region": "counter",
+      "candidate_regions": [
+        "counter"
+      ],
+      "wrist_pixels": [
+        523.3405151367188,
+        546.650146484375
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0003",
+      "frame": 1470,
+      "expected_region": "counter",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9042213559150696,
+      "predicted_region": "counter",
+      "candidate_regions": [
+        "counter"
+      ],
+      "wrist_pixels": [
+        533.4456176757812,
+        545.0914916992188
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0005",
+      "frame": 1620,
+      "expected_region": "shelf-b",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8519057631492615,
+      "predicted_region": "shelf-b",
+      "candidate_regions": [
+        "shelf-b"
+      ],
+      "wrist_pixels": [
+        881.565673828125,
+        529.4356689453125
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0006",
+      "frame": 1680,
+      "expected_region": "shelf-b",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8405957818031311,
+      "predicted_region": "shelf-b",
+      "candidate_regions": [
+        "shelf-b"
+      ],
+      "wrist_pixels": [
+        881.163818359375,
+        522.04833984375
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0008",
+      "frame": 1800,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8987060785293579,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        759.4302368164062,
+        496.53985595703125
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0009",
+      "frame": 1890,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8959301114082336,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        757.9778442382812,
+        493.618896484375
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0011",
+      "frame": 2070,
+      "expected_region": "disposal",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9636095762252808,
+      "predicted_region": "disposal",
+      "candidate_regions": [
+        "disposal"
+      ],
+      "wrist_pixels": [
+        995.187744140625,
+        684.9127807617188
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0012",
+      "frame": 2250,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9407563805580139,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        791.0866088867188,
+        515.4020385742188
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-layered-demo-1f3b61345523-0014",
+      "frame": 2430,
+      "expected_region": "disposal",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.91703200340271,
+      "predicted_region": "disposal",
+      "candidate_regions": [
+        "disposal"
+      ],
+      "wrist_pixels": [
+        1001.289306640625,
+        679.6510620117188
+      ],
+      "outcome": "correct"
+    }
+  ]
+}

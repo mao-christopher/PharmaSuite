@@ -5,7 +5,8 @@
 Build a pharmacy inventory demo that combines YOLO pose estimation on prerecorded
 room-camera footage with synchronized mock IMU events. Read `plan.md` before
 implementation; it records agreed product behavior, milestones, and open decisions.
-These documents are a plan, not evidence that the features are implemented.
+The plan distinguishes implemented simulation work from future inventory features.
+Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
 
 ## Scope
 
@@ -13,7 +14,7 @@ These documents are a plan, not evidence that the features are implemented.
   and one active prescription containing one medication and strength.
 - Preconfigured shelf rectangles, each assigned one medication + strength;
   separately configured dispensing-counter and disposal regions.
-- Use an actual CV pipeline on rendered footage. Unity is the proposed renderer.
+- Use an actual CV pipeline on rendered footage. The simulator uses Unity 6000.6.3f1.
   Render offline, then replay the video and mock sensor events together.
 - Store inventory, receipts, events, alerts, and employee corrections in MongoDB.
 - Physical IMU hardware, firmware, and real pickup/release recognition are separate
@@ -54,10 +55,27 @@ These documents are a plan, not evidence that the features are implemented.
     bottle at the counter is a different condition. Preserve conflicting pill/bottle
     balances as reconciliation issues rather than inventing missing quantities.
 
+12. Simulation agents must obey explicit task and bottle-ownership states. Use
+    collision-aware paths and swept body/arm/bottle checks; do not interpolate bodies
+    through furniture. Blocked/unreachable actions must not emit completion events.
+    Re-render footage and repeat collision/CV checks when movement logic changes.
+13. When the simulation is finalized, export a separate room-camera video for every
+    individual action as well as full workflows. Include synchronized clip-relative
+    mock IMU events, calibration, and an action index; validate each clip through CV.
+    See `plan.md` for the pending final action-recording deliverable.
+14. CV-overlay videos must use pose estimates from rendered pixels and preserve
+    uncertainty. The user also requires an always-visible, through-wall skeleton:
+    provide this as a clearly labeled simulation X-ray view using Unity rig truth.
+    Keep that data evaluator-only and separate from CV/runtime inventory inputs.
+    A projected wrist/region match alone cannot establish depth or a stock mutation.
+
 ## Repository conventions
 
 - Existing code: `backend/src/pharma/{config,detect,pose,train}.py`; thin CLIs in `backend/scripts/`.
   `backend/scripts/pose.py` runs the existing pose helper with `yolo11n-pose.pt` by default.
+- Unity code lives in `simulation/Assets/Pharma/`; the generated scene/materials
+  and stable asset metadata are committed. Fetch the pinned character assets using
+  `simulation/tools/fetch_character.py`; do not commit large source art or recordings.
 - Keep CV, replay, event association, inventory rules, persistence, and dashboard
   interfaces separate. Extend this Python package rather than duplicate inference.
 - Implement one milestone at a time. Record assumptions and measured results in

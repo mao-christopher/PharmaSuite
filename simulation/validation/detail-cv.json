@@ -1,0 +1,179 @@
+{
+  "video_frames": 3180,
+  "frames_with_person": 2636,
+  "action_samples": 10,
+  "correct": 10,
+  "abstained": 0,
+  "wrong": 0,
+  "inference_seconds": 192.03,
+  "frames_per_second": 16.56,
+  "model": "yolo11n-pose.pt",
+  "inference_image_size": 960,
+  "ultralytics": "8.4.163",
+  "device": "cpu",
+  "machine": "arm64",
+  "wrist_confidence_threshold": 0.5,
+  "scope": "Scripted synthetic footage; point-in-region feasibility check, not production event fusion or real-camera accuracy.",
+  "events": [
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0000",
+      "frame": 1290,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.891427218914032,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        756.6949462890625,
+        487.1248474121094
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0002",
+      "frame": 1515,
+      "expected_region": "counter",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.926280677318573,
+      "predicted_region": "counter",
+      "candidate_regions": [
+        "counter"
+      ],
+      "wrist_pixels": [
+        527.5506591796875,
+        547.4535522460938
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0003",
+      "frame": 1605,
+      "expected_region": "counter",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.915634274482727,
+      "predicted_region": "counter",
+      "candidate_regions": [
+        "counter"
+      ],
+      "wrist_pixels": [
+        530.4605102539062,
+        546.4612426757812
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0005",
+      "frame": 1830,
+      "expected_region": "shelf-b",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8844975233078003,
+      "predicted_region": "shelf-b",
+      "candidate_regions": [
+        "shelf-b"
+      ],
+      "wrist_pixels": [
+        884.90380859375,
+        526.3919677734375
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0006",
+      "frame": 1920,
+      "expected_region": "shelf-b",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8812275528907776,
+      "predicted_region": "shelf-b",
+      "candidate_regions": [
+        "shelf-b"
+      ],
+      "wrist_pixels": [
+        885.0234985351562,
+        520.59326171875
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0008",
+      "frame": 2100,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.8778756856918335,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        753.3168334960938,
+        492.8919372558594
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0009",
+      "frame": 2235,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.913469135761261,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        761.488037109375,
+        495.7847595214844
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0011",
+      "frame": 2505,
+      "expected_region": "disposal",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.964277982711792,
+      "predicted_region": "disposal",
+      "candidate_regions": [
+        "disposal"
+      ],
+      "wrist_pixels": [
+        996.8375244140625,
+        683.2348022460938
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0012",
+      "frame": 2775,
+      "expected_region": "shelf-a",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9273160696029663,
+      "predicted_region": "shelf-a",
+      "candidate_regions": [
+        "shelf-a"
+      ],
+      "wrist_pixels": [
+        793.2588500976562,
+        513.7366943359375
+      ],
+      "outcome": "correct"
+    },
+    {
+      "event_id": "pharmacy-detailed-release-b38d93469956-0014",
+      "frame": 3045,
+      "expected_region": "disposal",
+      "intentionally_occluded": false,
+      "wrist_confidence": 0.9127023220062256,
+      "predicted_region": "disposal",
+      "candidate_regions": [
+        "disposal"
+      ],
+      "wrist_pixels": [
+        1000.1778564453125,
+        679.4608154296875
+      ],
+      "outcome": "correct"
+    }
+  ]
+}

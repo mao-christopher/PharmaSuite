@@ -1,0 +1,47 @@
+[
+  {
+    "file": "Medical_Male_03.fbx",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Export/Medical_Male_03.fbx",
+    "sha256": "097cc7866954595ad3243d7ff060e7a4b68ac0f91232a4f19ad3b9e0041f2d17"
+  },
+  {
+    "file": "m153_body_color.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_body_color.tga",
+    "sha256": "0684fadbe2eae7f98a2dae333b495cc3321174c0c1e618523eef071b24efeb44"
+  },
+  {
+    "file": "m153_body_normal.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_body_normal.tga",
+    "sha256": "a3918f4caa63dbedd604a93226a6744e1add5122b2b5e8ec0139b401e128da94"
+  },
+  {
+    "file": "m153_body_specular.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_body_specular.tga",
+    "sha256": "1fb8daf505c1a6524e13f7511e2126237ecdf0f4dfd199512eb0082e767e999d"
+  },
+  {
+    "file": "m153_head_color.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_head_color.tga",
+    "sha256": "5fef414d2953b8b696fe065364089c695d8a3ef3ae2b55edd29afbc7992b4ce3"
+  },
+  {
+    "file": "m153_head_normal.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_head_normal.tga",
+    "sha256": "26ec888ce56d5581666d94bd38d9d9cd138445a29f8e9073fcd7b697d25f5c96"
+  },
+  {
+    "file": "m153_head_specular.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_head_specular.tga",
+    "sha256": "8f3a598f97f9e0f23d3c8600a46525df7ebb7a14234f4ceca0e51fc9222ed3f3"
+  },
+  {
+    "file": "m153_stetoskop_color.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_stetoskop_color.tga",
+    "sha256": "d480d0e5da84ee1a2f5824d74078011eac9feaf37621cacf8e77f9631e1c63e7"
+  },
+  {
+    "file": "m153_stetoskop_normal.tga",
+    "source": "https://raw.githubusercontent.com/microsoft/Microsoft-Rocketbox/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03/Textures/m153_stetoskop_normal.tga",
+    "sha256": "739723dc4e05b104f7adaa1f3a989b2951e01dfa3976296857e1d80aac10a899"
+  }
+]

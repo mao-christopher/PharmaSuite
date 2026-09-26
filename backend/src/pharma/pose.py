@@ -14,6 +14,9 @@ def run_pose(
     save: bool = True,
     show: bool = False,
     settings: Settings = None,
+    stream: bool = False,
+    imgsz: int = 640,
+    verbose: bool = True,
 ):
     """
     Run pose estimation on a source and return keypoints (17-point COCO skeleton).
@@ -26,9 +29,12 @@ def run_pose(
         save: Save annotated skeleton results to disk.
         show: Display results in a window.
         settings: Settings instance; uses module-level default if None.
+        stream: Yield one result at a time for long videos, instead of retaining frames.
+        imgsz: Inference image size; larger values can help with distant people.
+        verbose: Print per-frame inference output.
 
     Returns:
-        List of ultralytics Results. Each result has:
+        List of ultralytics Results, or an iterator when stream=True. Each result has:
           .keypoints.xy   — (N, 17, 2) pixel coordinates
           .keypoints.conf — (N, 17)    per-keypoint confidence
           .boxes          — bounding boxes around each person
@@ -46,6 +52,9 @@ def run_pose(
         project=str(cfg.outputs_dir),
         name="pose",
         device=cfg.device,
+        stream=stream,
+        imgsz=imgsz,
+        verbose=verbose,
     )
     return results
 
