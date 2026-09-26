@@ -1,29 +1,145 @@
 {
   "layout_id": "default",
-  "calibration_version": 1,
-  "frame_width": 1280,
-  "frame_height": 720,
-  "updated_at": "2026-09-26T00:00:00+00:00",
+  "calibration_version": 2,
+  "frame_width": 2760,
+  "frame_height": 1480,
+  "updated_at": "2026-09-26T06:55:11+00:00",
+  "background_image": "background-e0eb65015033.png",
   "medications": [
-    {"medication_key": "AMOXICILLIN_500MG", "name": "Amoxicillin", "strength": "500mg", "unit": "tablets"},
-    {"medication_key": "IBUPROFEN_200MG", "name": "Ibuprofen", "strength": "200mg", "unit": "tablets"}
+    {
+      "medication_key": "AMOXICILLIN_500MG",
+      "name": "Amoxicillin",
+      "strength": "500mg",
+      "unit": "tablets"
+    },
+    {
+      "medication_key": "IBUPROFEN_200MG",
+      "name": "Ibuprofen",
+      "strength": "200mg",
+      "unit": "tablets"
+    }
   ],
   "regions": [
-    {"region_id": "shelf_amoxicillin_500mg", "region_type": "designated_shelf", "medication_key": "AMOXICILLIN_500MG",
-     "polygon": [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4], [0.1, 0.4]]},
-    {"region_id": "shelf_ibuprofen_200mg", "region_type": "designated_shelf", "medication_key": "IBUPROFEN_200MG",
-     "polygon": [[0.1, 0.5], [0.4, 0.52], [0.4, 0.8], [0.1, 0.78]]},
-    {"region_id": "counter_dispensing_01", "region_type": "dispensing_counter", "medication_key": null,
-     "polygon": [[0.5, 0.1], [0.8, 0.1], [0.8, 0.4], [0.5, 0.4]]},
-    {"region_id": "disposal_trash_01", "region_type": "disposal", "medication_key": null,
-     "polygon": [[0.85, 0.7], [0.98, 0.7], [0.98, 0.95], [0.85, 0.95]]}
+    {
+      "region_id": "shelf_amoxicillin_500mg",
+      "region_type": "designated_shelf",
+      "medication_key": "AMOXICILLIN_500MG",
+      "polygon": [
+        [
+          0.3735,
+          0.3299
+        ],
+        [
+          0.4298,
+          0.3448
+        ],
+        [
+          0.4343,
+          0.5142
+        ],
+        [
+          0.3808,
+          0.4805
+        ]
+      ]
+    },
+    {
+      "region_id": "shelf_ibuprofen_200mg",
+      "region_type": "designated_shelf",
+      "medication_key": "IBUPROFEN_200MG",
+      "polygon": [
+        [
+          0.4359,
+          0.3436
+        ],
+        [
+          0.5073,
+          0.3726
+        ],
+        [
+          0.5072,
+          0.5453
+        ],
+        [
+          0.4409,
+          0.5215
+        ]
+      ]
+    },
+    {
+      "region_id": "counter_dispensing_01",
+      "region_type": "dispensing_counter",
+      "medication_key": null,
+      "polygon": [
+        [
+          0.2943,
+          0.4401
+        ],
+        [
+          0.3436,
+          0.4694
+        ],
+        [
+          0.306,
+          0.5081
+        ],
+        [
+          0.2546,
+          0.4761
+        ]
+      ]
+    },
+    {
+      "region_id": "disposal_trash_01",
+      "region_type": "disposal",
+      "medication_key": null,
+      "polygon": [
+        [
+          0.5273,
+          0.6018
+        ],
+        [
+          0.5686,
+          0.6284
+        ],
+        [
+          0.543,
+          0.6702
+        ],
+        [
+          0.4987,
+          0.6417
+        ]
+      ]
+    }
   ],
   "receipts": [
-    {"receipt_id": "REC_AMX_2026_01", "medication_key": "AMOXICILLIN_500MG", "bottle_count": 5, "tablets_per_bottle": 100,
-     "expiry_date": "2027-06-30", "lot_number": "LOT-88391", "received_at": "2026-09-01T08:00:00Z"},
-    {"receipt_id": "REC_IBU_2026_01", "medication_key": "IBUPROFEN_200MG", "bottle_count": 3, "tablets_per_bottle": 100,
-     "expiry_date": "2026-08-31", "lot_number": "LOT-22817", "received_at": "2026-03-02T08:00:00Z"},
-    {"receipt_id": "REC_IBU_2026_02", "medication_key": "IBUPROFEN_200MG", "bottle_count": 4, "tablets_per_bottle": 100,
-     "expiry_date": "2027-12-31", "lot_number": "LOT-23004", "received_at": "2026-09-10T08:00:00Z"}
+    {
+      "receipt_id": "REC_AMX_2026_01",
+      "medication_key": "AMOXICILLIN_500MG",
+      "bottle_count": 5,
+      "tablets_per_bottle": 100,
+      "expiry_date": "2027-06-30",
+      "lot_number": "LOT-88391",
+      "received_at": "2026-09-01T08:00:00Z"
+    },
+    {
+      "receipt_id": "REC_IBU_2026_01",
+      "medication_key": "IBUPROFEN_200MG",
+      "bottle_count": 3,
+      "tablets_per_bottle": 100,
+      "expiry_date": "2026-08-31",
+      "lot_number": "LOT-22817",
+      "received_at": "2026-03-02T08:00:00Z"
+    },
+    {
+      "receipt_id": "REC_IBU_2026_02",
+      "medication_key": "IBUPROFEN_200MG",
+      "bottle_count": 4,
+      "tablets_per_bottle": 100,
+      "expiry_date": "2027-12-31",
+      "lot_number": "LOT-23004",
+      "received_at": "2026-09-10T08:00:00Z"
+    }
   ]
 }
