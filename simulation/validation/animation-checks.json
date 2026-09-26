@@ -1,0 +1,16 @@
+{
+  "frame_samples": 6362,
+  "variants": [
+    "ordinary",
+    "optional_occluder"
+  ],
+  "max_foot_ik_error_m": 6.692679e-07,
+  "max_stance_foot_drift_m": 7.650916e-07,
+  "minimum_ankle_height_m": 0.104234,
+  "frames_with_occluded_rig_joints_across_variants": 1323,
+  "foot_ik_tolerance_m": 0.01,
+  "stance_drift_tolerance_m": 0.003,
+  "max_turn_degrees_per_second": 180,
+  "tests": "passed",
+  "note": "Deterministic procedural rig measurements, not motion-capture or mesh-level contact-force validation."
+}

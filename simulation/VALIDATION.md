@@ -1,84 +1,91 @@
-# Layered-shelf simulation validation — 2026-09-26
+# Animation and simulation X-ray validation — 2026-09-26
 
-## Current scene and outputs
+## Delivered behavior
 
-The scene now has three physical shelf banks, two aisles, stocked containers,
-collidable supports and backs, a dispensing counter, and a hollow disposal bin.
-One technician follows a collision-checked 40-second aisle walkthrough and then the
-44-second bottle workflow. The fixed room camera exports **1920 × 1080, 30 FPS,
-84 seconds, 2,520 frames**, calibration version **pharmacy-v3**.
+The room-camera workflow now runs for **106 seconds at 1920 × 1080, 30 FPS
+(3,180 frames)**: a 40-second aisle walkthrough and 66-second handling sequence.
+The handling schedule is slowed by 1.5×; sensor and prescription fixture timestamps
+use the same scale. The room, three shelf banks, and eight configured regions remain
+at calibration version pharmacy-v3.
 
-The front bank retains six mapped medication regions; the two rear banks are
-reserve-stock scenery for the visibility experiment. No rear pickup/medication
-mapping is claimed. The walkthrough is authored navigation, not semantic search.
+A new, explicitly labeled **simulation X-ray** uses Unity rig state to keep the
+complete skeleton visible through walls and shelving. Unity's Game view includes
+an enabled-by-default toggle. Raw exports remain clean camera footage.
+`simulation_view.py` exports X-ray, complete-skeleton, four-panel comparison, and
+magnified motion-detail videos. Simulation panels are labeled Unity rig / not CV.
+The actual YOLO output remains separate and retains missed/uncertain observations.
 
-`pose_videos.py` processes the camera MP4 through the existing backend helper with
-streaming inference, producing a full-resolution pose overlay and skeleton-only
-video, a 1920 × 720 three-view comparison, and timestamped keypoint/confidence JSONL.
-Arms are highlighted. Skeleton edges require both endpoints above confidence 0.5.
-These outputs do not read Unity bones, simulation state, or evaluator ground truth.
-The comparison synchronizes mock IMU events and labels wrist-region candidates as
-observations, not confirmed inventory changes.
+The exporter records 16 named joints on every frame under `evaluator_only/`.
+All 3,180 frames contain all 16 joints, including **450 frames where every joint's
+ray to the camera intersects scene geometry**. There are 594 frames with at least
+one such occluded joint. Visibility flags describe room geometry, not skin/self-
+occlusion; they color joints but never remove them from the X-ray presentation.
+These rig files are absent from the runtime manifest and cannot be used as stock
+or CV observations.
 
-## Measured inference results
+## Motion improvements and physical checks
 
-Environment: Unity 6000.6.3f1; Apple M5 ARM64, 16 GB; Python 3.12.14;
-Ultralytics 8.4.163 with `yolo11n-pose.pt`, CPU inference.
+- Planted world-space stance feet, predictive swing-foot landing, and foot IK.
+- Hip height adapts to both leg reaches, avoiding the earlier crouched appearance.
+- Rounded navigation corners, bounded yaw, and eased walking starts/stops.
+- Relaxed empty hands, arm swing coupled to leg separation, light torso/gaze motion.
+- Gradual reach lean, smooth wrist arcs, deliberate handling timing, and finger curl.
+- Leg-segment and foot-sweep guards added to body/arm/carried-bottle checks.
 
-| Measurement | Default-size baseline | Final wide-room inference |
-| --- | ---: | ---: |
-| Requested inference size | 640 | 960 |
-| Video frames processed | 2,520 | 2,520 |
-| Frames with a detected person | 1,583 | 1,969 |
-| Bottle-action timestamps scored | 10 | 10 |
-| Correct region assignments | 6 | 10 |
-| Abstentions | 4 | 0 |
-| Confident wrong action regions | 0 | 0 |
+**6,362 fixed-frame samples** passed across ordinary and optional-occluder variants,
+including all ownership, blocked-route, disposal, restart, and deterministic-seek
+checks. Foot-target error stayed within the 1 cm assertion and support-foot drift
+within the 3 mm assertion (both measured near floating-point precision). Ankle
+joints stayed above the floor; this is not a mesh-level contact-force test. Turns
+were bounded to 180 degrees/second. Exact measurements are recorded in
+`validation/animation-checks.json`.
 
-A preview comparison also tried size 1280; 960 recovered the ten visible action
-poses and was retained for the full run. Framewise missing-person detections remain
-in the exported presentation. A detected person or confident joint does not prove
-visibility: YOLO can guess hidden anatomy. The ten action scores measure only the
-scripted front-bank/counter/disposal events, not correctness throughout rear aisles.
+Rendered walking/reach frames were visually inspected, including a magnified
+sequence used to identify and fix excessive knee bend in an intermediate pass.
+The delivered animation is procedural, not motion capture or full grasp physics.
+Unexpected blockers still stop the actor; dynamic replanning is not implemented.
 
-The final full-video evaluation took 120.84 seconds (20.85 FPS) on this local run,
-while the presentation export was also active. This is not a real-time guarantee
-or an isolated benchmark. The design uses prerecorded playback. Per-event evidence
-is in `validation/layered.json`; the original 640-size result is retained in
-`validation/layered-baseline-640.json`.
+## Actual CV on the new rendered footage
 
-## Verification
+Unity 6000.6.3f1; Apple M5 ARM64, 16 GB; Python 3.12.14;
+Ultralytics 8.4.163, YOLO11n-pose, CPU, requested inference size 960,
+right-wrist confidence threshold 0.5.
 
-- Unity built and exported the complete final recording successfully.
-- 5,042 simulation-frame samples passed across ordinary and optional-panel variants,
-  including body/arm/carried-bottle guards, bounded walking speed, ownership,
-  deterministic seek/restart, disposal landing, invalid actions, and injected blockers.
-- 20 Python tests passed: recording contracts, confidence/overlap handling, streaming
-  inference options, and existing backend smoke tests.
-- The replay validates its frame clock, 15 mock sensor events, eight configured
-  regions, receiving totals, and source video SHA-256.
-- All four delivered MP4s decoded to exactly 2,520 frames at 30 FPS. The observation
-  clock and all 15 synchronized sensor IDs matched the source recording.
-- Rendered frames and three-view comparisons were inspected at walkthrough and
-  bottle-action moments. Person loss behind shelves is preserved in the presentation.
+| Measurement | Final recording |
+| --- | ---: |
+| Frames inferred | 3,180 |
+| Frames with a detected person | 2,636 |
+| Bottle-action timestamps scored | 10 |
+| Correct action-region assignments | 10 |
+| Action abstentions / confident wrong regions | 0 / 0 |
+| Full-video evaluation time | 158.43 s |
+| Evaluation throughput | 20.07 FPS |
 
-## Limits and historical evidence
+The evaluation ran while presentation export was also active. Timings are local
+measurements, not isolated benchmarks or real-time guarantees. Ten front-bank,
+counter, and disposal actions do not establish rear-aisle or real-camera accuracy.
+YOLO can miss or guess hidden joints. Per-event evidence is in
+`validation/animation-cv.json`.
 
-The camera cannot see through shelf backs. A 2D wrist overlapping a front-region
-rectangle does not establish depth or rear-shelf identity. Occlusion-aware event
-fusion, additional views/depth, or employee confirmation need separate development
-and validation before rear-aisle inventory decisions. Do not use Unity-known joints
-to conceal CV failures.
+## Software and replay validation
 
-Navigation remains deterministic and kinematic with approximate body/limb volumes;
-unexpected obstacles stop the actor rather than trigger dynamic replanning. Full
-contact-force physics, generic task planning, MongoDB, inventory mutation services,
-and the working dashboard remain unimplemented. Per-action clips remain a required
-future deliverable when the simulation is finalized.
+24 Python tests passed, including source/clock validation, drawing fully occluded
+rig joints, recording contracts, CV confidence/overlap logic, streaming options,
+and backend smoke tests. The recording manifest validates 15 accepted mock sensor
+events, eight calibrated regions, receiving fixtures, clock alignment, and MP4 hash.
+All eight presentation/source MP4s decoded fully to 3,180 frames at 30 FPS. The
+per-frame CV clock and all 15 synchronized event IDs matched the source recording.
 
-The previous single-bank 44-second results are retained in
-[the historical report](validation/single-bank-report.md), with `clean.json` and
-`occluded.json`. They do not describe this new camera/scene. The optional-panel
-variant passed current movement checks but was not separately rendered/evaluated
-for this layered-scene release; the delivered video demonstrates natural shelving
-occlusion.
+## Scope and previous evidence
+
+Rear shelf banks remain collidable scenery; pickup mappings cover the front bank.
+The walkthrough is authored navigation, not autonomous semantic search. The X-ray
+is a simulator visualization, not evidence that a real camera sees through walls.
+Inventory event fusion, MongoDB, and the working dashboard remain future work.
+Individual-action clips remain required when the simulation is finalized.
+
+The previous [84-second report](validation/layered-report.md) and
+[single-bank report](validation/single-bank-report.md) are historical references.
+The optional-panel variant passed current motion checks but was not separately
+rendered/evaluated for this release; the delivered clip demonstrates natural shelf
+occlusion and the always-visible simulation rig.

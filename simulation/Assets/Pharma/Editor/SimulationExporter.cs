@@ -44,13 +44,13 @@ namespace Pharma.Simulation.Editor
         [Serializable] class Capture
         {
             public int schema_version=1, width,height,fps,frame_count;
-            public float workflow_offset_ms=PharmacySimulation.WorkflowOffset*1000;
+            public float workflow_offset_ms=PharmacySimulation.WorkflowOffset*1000, workflow_time_scale=PharmacySimulation.WorkflowTimeScale;
             public string session_id, camera_id="room-camera-01", calibration_version="pharmacy-v3";
             public string frames="frames/%06d.png", imu_events="imu_events.jsonl", calibration="calibration.json";
             public string initial_inventory="initial_inventory.json", business_events="business_events.jsonl";
             public string coordinate_system="top_left_pixels";
         }
-        [MenuItem("Pharma/2. Export recording (84 seconds, 30 FPS)")]
+        [MenuItem("Pharma/2. Export recording (106 seconds, 30 FPS)")]
         public static void ExportFromMenu() { Export(); }
         public static void Export()
         {
@@ -92,6 +92,9 @@ namespace Pharma.Simulation.Editor
                 // Warm up the skinning/render pipeline before the first saved frame.
                 sim.Evaluate(0); bake(); camera.Render();
                 float[] times=preview?new[]{0f,8f,16f,24f,32f}.Concat(sim.Cues.Select(c=>c.time)).ToArray():Enumerable.Range(0,(int)(PharmacySimulation.Duration*fps)).Select(i=>(float)i/fps).ToArray();
+                File.WriteAllText(Path.Combine(output,"evaluator_only","rig_definition.json"),JsonUtility.ToJson(
+                    new SimulationSkeleton.Definition{width=width,height=height,fps=fps,frame_count=times.Length},true));
+                using var rigLog=new StreamWriter(Path.Combine(output,"evaluator_only","rig_skeleton.jsonl"));
                 using var stateLog = new StreamWriter(Path.Combine(output,"evaluator_only","simulation_states.jsonl"));
                 for(int i=0;i<times.Length;i++)
                 {
@@ -104,6 +107,7 @@ namespace Pharma.Simulation.Editor
                         completed_actions=sim.CompletedActions, body_position=sim.technician.position,
                         bottle_one_state=sim.GetBottleState("bottle-a1").ToString(),
                         bottle_two_state=sim.GetBottleState("bottle-a2").ToString()}));
+                    rigLog.WriteLine(JsonUtility.ToJson(SimulationSkeleton.Capture(sim,(int)Math.Round(times[i]*fps),width,height)));
                     bake(); camera.Render();
                     RenderTexture.active=rt;
                     texture.ReadPixels(new Rect(0,0,width,height),0,0); texture.Apply();
@@ -132,7 +136,7 @@ namespace Pharma.Simulation.Editor
                     if(action.type=="movement") continue;
                     var cue=sim.Cues.First(c=>Mathf.Abs(c.time-action.time)<.01f);
                     sim.Evaluate(action.time); Vector3 wrist=camera.WorldToViewportPoint(sim.RightWrist.position);
-                    truth.Add(JsonUtility.ToJson(new TruthEvent{event_id=id,region_id=cue.region,bottle_id=cue.bottle,scenario=cue.scenario,media_time_ms=action.time*1000,right_wrist_pixels=new Vector3(wrist.x*width,(1-wrist.y)*height,wrist.z),intentionally_occluded=sim.ambiguousReturn && cue.time==PharmacySimulation.WorkflowOffset+20}));
+                    truth.Add(JsonUtility.ToJson(new TruthEvent{event_id=id,region_id=cue.region,bottle_id=cue.bottle,scenario=cue.scenario,media_time_ms=action.time*1000,right_wrist_pixels=new Vector3(wrist.x*width,(1-wrist.y)*height,wrist.z),intentionally_occluded=sim.ambiguousReturn && cue.time==PharmacySimulation.WorkflowOffset+20*PharmacySimulation.WorkflowTimeScale}));
                 }
                 File.WriteAllLines(Path.Combine(output,"imu_events.jsonl"),sensors);
                 File.WriteAllLines(Path.Combine(output,"evaluator_only","ground_truth.jsonl"),truth);

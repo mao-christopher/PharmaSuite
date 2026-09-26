@@ -79,13 +79,17 @@ Navigation paths respect the room and furniture; swept body, arm, and carried-bo
 checks guard each fixed simulation tick. Tasks commit only after arrival, reachable
 contact, valid ownership, and (for placement) a supporting surface. A blocked action
 stops the actor and emits no completion signal. Export rejects an incomplete run.
-The scenario currently takes 84 seconds: a 40-second collision-checked walkthrough
-through two aisles, then 44 seconds of bottle handling. Three physical shelf banks
+The scenario currently takes 106 seconds: a 40-second collision-checked walkthrough
+through two aisles, then 66 seconds of bottle handling. Three physical shelf banks
 provide realistic depth and occlusion; only the front bank has mapped medication
 regions and handling tasks. Rear banks are currently reserve-stock scenery.
 Separate raw, CV-overlay, skeleton-only, and comparison videos demonstrate the
-render-to-inference path, with per-frame keypoint/confidence data. Skeleton videos
-use YOLO estimates from pixels, never the Unity rig. This is scripted traversal,
+render-to-inference path, with per-frame keypoint/confidence data. CV skeleton videos
+use YOLO estimates from pixels. The user also requires a separate always-visible
+simulation X-ray skeleton from Unity rig truth, explicitly labeled and kept out of
+CV/inventory inputs. Its projected joints are exported only under evaluator_only.
+Planted-foot IK, predictive steps, smoother turns, arm swing, and eased reaches
+improve the procedural animation; a 1.5× slower handling schedule allows natural pacing. This is scripted traversal,
 not autonomous semantic search. A single 2D camera cannot reliably distinguish
 front/rear depth or recover hidden hands from pose alone.
 Agent/world state belongs only to the simulator and evaluator; the production CV

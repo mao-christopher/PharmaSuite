@@ -63,9 +63,11 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
     individual action as well as full workflows. Include synchronized clip-relative
     mock IMU events, calibration, and an action index; validate each clip through CV.
     See `plan.md` for the pending final action-recording deliverable.
-14. Skeleton and CV-overlay presentation videos must use pose estimates from rendered
-    pixels, never Unity rig joints. Preserve occlusion and uncertainty; a projected
-    wrist/region match alone cannot establish shelf depth or a stock mutation.
+14. CV-overlay videos must use pose estimates from rendered pixels and preserve
+    uncertainty. The user also requires an always-visible, through-wall skeleton:
+    provide this as a clearly labeled simulation X-ray view using Unity rig truth.
+    Keep that data evaluator-only and separate from CV/runtime inventory inputs.
+    A projected wrist/region match alone cannot establish depth or a stock mutation.
 
 ## Repository conventions
 

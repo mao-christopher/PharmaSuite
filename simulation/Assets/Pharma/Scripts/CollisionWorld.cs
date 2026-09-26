@@ -73,6 +73,28 @@ namespace Pharma.Simulation
             return points.ToArray();
         }
 
+        public Vector3[] RoundRoute(Vector3[] route)
+        {
+            var clean=new List<Vector3>();
+            foreach(var p in route)
+                if(clean.Count==0 || Vector3.Distance(clean[clean.Count-1],p)>.005f) clean.Add(p);
+            if(clean.Count<3) return route;
+            var smooth=new List<Vector3>{clean[0]};
+            for(int i=1;i<clean.Count-1;i++)
+            {
+                Vector3 incoming=clean[i]-clean[i-1],outgoing=clean[i+1]-clean[i];
+                float cut=Mathf.Min(.18f,Mathf.Min(incoming.magnitude,outgoing.magnitude)*.3f);
+                Vector3 a=clean[i]-incoming.normalized*cut,b=clean[i]+outgoing.normalized*cut;
+                var corner=new List<Vector3>{a};
+                for(int n=1;n<=8;n++)
+                { float u=n/8f; corner.Add((1-u)*(1-u)*a+2*(1-u)*u*clean[i]+u*u*b); }
+                bool clear=true; Vector3 previous=smooth[smooth.Count-1];
+                foreach(var point in corner) { if(!CanMove(previous,point,out _)) clear=false; previous=point; }
+                if(clear) smooth.AddRange(corner); else smooth.Add(clean[i]);
+            }
+            smooth.Add(clean[clean.Count-1]); return smooth.ToArray();
+        }
+
         public bool CanStand(Vector3 position, out string obstacle)
         {
             var hits = Physics.OverlapCapsule(position + Vector3.up * (BodyRadius + .03f),
