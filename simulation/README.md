@@ -1,8 +1,10 @@
 # Unity pharmacy simulation
 
-A fixed room-camera scene with six medication shelf regions, a dispensing counter,
+A fixed room-camera scene with three physical shelf banks and walkable aisles, six
+configured medication regions on the front bank, a dispensing counter,
 central terminal prop, disposal bin, and one textured, rigged medical character.
-The deterministic 44-second sequence handles one bottle at a time. It exports
+The deterministic 84-second sequence begins with a 40-second aisle survey, then
+handles one bottle at a time in the established 44-second workflow. It exports
 prerecorded footage and synchronized mock IMU events for the existing Python CV
 pipeline. It does not implement the inventory service, MongoDB, or dashboard.
 
@@ -42,8 +44,8 @@ The output directory must be new or empty. Repeat runs use separate directories 
 
 Options:
 
-- `--preview`: render only the start and ten action frames; no MP4 is packaged.
-- `--ambiguous`: a temporary panel obscures the correct return at 20 seconds.
+- `--preview`: render only the five aisle samples and ten action frames; no MP4 is packaged.
+- `--ambiguous`: a temporary panel obscures the correct return at 60 seconds.
 - `--rebuild`: regenerate the scene from its editor builder before exporting.
 
 The editor menu **Pharma > 2. Export recording** writes a timestamped frame export
@@ -81,7 +83,7 @@ This prototype stops on unexpected obstacles; it does not continuously replan ar
 moving people. Navigation and collision are deterministic kinematic constraints,
 not a full contact-force or grasp-physics simulation.
 
-The longer 44-second schedule provides time to route around the counter at bounded
+The 44-second handling schedule, after a 40-second aisle walkthrough, provides time to route around the counter at bounded
 walking speed. Seeking replays all intermediate simulation ticks; it cannot skip
 collision checks or inventory-object transitions. The technician's internal state
 is exported only to `evaluator_only/simulation_states.jsonl`, never to the CV input.
@@ -90,9 +92,9 @@ is exported only to `evaluator_only/simulation_states.jsonl`, never to the CV in
 
 | File | Intended consumer |
 | --- | --- |
-| `camera.mp4` | CV input: 1280 × 720, 30 FPS, 1,320 frames |
+| `camera.mp4` | CV input: 1920 × 1080, 30 FPS, 2,520 frames |
 | `imu_events.jsonl` | Mock pickup, movement, and release events; no object/location answers |
-| `calibration.json` | Eight fixed region rectangles, normalized from top-left |
+| `calibration.json` | Eight front-workflow region rectangles, normalized from top-left |
 | `initial_inventory.json` | Synthetic receiving records, expiry, and pooled stock |
 | `business_events.jsonl` | One prescription; arrival, confirmed fill, and payment receipt |
 | `manifest.json` | Relative input paths, dimensions, frame rate, camera/calibration IDs, video SHA-256 |
@@ -112,18 +114,19 @@ Static calibration is intentional setup information, not a detected answer.
 
 | Time | Action |
 | --- | --- |
-| 2 s | Pick up vitamin D, 50,000 IU, from shelf A |
-| 7 s | Release at dispensing counter; keep the movement session active |
-| 8 s | Prescription confirmed filled: 30 tablets |
-| 9 s | Pick up the same bottle from the counter |
-| 10 s | Payment/receipt for the same transaction; must not deduct twice |
-| 14 s | Release at wrong shelf B |
-| 16 s | Pick up misplaced bottle to correct it |
-| 20 s | Return to designated shelf A |
-| 23 s | Pick up the expired bottle from shelf A |
-| 29 s | Release into disposal; employee should identify the receipt and enter 70 tablets |
-| 35 s | Pick up the final vitamin D bottle |
-| 41 s | Dispose of it; absent quantity uses the last-bottle balance rule |
+| 0–40 s | Walk around shelf ends and through both rear aisles; no bottle-handling events |
+| 42 s | Pick up vitamin D, 50,000 IU, from shelf A |
+| 47 s | Release at dispensing counter; keep the movement session active |
+| 48 s | Prescription confirmed filled: 30 tablets |
+| 49 s | Pick up the same bottle from the counter |
+| 50 s | Payment/receipt for the same transaction; must not deduct twice |
+| 54 s | Release at wrong shelf B |
+| 56 s | Pick up misplaced bottle to correct it |
+| 60 s | Return to designated shelf A |
+| 63 s | Pick up the expired bottle from shelf A |
+| 69 s | Release into disposal; employee should identify the receipt and enter 70 tablets |
+| 75 s | Pick up the final vitamin D bottle |
+| 81 s | Dispose of it; absent quantity uses the last-bottle balance rule |
 
 There are two vitamin D bottles and four bottles of each other configured medication.
 Each received bottle starts with 100 tablets. One vitamin D receipt is expired
@@ -156,7 +159,37 @@ The evaluator calls `backend/src/pharma/pose.py`, processes the full video, and
 scores the ten action frames against evaluator-only ground truth. It writes pose
 images and metrics under `evaluator_only/`. Its simple right-wrist/rectangle check
 is a feasibility measurement, not the future temporal event-association service.
-The existing helper retains results in memory, so allow several GB for a full clip.
+Both evaluation and presentation use the backend streaming option, retaining only
+needed frames rather than the complete video in memory.
+
+## Camera, CV, and skeleton presentation
+
+```sh
+python simulation/tools/pose_videos.py simulation/Exports/demo-001 \
+  --weights models/yolo11n-pose.pt --output simulation/Exports/demo-001-pose
+```
+
+This runs actual YOLO inference on every rendered frame (default `--image-size 960`
+for smaller people in the wider room view) and exports synchronized:
+
+- `pose-overlay.mp4`: camera footage with detected skeletons, arm highlights, and configured regions.
+- `skeleton-only.mp4`: the same estimated joints on a dark background, with arms highlighted.
+- `comparison.mp4`: raw camera, overlay, and skeleton side by side with media clock,
+  right-wrist confidence, region candidate, and latest mock IMU event.
+- `observations.jsonl`: per-frame pixel keypoints, confidences, region candidates,
+  and synchronized sensor event IDs. `summary.json` records source hash and coverage.
+
+No Unity joint positions or evaluator truth are read. An edge needs both joints to
+exceed the configured threshold (default 0.5); missing people/joints remain missing.
+YOLO may nevertheless guess occluded joints confidently. A 2D wrist inside a shelf
+rectangle does not resolve depth or prove physical contact. The comparison presents
+observations, not inventory deductions or a completed event-fusion dashboard.
+
+The rear two shelf banks are stocked, collidable scenery for the aisle-visibility
+experiment. They do not yet have medication mappings or pickup tasks. The walkthrough
+is an authored route, not semantic search or an autonomous task planner. Expect long
+occlusions behind shelf backs; do not replace them with simulator-known skeletons.
+Per-action clips remain a separate required deliverable at simulation finalization.
 
 ## Extending the scene
 

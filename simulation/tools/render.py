@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--unity", required=True, type=Path, help="Unity editor executable")
 parser.add_argument("--output", required=True, type=Path, help="New recording directory")
 parser.add_argument("--preview", action="store_true", help="Action sample frames instead of full recording")
-parser.add_argument("--ambiguous", action="store_true", help="Occlude the correct return at 18 seconds")
+parser.add_argument("--ambiguous", action="store_true", help="Occlude the correct return during the workflow")
 parser.add_argument("--rebuild", action="store_true", help="Regenerate the scene first")
 args = parser.parse_args()
 project = Path(__file__).resolve().parents[1]

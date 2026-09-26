@@ -15,7 +15,7 @@ from pharma.pose import run_pose
 from pharma.config import Settings
 
 
-def evaluate(root, weights, threshold):
+def evaluate(root, weights, threshold, image_size=960):
     manifest = json.loads((root / "manifest.json").read_text())
     calibration = json.loads((root / manifest["calibration"]).read_text())
     truth = [json.loads(line) for line in (root / "evaluator_only/ground_truth.jsonl").read_text().splitlines()]
@@ -24,11 +24,18 @@ def evaluate(root, weights, threshold):
     settings = Settings()
     settings.device = "cpu"
     start = time.perf_counter()
+    action_frames = {round(t["media_time_ms"] * manifest["fps"] / 1000) for t in truth}
+    results = {}
+    frame_count = person_frames = 0
     with (output / "inference.log").open("w") as log, contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
-        results = run_pose(str(root / manifest["video"]), model_path=str(weights), save=False, show=False, settings=settings)
+        stream = run_pose(str(root / manifest["video"]), model_path=str(weights), save=False, show=False, settings=settings, stream=True, imgsz=image_size, verbose=False)
+        for frame_count, result in enumerate(stream, start=1):
+            person_frames += bool(len(result.boxes))
+            if frame_count - 1 in action_frames:
+                results[frame_count - 1] = result
     elapsed = time.perf_counter() - start
-    if len(results) != manifest["frame_count"]:
-        raise ValueError(f"Inference decoded {len(results)} frames; expected {manifest['frame_count']}")
+    if frame_count != manifest["frame_count"]:
+        raise ValueError(f"Inference decoded {frame_count} frames; expected {manifest['frame_count']}")
     records = []
     for expected in truth:
         frame = round(expected["media_time_ms"] * manifest["fps"] / 1000)
@@ -60,12 +67,12 @@ def evaluate(root, weights, threshold):
         cv2.imwrite(str(output / f"event-{frame:06d}.jpg"), image)
         records.append(record)
     import ultralytics
-    summary = {"video_frames": len(results), "frames_with_person": sum(bool(len(r.boxes)) for r in results),
+    summary = {"video_frames": frame_count, "frames_with_person": person_frames,
                "action_samples": len(records), "correct": sum(r["outcome"] == "correct" for r in records),
                "abstained": sum(r["outcome"] == "abstained" for r in records),
                "wrong": sum(r["outcome"] == "wrong" for r in records),
-               "inference_seconds": round(elapsed, 2), "frames_per_second": round(len(results)/elapsed, 2),
-               "model": weights.name, "ultralytics": ultralytics.__version__, "device": "cpu",
+               "inference_seconds": round(elapsed, 2), "frames_per_second": round(frame_count/elapsed, 2),
+               "model": weights.name, "inference_image_size": image_size, "ultralytics": ultralytics.__version__, "device": "cpu",
                "machine": platform.machine(), "wrist_confidence_threshold": threshold,
                "scope": "Scripted synthetic footage; point-in-region feasibility check, not production event fusion or real-camera accuracy.",
                "events": records}
@@ -78,5 +85,6 @@ if __name__ == "__main__":
     parser.add_argument("recording", type=Path)
     parser.add_argument("--weights", required=True, type=Path)
     parser.add_argument("--wrist-confidence", type=float, default=.5)
+    parser.add_argument("--image-size", type=int, default=960)
     args = parser.parse_args()
-    evaluate(args.recording.resolve(), args.weights.resolve(), args.wrist_confidence)
+    evaluate(args.recording.resolve(), args.weights.resolve(), args.wrist_confidence, args.image_size)

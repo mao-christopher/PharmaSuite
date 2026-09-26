@@ -42,7 +42,7 @@ namespace Pharma.Simulation
             settings.overrideVoxelSize = true;
             settings.voxelSize = .035f;
             data = NavMeshBuilder.BuildNavMeshData(settings, sources,
-                new Bounds(new Vector3(0, 1, 0), new Vector3(10, 5, 8)), Vector3.zero, Quaternion.identity);
+                new Bounds(new Vector3(0, 1, 2), new Vector3(10, 5, 12)), Vector3.zero, Quaternion.identity);
             if (!data) throw new InvalidOperationException("Could not build pharmacy navigation surface");
             instance = NavMesh.AddNavMeshData(data);
         }

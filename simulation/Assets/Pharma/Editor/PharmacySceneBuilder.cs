@@ -43,15 +43,15 @@ namespace Pharma.Simulation.Editor
             sun.transform.rotation=Quaternion.Euler(40,-25,0); sun.shadows=LightShadows.Soft;
             var fill=new GameObject("Ceiling fill").AddComponent<Light>();
             fill.type=LightType.Point; fill.range=12; fill.intensity=.65f; fill.transform.position=new Vector3(-2,3,-1);
-            Box("Floor",new Vector3(0,-.06f,0),new Vector3(9,.12f,7),Material("Floor",new Color(.64f,.69f,.69f)));
+            Box("Floor",new Vector3(0,-.06f,2.1f),new Vector3(9,.12f,11.2f),Material("Floor",new Color(.64f,.69f,.69f)));
             var grout=Material("Tile grout",new Color(.47f,.52f,.52f));
-            for(int i=-4;i<=4;i++) Box("Floor seam",new Vector3(i,.001f,0),new Vector3(.012f,.002f,7),grout);
-            for(int i=-3;i<=3;i++) Box("Floor seam",new Vector3(0,.002f,i),new Vector3(9,.002f,.012f),grout);
-            Box("Back wall",new Vector3(0,1.65f,1.9f),new Vector3(8,3.3f,.16f),Material("Wall",Pale));
-            Box("Wall skirting",new Vector3(0,.12f,1.78f),new Vector3(8,.24f,.08f),teal);
-            Box("Header",new Vector3(0,2.82f,1.75f),new Vector3(6.2f,.48f,.08f),teal);
-            Label("PHARMA  /  DISPENSARY",new Vector3(0,2.82f,1.68f),.13f,Color.white);
-            Label("RESEARCH DEMO  /  SYNTHETIC STOCK",new Vector3(0,2.48f,1.68f),.052f,Teal);
+            for(int i=-4;i<=4;i++) Box("Floor seam",new Vector3(i,.001f,2.1f),new Vector3(.012f,.002f,11.2f),grout);
+            for(int i=-3;i<=7;i++) Box("Floor seam",new Vector3(0,.002f,i),new Vector3(9,.002f,.012f),grout);
+            Box("Back wall",new Vector3(0,1.65f,7.45f),new Vector3(8,3.3f,.16f),Material("Wall",Pale));
+            Box("Wall skirting",new Vector3(0,.12f,7.33f),new Vector3(8,.24f,.08f),teal);
+            Box("Header",new Vector3(0,2.82f,7.3f),new Vector3(6.2f,.48f,.08f),teal);
+            Label("PHARMA  /  DISPENSARY",new Vector3(0,2.82f,7.23f),.13f,Color.white);
+            Label("RESEARCH DEMO  /  SYNTHETIC STOCK",new Vector3(0,2.48f,7.23f),.052f,Teal);
             var regionList=new List<ShelfRegion>();
             string[] keys={"vitamin-d-50000-iu","amoxicillin-500-mg","metformin-500-mg","atorvastatin-20-mg","lisinopril-10-mg","omeprazole-20-mg"};
             string[] titles={"VITAMIN D | 50,000 IU","AMOXICILLIN | 500 mg","METFORMIN | 500 mg","ATORVASTATIN | 20 mg","LISINOPRIL | 10 mg","OMEPRAZOLE | 20 mg"};
@@ -77,6 +77,38 @@ namespace Pharma.Simulation.Editor
                     }
                 }
             }
+            // Three genuine shelf banks with walkable aisles, supports, stock and depth.
+            // Rear stock is set dressing, not added to the six configured inventory regions.
+            for(int bank=1;bank<=2;bank++)
+            {
+                float z=1.38f+bank*2.55f;
+                for(int col=0;col<3;col++)
+                {
+                    float x=(col-1)*1.65f;
+                    Box("Rear bank backing",new Vector3(x,1.27f,z+.29f),new Vector3(1.54f,1.78f,.08f),white);
+                    foreach(float side in new[]{-.79f,.79f})
+                        Box("Rear bank upright",new Vector3(x+side,1.27f,z),new Vector3(.055f,1.83f,.62f),metal);
+                    foreach(float y in new[]{.38f,.84f,1.56f,2.16f})
+                        Box("Rear bank shelf",new Vector3(x,y,z),new Vector3(1.6f,.055f,.65f),white);
+                    Box("Rear bank plinth",new Vector3(x,.2f,z),new Vector3(1.59f,.4f,.65f),teal);
+                    for(int row=0;row<2;row++)
+                    {
+                        float y=row==0?.975f:1.695f;
+                        Box("Reserve stock strip",new Vector3(x,y-.13f,z-.353f),new Vector3(1.44f,.095f,.018f),teal);
+                        Label($"RESERVE {bank+1} / {col+1}-{row+1}",new Vector3(x,y-.13f,z-.37f),.041f,Color.white);
+                        for(int j=0;j<5;j++)
+                            Bottle($"Reserve prop {bank}-{col}-{row}-{j}",new Vector3(x+(j-2)*.25f,y,z-.20f),"DEMO STOCK");
+                    }
+                }
+            }
+            // Side wall and metal shelf end labels make the depth of each aisle readable.
+            Box("Left wall",new Vector3(-4.2f,1.65f,2.15f),new Vector3(.12f,3.3f,10.5f),Material("Wall",Pale));
+            for(int bank=0;bank<3;bank++)
+            {
+                float z=1.38f+bank*2.55f;
+                Box("Aisle marker",new Vector3(2.27f,2.33f,z),new Vector3(.48f,.24f,.065f),teal);
+                Label($"0{bank+1}",new Vector3(2.27f,2.33f,z-.04f),.12f,Color.white);
+            }
             // Low side counter leaves the active technician visible to the room camera.
             Box("Dispensing cabinet",new Vector3(-2.55f,.46f,-.8f),new Vector3(1.25f,.92f,.95f),teal);
             Box("Countertop",new Vector3(-2.55f,.97f,-.8f),new Vector3(1.38f,.08f,1.05f),wood);
@@ -96,9 +128,9 @@ namespace Pharma.Simulation.Editor
             Label("LOG CONTENTS",new Vector3(2.5f,.34f,-.909f),.028f,Color.white);
             regionList.Add(new ShelfRegion{id="disposal",kind="disposal",medication="",center=new Vector3(2.5f,.95f,-.55f),size=new Vector3(.85f,.46f,.7f)});
             camera=new GameObject("Room Camera").AddComponent<Camera>();
-            camera.tag="MainCamera"; camera.transform.position=new Vector3(4.7f,3.25f,-6.8f);
-            camera.transform.LookAt(new Vector3(-.1f,1.18f,.45f));
-            camera.fieldOfView=46; camera.nearClipPlane=.1f; camera.farClipPlane=30;
+            camera.tag="MainCamera"; camera.transform.position=new Vector3(7.8f,6.3f,-8.8f);
+            camera.transform.LookAt(new Vector3(-.15f,.55f,2.4f));
+            camera.fieldOfView=43; camera.nearClipPlane=.1f; camera.farClipPlane=30;
             camera.backgroundColor=new Color(.78f,.84f,.85f); camera.clearFlags=CameraClearFlags.SolidColor;
             camera.allowHDR=false; camera.aspect=16f/9f;
             var actor=(GameObject)PrefabUtility.InstantiatePrefab(prefab);

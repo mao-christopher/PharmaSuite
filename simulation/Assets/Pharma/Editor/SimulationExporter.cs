@@ -38,18 +38,19 @@ namespace Pharma.Simulation.Editor
         [Serializable] class Calibration
         {
             public int schema_version=1, width,height;
-            public string camera_id="room-camera-01", calibration_version="pharmacy-v2", coordinates="normalized_top_left";
+            public string camera_id="room-camera-01", calibration_version="pharmacy-v3", coordinates="normalized_top_left";
             public RegionData[] regions;
         }
         [Serializable] class Capture
         {
             public int schema_version=1, width,height,fps,frame_count;
-            public string session_id, camera_id="room-camera-01", calibration_version="pharmacy-v2";
+            public float workflow_offset_ms=PharmacySimulation.WorkflowOffset*1000;
+            public string session_id, camera_id="room-camera-01", calibration_version="pharmacy-v3";
             public string frames="frames/%06d.png", imu_events="imu_events.jsonl", calibration="calibration.json";
             public string initial_inventory="initial_inventory.json", business_events="business_events.jsonl";
             public string coordinate_system="top_left_pixels";
         }
-        [MenuItem("Pharma/2. Export recording (44 seconds, 30 FPS)")]
+        [MenuItem("Pharma/2. Export recording (84 seconds, 30 FPS)")]
         public static void ExportFromMenu() { Export(); }
         public static void Export()
         {
@@ -60,8 +61,8 @@ namespace Pharma.Simulation.Editor
             string output=Argument("-pharmaOutput",Path.GetFullPath("Exports/"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")));
             bool preview=Has("-pharmaPreview");
             int fps=int.Parse(Argument("-pharmaFps","30"));
-            int width=int.Parse(Argument("-pharmaWidth","1280"));
-            int height=int.Parse(Argument("-pharmaHeight","720"));
+            int width=int.Parse(Argument("-pharmaWidth","1920"));
+            int height=int.Parse(Argument("-pharmaHeight","1080"));
             if(fps!=PharmacySimulation.SimulationFps || width<64 || height<64) throw new ArgumentException("Invalid capture settings");
             if(Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any())
                 throw new IOException("Output directory must be new or empty: "+output);
@@ -90,7 +91,7 @@ namespace Pharma.Simulation.Editor
             {
                 // Warm up the skinning/render pipeline before the first saved frame.
                 sim.Evaluate(0); bake(); camera.Render();
-                float[] times=preview?new[]{0f,2f,7f,9f,14f,16f,20f,23f,29f,35f,41f}:Enumerable.Range(0,(int)(PharmacySimulation.Duration*fps)).Select(i=>(float)i/fps).ToArray();
+                float[] times=preview?new[]{0f,8f,16f,24f,32f}.Concat(sim.Cues.Select(c=>c.time)).ToArray():Enumerable.Range(0,(int)(PharmacySimulation.Duration*fps)).Select(i=>(float)i/fps).ToArray();
                 using var stateLog = new StreamWriter(Path.Combine(output,"evaluator_only","simulation_states.jsonl"));
                 for(int i=0;i<times.Length;i++)
                 {
@@ -131,7 +132,7 @@ namespace Pharma.Simulation.Editor
                     if(action.type=="movement") continue;
                     var cue=sim.Cues.First(c=>Mathf.Abs(c.time-action.time)<.01f);
                     sim.Evaluate(action.time); Vector3 wrist=camera.WorldToViewportPoint(sim.RightWrist.position);
-                    truth.Add(JsonUtility.ToJson(new TruthEvent{event_id=id,region_id=cue.region,bottle_id=cue.bottle,scenario=cue.scenario,media_time_ms=action.time*1000,right_wrist_pixels=new Vector3(wrist.x*width,(1-wrist.y)*height,wrist.z),intentionally_occluded=sim.ambiguousReturn && cue.time==20}));
+                    truth.Add(JsonUtility.ToJson(new TruthEvent{event_id=id,region_id=cue.region,bottle_id=cue.bottle,scenario=cue.scenario,media_time_ms=action.time*1000,right_wrist_pixels=new Vector3(wrist.x*width,(1-wrist.y)*height,wrist.z),intentionally_occluded=sim.ambiguousReturn && cue.time==PharmacySimulation.WorkflowOffset+20}));
                 }
                 File.WriteAllLines(Path.Combine(output,"imu_events.jsonl"),sensors);
                 File.WriteAllLines(Path.Combine(output,"evaluator_only","ground_truth.jsonl"),truth);

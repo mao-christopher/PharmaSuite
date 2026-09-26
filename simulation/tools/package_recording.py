@@ -31,22 +31,24 @@ def add_fixtures(root, capture):
         "pharmacy_time": "2026-09-26T09:00:00-04:00", "timezone": "America/New_York",
         "medications": medications, "receipts": receipts,
     })
+    offset = capture.get("workflow_offset_ms", 0)
     events = []
     for n, (time, status) in enumerate([(0, "arrived"), (8000, "confirmed_filled"), (10000, "payment_receipt")]):
         events.append({"schema_version": 1, "event_id": f"{capture['session_id']}-rx-{n}",
-                       "session_id": capture["session_id"], "media_time_ms": time,
+                       "session_id": capture["session_id"], "media_time_ms": time + offset,
                        "transaction_id": "demo-rx-001", "medication_id": "vitamin-d-50000-iu",
                        "quantity": 30, "status": status})
     (root / "business_events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
     # These are evaluation expectations, never runtime feeds or prefilled employee answers.
     write_json(root / "evaluator_only/expected_workflow.json", {
-        "manual_step_after_29_seconds": {
+        "manual_disposal_confirmation": {
+            "after_time_ms": offset + 29000,
             "select_receipt": "receipt-shelf-a-1", "discarded_tablets": 70,
             "explanation": "Employee identifies the expired bottle and enters discarded tablets."
         },
         "expected_tablets_after_prescription": 170,
         "expected_tablets_after_expired_disposal_confirmation": 100,
-        "last_disposal_without_quantity": {"time_ms": 41000, "expected_total_bottles": 0, "expected_tablets": 0},
+        "last_disposal_without_quantity": {"time_ms": offset + 41000, "expected_total_bottles": 0, "expected_tablets": 0},
         "note": "Expected inventory outcomes require the future inventory service/dashboard; the simulator does not implement them."
     })
 

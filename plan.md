@@ -79,7 +79,15 @@ Navigation paths respect the room and furniture; swept body, arm, and carried-bo
 checks guard each fixed simulation tick. Tasks commit only after arrival, reachable
 contact, valid ownership, and (for placement) a supporting surface. A blocked action
 stops the actor and emits no completion signal. Export rejects an incomplete run.
-The scenario currently takes 44 seconds to allow bounded-speed routes around furniture.
+The scenario currently takes 84 seconds: a 40-second collision-checked walkthrough
+through two aisles, then 44 seconds of bottle handling. Three physical shelf banks
+provide realistic depth and occlusion; only the front bank has mapped medication
+regions and handling tasks. Rear banks are currently reserve-stock scenery.
+Separate raw, CV-overlay, skeleton-only, and comparison videos demonstrate the
+render-to-inference path, with per-frame keypoint/confidence data. Skeleton videos
+use YOLO estimates from pixels, never the Unity rig. This is scripted traversal,
+not autonomous semantic search. A single 2D camera cannot reliably distinguish
+front/rear depth or recover hidden hands from pose alone.
 Agent/world state belongs only to the simulator and evaluator; the production CV
 pipeline still receives rendered camera footage and abstract mock IMU events.
 
@@ -284,7 +292,7 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 ## Remaining technical decisions and risks
 
 - The simulator uses Unity 6000.6.3f1, the MIT-licensed Microsoft Rocketbox Medical_Male_03
-  character, procedural animation, and a fixed camera recorded at 1280 x 720 / 30 FPS.
+  character, procedural animation, and a fixed camera recorded at 1920 x 1080 / 30 FPS.
   Dashboard framework and production CV thresholds remain to be selected.
 - Unity is implemented for the simulation. The measured prototype results are in
   the simulation validation report; they do not establish real-camera performance.

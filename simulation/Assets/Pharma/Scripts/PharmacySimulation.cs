@@ -31,7 +31,8 @@ namespace Pharma.Simulation
         public bool ambiguousReturn;
         public bool playOnStart = true;
         public float playbackSpeed = 1;
-        public const float Duration = 44;
+        public const float WorkflowOffset = 40;
+        public const float Duration = WorkflowOffset + 44;
         public const int SimulationFps = 30;
         public float MediaTime { get; private set; }
         public bool Playing { get; private set; }
@@ -57,6 +58,7 @@ namespace Pharma.Simulation
         readonly Dictionary<string, Vector3> bottlePositions = new Dictionary<string, Vector3>();
         readonly List<Vector3[]> routes = new List<Vector3[]>();
         readonly List<Vector3> stands = new List<Vector3>();
+        Vector3[] surveyRoute;
         int currentFrame = -1;
         bool movementEmitted;
         float disposalOne = -1, disposalTwo = -1;
@@ -96,6 +98,7 @@ namespace Pharma.Simulation
                 new ActionCue(35,"pickup","shelf-a","bottle-a2",a2,"last bottle"),
                 new ActionCue(41,"release","disposal","bottle-a2",trash,"dispose last bottle")
             };
+            foreach(var cue in Cues) cue.time += WorkflowOffset;
             World = GetComponent<CollisionWorld>();
             if (!World) World = gameObject.AddComponent<CollisionWorld>();
             World.Build();
@@ -107,11 +110,20 @@ namespace Pharma.Simulation
             for (int i=0; i<Cues.Count; i++)
             {
                 var route = World.Route(i==0 ? stands[0] : stands[i-1], stands[i]);
-                float seconds = Cues[i].time - (i==0 ? 0 : Cues[i-1].time) - 1.4f;
+                float seconds = Cues[i].time - (i==0 ? WorkflowOffset : Cues[i-1].time) - 1.4f;
                 if (CollisionWorld.Length(route) * 1.5f / seconds > 1.8f)
                     throw new InvalidOperationException("Schedule requires unsafe walking speed: " + Cues[i].scenario);
                 routes.Add(route);
             }
+            var surveyPoints = new[]{
+                new Vector3(3.25f,rootY,.5f), new Vector3(3.25f,rootY,2.65f),
+                new Vector3(-3.25f,rootY,2.65f), new Vector3(-3.25f,rootY,5.2f),
+                new Vector3(3.25f,rootY,5.2f), new Vector3(3.25f,rootY,.5f), stands[0]};
+            var survey = new List<Vector3>();
+            for(int i=1;i<surveyPoints.Length;i++) survey.AddRange(World.Route(surveyPoints[i-1],surveyPoints[i]));
+            surveyRoute=survey.ToArray();
+            if(CollisionWorld.Length(surveyRoute)/(WorkflowOffset-2)>1.8f)
+                throw new InvalidOperationException("Survey route exceeds walking speed");
             ResetState();
         }
 
@@ -136,9 +148,9 @@ namespace Pharma.Simulation
             SensorEvents.Clear(); disposalOne = disposalTwo = -1;
             bottleStates["bottle-a1"] = bottleStates["bottle-a2"] = BottleState.OnShelf;
             bottlePositions["bottle-a1"] = originOne; bottlePositions["bottle-a2"] = originTwo;
-            technician.position = stands[0]; technician.rotation = Quaternion.identity;
+            technician.position = surveyRoute[0]; technician.rotation = Quaternion.identity;
             bottleOne.gameObject.SetActive(true); bottleTwo.gameObject.SetActive(true);
-            Pose(stands[0], Quaternion.identity, null, 0);
+            Pose(surveyRoute[0], Quaternion.identity, null, 0);
             PositionBottles(0);
         }
 
@@ -166,7 +178,20 @@ namespace Pharma.Simulation
 
         void Step(float t)
         {
-            bool screenActive = ambiguousReturn && t>=18.5f && t<=21.5f;
+            if(t < WorkflowOffset)
+            {
+                if(occluder) occluder.gameObject.SetActive(false);
+                Physics.SyncTransforms();
+                float u=Mathf.Clamp01((t-1)/(WorkflowOffset-2));
+                Vector3 position=CollisionWorld.Sample(surveyRoute,u,out var direction);
+                State=t<1 || t>WorkflowOffset-1 ? TaskState.Idle : TaskState.Walking;
+                Quaternion facing=Quaternion.LookRotation(direction);
+                if(t>WorkflowOffset-1) facing=Quaternion.Slerp(facing,Quaternion.identity,t-(WorkflowOffset-1));
+                float surveyGait=State==TaskState.Walking?Mathf.Sin(CollisionWorld.Length(surveyRoute)*u*14)*.09f:0;
+                ApplyGuardedPose(position,facing,null,surveyGait);
+                return;
+            }
+            bool screenActive = ambiguousReturn && t>=WorkflowOffset+18.5f && t<=WorkflowOffset+21.5f;
             if (occluder) occluder.gameObject.SetActive(screenActive);
             Physics.SyncTransforms();
             int index = CompletedActions;
@@ -176,7 +201,7 @@ namespace Pharma.Simulation
             Quaternion rotation = Quaternion.identity;
             Vector3? target = null;
             float gait = 0;
-            float previousTime = previous == null ? 0 : previous.time;
+            float previousTime = previous == null ? WorkflowOffset : previous.time;
             Vector3 rest = new Vector3(.20f, 1.20f, .10f);
             if (previous != null && t < previous.time + .5f)
             {
@@ -215,8 +240,21 @@ namespace Pharma.Simulation
                         Mathf.SmoothStep(0,1,(t-walkEnd)/.9f));
                 }
             }
+            Vector3 oldWrist = RightWrist.position;
+            if(!ApplyGuardedPose(body,rotation,target,gait)) return;
+            if (HeldBottle != null && !movementEmitted && Vector3.Distance(oldWrist,RightWrist.position)>.002f)
+            { SensorEvents.Add(new SensorAction{time=t,type="movement"}); movementEmitted=true; }
+            if (next != null && t + .0001f >= next.time)
+            {
+                if (!TryCommit(next,t,out string reason)) { Block(reason); return; }
+            }
+            PositionBottles(t);
+        }
+
+        bool ApplyGuardedPose(Vector3 body,Quaternion rotation,Vector3? target,float gait)
+        {
             if (!World.CanMove(technician.position,body,out string obstacle))
-            { Block("Body route blocked by " + obstacle); return; }
+            { Block("Body route blocked by " + obstacle); return false; }
             Vector3 oldPosition = technician.position;
             var oldRotations = bindRotations.Keys.ToDictionary(b=>b,b=>b.localRotation);
             Vector3 oldWrist = RightWrist.position;
@@ -230,15 +268,9 @@ namespace Pharma.Simulation
             {
                 technician.position = oldPosition;
                 foreach (var entry in oldRotations) entry.Key.localRotation = entry.Value;
-                Block(obstacle); return;
+                Block(obstacle); return false;
             }
-            if (HeldBottle != null && !movementEmitted && Vector3.Distance(oldWrist,RightWrist.position)>.002f)
-            { SensorEvents.Add(new SensorAction{time=t,type="movement"}); movementEmitted=true; }
-            if (next != null && t + .0001f >= next.time)
-            {
-                if (!TryCommit(next,t,out string reason)) { Block(reason); return; }
-            }
-            PositionBottles(t);
+            return true;
         }
 
         void Pose(Vector3 body,Quaternion rotation,Vector3? target,float gait)
