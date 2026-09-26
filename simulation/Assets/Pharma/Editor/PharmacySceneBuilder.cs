@@ -52,6 +52,7 @@ namespace Pharma.Simulation.Editor
             Box("Header",new Vector3(0,2.82f,7.3f),new Vector3(6.2f,.48f,.08f),teal);
             Label("PHARMA  /  DISPENSARY",new Vector3(0,2.82f,7.23f),.13f,Color.white);
             Label("RESEARCH DEMO  /  SYNTHETIC STOCK",new Vector3(0,2.48f,7.23f),.052f,Teal);
+            PharmacyDetailPass.Room();
             var regionList=new List<ShelfRegion>();
             string[] keys={"vitamin-d-50000-iu","amoxicillin-500-mg","metformin-500-mg","atorvastatin-20-mg","lisinopril-10-mg","omeprazole-20-mg"};
             string[] titles={"VITAMIN D | 50,000 IU","AMOXICILLIN | 500 mg","METFORMIN | 500 mg","ATORVASTATIN | 20 mg","LISINOPRIL | 10 mg","OMEPRAZOLE | 20 mg"};
@@ -155,6 +156,7 @@ namespace Pharma.Simulation.Editor
             actor.transform.localScale*=1.8f/bounds.size.y;
             bounds=renderers[0].bounds; foreach(var renderer in renderers) bounds.Encapsulate(renderer.bounds);
             actor.transform.position=new Vector3(-1.97f,-bounds.min.y,.69f);
+            PharmacyDetailPass.Character(actor);
             var simulation=new GameObject("Pharmacy Simulation").AddComponent<PharmacySimulation>();
             simulation.roomCamera=camera; simulation.technician=actor.transform;
             simulation.bottleOne=GameObject.Find("Tracked bottle A1").transform;
@@ -196,7 +198,7 @@ namespace Pharma.Simulation.Editor
             var wrap=GameObject.CreatePrimitive(PrimitiveType.Cylinder); wrap.name="Paper label";
             wrap.transform.SetParent(root,false); wrap.transform.localScale=new Vector3(.107f,.048f,.107f); wrap.GetComponent<Renderer>().sharedMaterial=white;
             var text=Label(label.Split('|')[0].Trim(),p+new Vector3(0,0,-.056f),.012f,Teal);
-            text.transform.SetParent(root,true); return root;
+            text.transform.SetParent(root,true); PharmacyDetailPass.Bottle(root); return root;
         }
         static GameObject Label(string text,Vector3 p,float size,Color color)
         {

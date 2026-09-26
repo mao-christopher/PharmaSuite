@@ -8,6 +8,21 @@ handles one bottle at a time in the 66-second handling workflow (the original sc
 prerecorded footage and synchronized mock IMU events for the existing Python CV
 pipeline. It does not implement the inventory service, MongoDB, or dashboard.
 
+## Scene detail
+
+The editor detail pass adds imported character normal maps and material-specific
+roughness, a chest-mounted staff ID and pocket pens, shelf adjustment slots and
+metal lips, cabinet doors and pulls, ribbed bottle caps and printed barcode details,
+a keyboard and receipt printer, wall signage and clock, and disposal-bin fittings.
+Wood, tile, and wall surface textures are generated deterministically in Unity;
+no additional downloaded art is needed. Accessories follow the chest bone. Small
+surface details have no colliders; the existing solid furniture envelopes remain
+the navigation and collision authority. The room camera and timing are unchanged.
+
+`PharmacyDetailPass.cs` owns these additions. `DetailPortrait.Export` creates an
+editorial close-up with `-pharmaPortrait /absolute/output.png`; it does not save
+a camera change or replace calibrated CV footage.
+
 ## Open and play
 
 1. Install **Unity 6000.6.3f1** (the version used for validation) through Unity Hub.

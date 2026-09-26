@@ -316,3 +316,13 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 - [Unity Recorder](https://docs.unity.com/en-us/engine/6000.3/manual/packages-list/packages-all/pack-safe/com-unity-recorder)
 - [Godot animation](https://docs.godotengine.org/en/stable/tutorials/animation/animation_tree.html)
 - [Godot offline movie capture](https://docs.godotengine.org/en/stable/tutorials/animation/creating_movies.html)
+
+## Visual detail pass — 2026-09-26
+
+Added surface texture and construction details throughout the existing room,
+normal-mapped character clothing/skin, bone-attached staff ID and pocket pens,
+cap grips/barcodes, shelf/cabinet fittings, counter equipment, signage, and bin
+hardware. This is a visual upgrade to the same deterministic scenario; it does
+not implement new employee tasks or change the fixed camera calibration.
+The simulation remains stylized and procedural, not photorealistic or mocap.
+New rendered-footage checks are recorded in `simulation/VALIDATION.md`.

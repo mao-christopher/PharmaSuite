@@ -1,0 +1,79 @@
+{
+  "videos": [
+    {
+      "file": "pharmacy-detailed-release/camera.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-cv/pose-overlay.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-cv/comparison.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        720
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-cv/skeleton-only.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-xray/simulation-skeleton.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-xray/simulation-xray.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-xray/motion-detail.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        720,
+        900
+      ]
+    },
+    {
+      "file": "pharmacy-detailed-release-xray/comparison.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "dimensions": [
+        1920,
+        1200
+      ]
+    }
+  ],
+  "synchronized_sensor_events": 15,
+  "python_tests_passed": 24,
+  "unity_frame_checks": 6362
+}

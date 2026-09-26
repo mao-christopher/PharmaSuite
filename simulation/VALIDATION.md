@@ -1,3 +1,39 @@
+# Detailed scene validation — 2026-09-26
+
+The detailed visual release adds character normal maps, staff ID, pocket and pens;
+shelf slots, metal lips, cabinet doors and handles; cap grips and barcode markings;
+wood/tile/wall surface variation; keyboard, receipt printer, clock, protocol sign,
+and disposal-bin fittings. A separate editorial portrait shows the character detail.
+The fixed room camera, calibration pharmacy-v3, 106-second schedule, and solid
+collision geometry are preserved. Small surface decorations are non-colliding.
+
+Unity rendered 3,180 frames at 1920 × 1080 / 30 FPS. The final scene passed
+6,362 simulation-frame checks across ordinary and optional-occluder variants,
+including blocked routes, ownership, restart, deterministic playback, turns,
+foot planting, limb guards, and disposal. The Python suite passed 24 tests.
+
+Actual YOLO11n-pose inference on the final rendered video (CPU, size 960,
+confidence threshold 0.5) found a person in 2,636 of 3,180 frames. All 10
+scripted action-region samples were correct, with zero abstentions and zero
+wrong regions. Inference took 192.03 seconds (16.56 FPS) while presentation
+encoding ran concurrently. This small scripted check does not establish
+real-pharmacy accuracy or implement inventory event fusion.
+
+All eight delivered MP4s decoded to 3,180 frames at 30 FPS; all 15 mock
+sensor events matched the CV observation stream in order and on the video clock.
+
+The through-wall view remains explicitly labeled simulation rig truth, separate
+from actual YOLO observations. It retains 16 joints per frame, including 450
+frames with every joint occluded by solid room geometry and 594 frames with
+some occlusion. Character motion is procedural; the scene remains stylized.
+
+Detailed metrics: `validation/detail-cv.json`, `detail-presentation.json`,
+`detail-xray.json`, and `detail-checks.json`.
+
+---
+
+## Previous animation release (historical measurements)
+
 # Animation and simulation X-ray validation — 2026-09-26
 
 ## Delivered behavior

@@ -1,0 +1,12 @@
+{
+  "source": "unity_rig_ground_truth",
+  "usage": "presentation_only_not_cv_input",
+  "frame_count": 3180,
+  "fps": 30,
+  "duration_ms": 106000.0,
+  "frames_with_occluded_joints": 594,
+  "frames_with_all_joints_occluded": 450,
+  "joints_per_frame": 16,
+  "source_video_sha256": "764bd4fc6cbad72573bd763ff813858ab93cdd2159bb67ee8125d11c3e809617",
+  "visibility_note": "Ray tests include solid room geometry, not body self-occlusion or translucent materials."
+}
