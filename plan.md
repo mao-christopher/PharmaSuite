@@ -233,6 +233,29 @@ so repeating a demo starts from its own seed rather than corrupting prior invent
    validation, richer receiving/transaction integrations, multiple workers, and
    broader prescription workflows. Do not implement these as first-demo prerequisites.
 
+## Task flexibility and final action recordings
+
+The current simulator is a scripted, stateful demo, not a general-purpose agent
+that interprets arbitrary instructions. Its action schedule, two handled bottles,
+contact positions, timing, and animation assumptions are defined in code. Navigation
+and action guards are reusable, but new workflows require explicit scenario changes
+and collision/CV validation. New skills (for example opening containers or counting
+pills) require additional behavior and animation implementation. A configurable
+scenario format and reusable action library would be the next step toward supporting
+user-specified task sequences; these are not implemented yet.
+
+**Required when the simulation is finalized:** record every individual action
+separately, in addition to the complete workflow recordings. Produce one labeled
+room-camera MP4 per action occurrence in the finalized scenario suite, including
+repeated actions in different contexts (shelf pickup, counter placement/pickup,
+correct and incorrect return, correction, and disposal). Include enough lead-in and
+follow-through to observe the action, preserve its valid starting state, and provide
+synchronized mock IMU events with clip-relative timestamps and camera calibration.
+Keep an index mapping each clip to its scenario/action and source time range; keep
+expected outcomes and simulator state evaluator-only. Run the CV pipeline on each
+clip and report results. This is a pending finalization deliverable, not a claim that
+individual-action videos have already been exported.
+
 ## Acceptance scenarios and proposed evaluation gates
 
 | Scenario | Expected outcome |

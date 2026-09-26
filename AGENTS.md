@@ -59,6 +59,10 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
     collision-aware paths and swept body/arm/bottle checks; do not interpolate bodies
     through furniture. Blocked/unreachable actions must not emit completion events.
     Re-render footage and repeat collision/CV checks when movement logic changes.
+13. When the simulation is finalized, export a separate room-camera video for every
+    individual action as well as full workflows. Include synchronized clip-relative
+    mock IMU events, calibration, and an action index; validate each clip through CV.
+    See `plan.md` for the pending final action-recording deliverable.
 
 ## Repository conventions
 
