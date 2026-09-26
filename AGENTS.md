@@ -56,8 +56,8 @@ These documents are a plan, not evidence that the features are implemented.
 
 ## Repository conventions
 
-- Existing code: `src/pharma/{config,detect,pose,train}.py`; thin CLIs in `scripts/`.
-  `scripts/pose.py` runs the existing pose helper with `yolo11n-pose.pt` by default.
+- Existing code: `backend/src/pharma/{config,detect,pose,train}.py`; thin CLIs in `backend/scripts/`.
+  `backend/scripts/pose.py` runs the existing pose helper with `yolo11n-pose.pt` by default.
 - Keep CV, replay, event association, inventory rules, persistence, and dashboard
   interfaces separate. Extend this Python package rather than duplicate inference.
 - Implement one milestone at a time. Record assumptions and measured results in
