@@ -18,7 +18,14 @@ export function medLabel(medications, key) {
 export function regionLabel(layout, regionId) {
   if (!regionId || regionId === 'UNKNOWN') return 'Unknown location';
   const region = layout?.regions.find((r) => r.region_id === regionId);
-  if (!region) return regionId;
+  if (!region) {
+    // Shelves share canonical IDs across camera views, so they resolve even when not in this view.
+    const med = layout?.medications.find((m) => `shelf_${m.medication_key.toLowerCase()}` === regionId);
+    if (med) return `${med.name} ${med.strength} shelf`;
+    if (regionId.startsWith('counter')) return 'Counter';
+    if (regionId.startsWith('disposal')) return 'Disposal';
+    return regionId;
+  }
   if (region.region_type === 'designated_shelf') {
     return `${medLabel(layout.medications, region.medication_key)} shelf`;
   }
@@ -28,9 +35,10 @@ export function regionLabel(layout, regionId) {
 }
 
 export function designatedShelfId(layout, medKey) {
-  return layout?.regions.find((r) => r.region_type === 'designated_shelf' && r.medication_key === medKey)
-    ?.region_id;
+  return medKey ? `shelf_${medKey.toLowerCase()}` : undefined;
 }
+
+export const JOINT_LABEL = { wrist: 'wrist', elbow: 'elbow (wrist hidden)', shoulder: 'shoulder (wrist and elbow hidden)' };
 
 export function bottleCounts(layout, inv) {
   const shelfId = designatedShelfId(layout, inv.medication_key);

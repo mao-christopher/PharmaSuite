@@ -24,7 +24,7 @@ function describe(alert, layout, receipts) {
   }
 }
 
-function AlertAction({ alert, onResolve, onConfirm, onReceive }) {
+function AlertAction({ alert, onResolve, onConfirm, onReceive, onDispose }) {
   switch (alert.alert_type) {
     case 'uncertainty':
       return (
@@ -34,9 +34,14 @@ function AlertAction({ alert, onResolve, onConfirm, onReceive }) {
       );
     case 'expiry':
       return (
-        <Link className="btn btn-sm" to={`/inventory?receipt=${encodeURIComponent(alert.metadata.receipt_id)}`}>
-          View batch
-        </Link>
+        <>
+          <button type="button" className="btn btn-sm btn-primary" onClick={onDispose}>
+            Dispose
+          </button>
+          <Link className="btn btn-sm btn-ghost" to={`/inventory?receipt=${encodeURIComponent(alert.metadata.receipt_id)}`}>
+            View batch
+          </Link>
+        </>
       );
     case 'out_of_stock':
       return (
@@ -55,7 +60,7 @@ function AlertAction({ alert, onResolve, onConfirm, onReceive }) {
 
 export default function Notifications() {
   const { state, resolveAlert } = useLive();
-  const { openDisposal, openConfirm, openReceive } = useDialogs();
+  const { openDisposal, openConfirm, openReceive, openDisposeBatch } = useDialogs();
   const [showResolved, setShowResolved] = useState(false);
   const meds = state.layout?.medications;
   const alerts = Object.values(state.alerts);
@@ -138,6 +143,7 @@ export default function Notifications() {
                     onResolve={() => resolveAlert(a.alert_id)}
                     onConfirm={() => openConfirm(a.alert_id)}
                     onReceive={() => openReceive(a.medication_key)}
+                    onDispose={() => openDisposeBatch(a.metadata.receipt_id)}
                   />
                 </div>
               </li>

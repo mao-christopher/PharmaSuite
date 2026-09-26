@@ -4,6 +4,7 @@ import { IconContext, MoonIcon, PillIcon, SunIcon, UploadSimpleIcon } from '@pho
 import { LiveProvider, useLive } from './lib/live';
 import { DialogProvider, useDialogs } from './lib/dialogs';
 import { useTheme } from './lib/theme';
+import { JobsIndicator, JobsProvider } from './lib/jobs';
 import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
@@ -54,6 +55,7 @@ function Shell() {
             <NavLink to="/setup">Setup</NavLink>
           </nav>
           <div className="topbar-right">
+            <JobsIndicator />
             <span
               className={`conn ${connected ? 'on' : 'off'}`}
               role="status"
@@ -108,9 +110,11 @@ export default function App() {
   return (
     <IconContext.Provider value={ICONS}>
       <LiveProvider>
-        <DialogProvider>
-          <Shell />
-        </DialogProvider>
+        <JobsProvider>
+          <DialogProvider>
+            <Shell />
+          </DialogProvider>
+        </JobsProvider>
       </LiveProvider>
     </IconContext.Provider>
   );

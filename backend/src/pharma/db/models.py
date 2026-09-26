@@ -17,6 +17,11 @@ def medication_key_for(name: str, strength: str) -> str:
     return f"{name_part}_{strength_part}"
 
 
+def shelf_region_id(medication_key: str) -> str:
+    """Every view names a medication's shelf the same way, so counts line up across views."""
+    return f"shelf_{medication_key.lower()}"
+
+
 class Medication(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -153,10 +158,48 @@ class LayoutReceipt(BaseModel):
         return value
 
 
+def _catalog_issues(medications: List["Medication"], receipts: List["LayoutReceipt"]) -> List[str]:
+    issues: List[str] = []
+    med_keys = [m.medication_key for m in medications]
+    for m in medications:
+        expected = medication_key_for(m.name, m.strength)
+        if m.medication_key != expected:
+            issues.append(f"Medication key {m.medication_key} should be {expected}")
+    for key in {k for k in med_keys if med_keys.count(k) > 1}:
+        issues.append(f"Duplicate medication {key}")
+    receipt_ids = [r.receipt_id for r in receipts]
+    for rid in {r for r in receipt_ids if receipt_ids.count(r) > 1}:
+        issues.append(f"Duplicate receipt ID {rid}")
+    for r in receipts:
+        if r.medication_key not in med_keys:
+            issues.append(f"Receipt {r.receipt_id} references unknown medication {r.medication_key}")
+    return issues
+
+
+class Catalog(BaseModel):
+    """Medications and their opening stock, shared by every camera view."""
+
+    updated_at: Optional[str] = None
+    medications: List[Medication] = Field(default_factory=list)
+    receipts: List[LayoutReceipt] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "Catalog":
+        issues = _catalog_issues(self.medications, self.receipts)
+        if issues:
+            raise ValueError("; ".join(sorted(issues)))
+        return self
+
+
 class Layout(BaseModel):
-    """Fixed-camera setup shared by every recording that references it."""
+    """One fixed-camera view: frame, background photo, and region polygons.
+
+    On disk a view holds only geometry; the API merges the shared catalog's
+    medications and opening stock in (and splits them out again on save).
+    """
 
     layout_id: str = Field(..., pattern=LAYOUT_ID_PATTERN)
+    name: Optional[str] = Field(default=None, max_length=80)
     calibration_version: int = Field(default=0, ge=0)
     frame_width: int = Field(default=1280, gt=0)
     frame_height: int = Field(default=720, gt=0)
@@ -170,41 +213,34 @@ class Layout(BaseModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> "Layout":
-        issues: List[str] = []
-        med_keys = [m.medication_key for m in self.medications]
-        for m in self.medications:
-            expected = medication_key_for(m.name, m.strength)
-            if m.medication_key != expected:
-                issues.append(f"Medication key {m.medication_key} should be {expected}")
-        for key in {k for k in med_keys if med_keys.count(k) > 1}:
-            issues.append(f"Duplicate medication {key}")
+        issues: List[str] = _catalog_issues(self.medications, self.receipts)
+        med_keys = {m.medication_key for m in self.medications}
+
+        # Shelves take their medication's canonical ID (and keep it across views).
+        for r in self.regions:
+            if r.region_type == "designated_shelf" and r.medication_key:
+                r.region_id = shelf_region_id(r.medication_key)
 
         region_ids = [r.region_id for r in self.regions]
-        for rid in {r for r in region_ids if region_ids.count(r) > 1}:
-            issues.append(f"Duplicate region ID {rid}")
-
-        shelves_by_med: Dict[str, List[str]] = {k: [] for k in med_keys}
+        shelves_by_med: Dict[str, int] = {}
         for r in self.regions:
             if r.region_type == "designated_shelf":
-                if r.medication_key not in shelves_by_med:
+                if not r.medication_key or (self.medications and r.medication_key not in med_keys):
                     issues.append(f"Shelf {r.region_id} has no known medication assigned")
                 else:
-                    shelves_by_med[r.medication_key].append(r.region_id)
+                    shelves_by_med[r.medication_key] = shelves_by_med.get(r.medication_key, 0) + 1
             elif r.medication_key is not None:
                 issues.append(f"Region {r.region_id} is not a shelf and cannot hold a medication")
-        for key, shelves in shelves_by_med.items():
-            if not shelves:
-                issues.append(f"{key} has no shelf drawn")
-            elif len(shelves) > 1:
-                issues.append(f"{key} is assigned to more than one shelf: {', '.join(shelves)}")
-
-        receipt_ids = [r.receipt_id for r in self.receipts]
-        for rid in {r for r in receipt_ids if receipt_ids.count(r) > 1}:
-            issues.append(f"Duplicate receipt ID {rid}")
-        for r in self.receipts:
-            if r.medication_key not in shelves_by_med:
-                issues.append(f"Receipt {r.receipt_id} references unknown medication {r.medication_key}")
+        for key, count in shelves_by_med.items():
+            if count > 1:
+                issues.append(f"{key} is assigned to more than one shelf in this view")
+        for rid in {r for r in region_ids if region_ids.count(r) > 1}:
+            if not rid.startswith("shelf_") or rid.split("shelf_", 1)[1].upper() not in shelves_by_med:
+                issues.append(f"Duplicate region ID {rid}")
 
         if issues:
             raise ValueError("; ".join(sorted(issues)))
         return self
+
+    def view_only(self) -> "Layout":
+        return self.model_copy(update={"medications": [], "receipts": []})

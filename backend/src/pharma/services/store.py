@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pharma.db.models import Layout, MovementSession, PrescriptionTransaction
+from pharma.db.models import Catalog, MovementSession, PrescriptionTransaction, Region, shelf_region_id
 from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, Hand, InventoryEngine
 from pharma.services.layout import build_initial_state
 
@@ -40,34 +40,31 @@ class PharmacyStore:
     # ------------------------------------------------------------------ lifecycle
 
     @classmethod
-    def open(cls, path: Path, layout: Layout) -> "PharmacyStore":
-        """Load the saved state for this layout, or start from the layout's opening stock."""
+    def open(cls, path: Path, catalog: Catalog) -> "PharmacyStore":
+        """Load the saved pharmacy state, or start from the catalog's opening stock."""
         store = cls(path)
         if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if data.get("layout_id") == layout.layout_id:
-                store._load(data, layout)
-                return store
-        store.reset(layout, note="Started from the layout's opening stock.")
+            store._load(json.loads(path.read_text(encoding="utf-8")), catalog)
+            return store
+        store.reset(catalog, note="Started from the opening stock.")
         return store
 
-    def _load(self, data: Dict[str, Any], layout: Layout) -> None:
-        self.layout_id = data["layout_id"]
+    def _load(self, data: Dict[str, Any], catalog: Catalog) -> None:
+        self.layout_id = data.get("layout_id")
         self.created_at = data.get("created_at")
         self.current_recording = data.get("current_recording")
         self.recordings = data.get("recordings", {})
         self.history = data.get("history", [])
-        self.engine = InventoryEngine.from_dict(data["engine"], regions=list(layout.regions))
-        self.sync_layout(layout, record=False)
+        self.engine = InventoryEngine.from_dict(data["engine"], regions=[])
+        self.sync_catalog(catalog, record=False)
 
-    def reset(self, layout: Layout, note: str = "Inventory reset to opening stock.") -> None:
-        regions, inventory, receipts = build_initial_state(layout)
+    def reset(self, catalog: Catalog, note: str = "Inventory reset to opening stock.") -> None:
+        _, inventory, receipts = build_initial_state(catalog)
         transactions = self.engine.transactions if self.engine else {}
         for tx in transactions.values():
             tx.status, tx.deducted = "created", False
-        self.engine = InventoryEngine(inventory=inventory, regions=regions, receipts=receipts,
+        self.engine = InventoryEngine(inventory=inventory, regions=[], receipts=receipts,
                                       transactions=transactions)
-        self.layout_id = layout.layout_id
         self.created_at = now_iso()
         self.recordings = {}
         self.record("reset", note)
@@ -94,19 +91,16 @@ class PharmacyStore:
 
     # ------------------------------------------------------------------ layout changes
 
-    def sync_layout(self, layout: Layout, record: bool = True) -> List[str]:
-        """Adopt a re-saved layout without losing live counts.
+    def sync_catalog(self, catalog: Catalog, record: bool = True, note: Optional[str] = None) -> List[str]:
+        """Adopt a re-saved catalog without losing live counts.
 
-        New medications start with their opening stock. Bottles counted on a shelf that
-        was deleted or reassigned (and not explained by a misplaced bottle) move to their
-        medication's current shelf.
+        New medications start with their opening stock. Bottles counted under an old,
+        non-canonical shelf ID (and not explained by a misplaced bottle there) move to
+        their medication's shelf, so every camera view counts the same shelves.
         """
         engine = self.engine
-        engine.regions = {r.region_id: r for r in layout.regions}
-        home = {r.medication_key: r.region_id for r in layout.regions if r.region_type == "designated_shelf"}
         notes: List[str] = []
-
-        _, opening, receipts = build_initial_state(layout)
+        _, opening, receipts = build_initial_state(catalog)
         for key, inv in opening.items():
             if key not in engine.inventory:
                 engine.inventory[key] = inv
@@ -115,40 +109,38 @@ class PharmacyStore:
                         engine.receipts[r.receipt_id] = r
                 notes.append(f"Added {key} with its opening stock.")
 
+        shelves = {shelf_region_id(k) for k in engine.inventory}
         sessions = self.unique_sessions()
         for s in sessions:
-            target = home.get(s.medication_key)
-            if target and s.original_shelf_id not in engine.regions:
-                s.original_shelf_id = target
-            if s.state == "MISPLACED" and s.current_location_id not in engine.regions and target:
-                s.state, s.current_location_id = "ON_DESIGNATED_SHELF", target
+            home = shelf_region_id(s.medication_key) if s.medication_key in engine.inventory else None
+            if home and s.original_shelf_id not in shelves and s.original_shelf_id != "UNKNOWN":
+                s.original_shelf_id = home
+            loc = s.current_location_id or ""
+            if s.state == "MISPLACED" and home and loc.startswith("shelf_") and loc not in shelves:
+                s.state, s.current_location_id = "ON_DESIGNATED_SHELF", home
                 engine._resolve_alerts("misplacement", session_id=s.session_id)
-                notes.append(f"A misplaced {s.medication_key} bottle was on a deleted shelf; counted as returned.")
+                notes.append(f"A misplaced {s.medication_key} bottle was on a shelf that no longer exists; counted as returned.")
 
         for key, inv in engine.inventory.items():
-            target = home.get(key)
-            if not target:
-                continue
+            home = shelf_region_id(key)
             for region_id in list(inv.shelf_counts):
-                if region_id == target:
+                if region_id == home:
                     continue
                 misplaced_here = sum(
                     1 for s in sessions
                     if s.medication_key == key and s.state == "MISPLACED" and s.current_location_id == region_id
                 )
-                extra = inv.shelf_counts[region_id] - misplaced_here
+                extra = inv.shelf_counts[region_id] - (misplaced_here if region_id in shelves else 0)
                 if extra > 0:
                     inv.shelf_counts[region_id] -= extra
-                    inv.shelf_counts[target] = inv.shelf_counts.get(target, 0) + extra
-                    notes.append(f"Moved {extra} {key} bottle(s) from {region_id} to {target}.")
+                    inv.shelf_counts[home] = inv.shelf_counts.get(home, 0) + extra
+                    notes.append(f"Moved {extra} {key} bottle(s) from {region_id} to {home}.")
                 if inv.shelf_counts[region_id] == 0:
                     del inv.shelf_counts[region_id]
-            inv.shelf_counts.setdefault(target, 0)
+            inv.shelf_counts.setdefault(home, 0)
 
-        self.layout_id = layout.layout_id
         if record:
-            self.record("layout", f"Layout saved as calibration v{layout.calibration_version}.",
-                        calibration_version=layout.calibration_version, notes=notes)
+            self.record("layout", note or "Medications and opening stock saved.", notes=notes)
         return notes
 
     # ------------------------------------------------------------------ recordings
@@ -165,6 +157,25 @@ class PharmacyStore:
     def applied_event_ids(self, name: str) -> set:
         return set(self.recordings.get(name, {}).get("applied_event_ids", []))
 
+    def mark_confirmed(self, session_id: str, confirmed: Dict[str, str]) -> None:
+        """After an employee confirms a location, show it on that session's signal-log rows.
+
+        `confirmed` maps phase (pickup/release) to the chosen region. The original
+        evidence stays in the history; only the displayed outcome is updated.
+        """
+        session = self.engine.sessions.get(session_id)
+        recording = session_id.split(":", 1)[0]
+        for row in self.recordings.get(recording, {}).get("activity", []):
+            if row.get("session_id") != session_id:
+                continue
+            region = confirmed.get(row["event_type"])
+            if region:
+                row["confirmed_region_id"] = region
+            if session is not None and (region or row.get("held_pending")):
+                row["state"] = session.state
+                row["medication_key"] = session.medication_key
+                row["held_pending"] = False
+
     def merge_transactions(self, transactions: List[Dict[str, Any]]) -> bool:
         added = False
         for tx in transactions:
@@ -174,7 +185,15 @@ class PharmacyStore:
         return added
 
     def apply_event(
-        self, recording: str, event: Dict[str, Any], hands: List[Hand], frame_size, label: Optional[str] = None
+        self,
+        recording: str,
+        event: Dict[str, Any],
+        hands: List[Hand],
+        frame_size,
+        label: Optional[str] = None,
+        regions: Optional[List[Region]] = None,
+        layout_id: Optional[str] = None,
+        joint: Optional[str] = "wrist",
     ) -> Optional[Dict[str, Any]]:
         """Apply one pickup/release signal exactly once. Returns its activity entry, or None if seen."""
         entry = self.recording_entry(recording)
@@ -188,11 +207,16 @@ class PharmacyStore:
 
         engine = self.engine
         engine.frame_size = tuple(frame_size)
+        if regions is not None:
+            engine.regions = {r.region_id: r for r in regions}
+        before = set(engine.alerts)
         sid = session_key(recording, event["session_id"])
         if event["event_type"] == "pickup":
             session = engine.handle_pickup(sid, hands, event.get("timestamp", 0.0))
         else:
             session = engine.handle_release(sid, hands, event.get("timestamp", 0.0))
+        for alert_id in set(engine.alerts) - before:
+            engine.alerts[alert_id].metadata.update(recording=recording, layout_id=layout_id, joint=joint)
         evidence = session.evidence.get("pending_release", {}).get("evidence") or session.evidence
         activity = {
             "event_id": event["event_id"],
@@ -206,6 +230,8 @@ class PharmacyStore:
             "distance": evidence.get("distance"),
             "reason": evidence.get("reason"),
             "hands_seen": sum(1 for h in hands if h[2] >= MIN_KEYPOINT_CONF),
+            "joint": joint,
+            "layout_id": layout_id,
         }
         entry["activity"].append(activity)
         verb = "Pickup" if event["event_type"] == "pickup" else "Put-down"

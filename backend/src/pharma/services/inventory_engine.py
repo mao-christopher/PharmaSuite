@@ -14,6 +14,7 @@ from pharma.db.models import (
     Alert,
     Receipt,
     Region,
+    shelf_region_id,
 )
 
 # (x, y, confidence) with x/y normalized to the frame.
@@ -81,6 +82,11 @@ def nearest_region(
         for r in regions
     )
     best_dist, _, best = scored[0]
+    ranked: Dict[str, float] = {}
+    for dist, rid, _ in scored:
+        ranked.setdefault(rid, dist)
+    # Every region by its closest hand, nearest first, for the employee's confirmation choices.
+    evidence["candidates"] = [{"region_id": rid, "distance": round(d, 4)} for rid, d in ranked.items()]
     evidence["distance"] = round(best_dist, 4)
     evidence["nearest_region_id"] = best.region_id
     if best_dist > max_distance:
@@ -429,13 +435,9 @@ class InventoryEngine:
     ) -> Receipt:
         """Add a received batch to live stock; its bottles go straight onto the designated shelf."""
         inv = self.inventory.get(medication_key)
-        shelf = next(
-            (r for r in self.regions.values()
-             if r.region_type == "designated_shelf" and r.medication_key == medication_key),
-            None,
-        )
-        if inv is None or shelf is None:
-            raise ValueError(f"{medication_key} is not configured with a shelf in this layout.")
+        if inv is None:
+            raise ValueError(f"{medication_key} is not a configured medication.")
+        shelf_id = shelf_region_id(medication_key)
         if bottle_count < 1 or tablets_per_bottle < 0:
             raise ValueError("Bottle count must be at least 1 and tablets per bottle 0 or more.")
 
@@ -458,7 +460,7 @@ class InventoryEngine:
         self.receipts[receipt_id] = receipt
         inv.total_bottles += bottle_count
         inv.pooled_tablets += receipt.total_tablets
-        inv.shelf_counts[shelf.region_id] = inv.shelf_counts.get(shelf.region_id, 0) + bottle_count
+        inv.shelf_counts[shelf_id] = inv.shelf_counts.get(shelf_id, 0) + bottle_count
         self._resolve_alerts("out_of_stock", medication_key=medication_key)
         if today_iso:
             self.trigger_expiry_alerts(today_iso)
@@ -498,6 +500,86 @@ class InventoryEngine:
         if receipt.remaining_bottles == 0:
             self._resolve_alerts("expiry", receipt_id=receipt.receipt_id)
         return record
+
+    def dispose_batch(self, receipt_id: str, bottles: int, tablets: Optional[int] = None) -> DisposalRecord:
+        """Employee removes bottles of a known batch from its shelf (e.g. expired stock).
+
+        Rule 8 defaults apply when no tablet count is entered: zero if other bottles of the
+        medication remain, the whole pooled balance if these were the last bottles.
+        """
+        receipt = self.receipts.get(receipt_id)
+        if receipt is None:
+            raise ValueError(f"Batch {receipt_id} not found.")
+        if bottles < 1:
+            raise ValueError("Dispose of at least one bottle.")
+        if bottles > receipt.remaining_bottles:
+            raise ValueError(f"Batch {receipt_id} has only {receipt.remaining_bottles} bottle(s) left.")
+        if tablets is not None and tablets < 0:
+            raise ValueError("Discarded tablets cannot be negative.")
+        inv = self.inventory.get(receipt.medication_key)
+        if inv is None:
+            raise ValueError(f"{receipt.medication_key} is not a configured medication.")
+        shelf_id = shelf_region_id(receipt.medication_key)
+        on_shelf = inv.shelf_counts.get(shelf_id, 0)
+        if bottles > on_shelf:
+            raise ValueError(
+                f"Only {on_shelf} bottle(s) are on the shelf. Return the others to the shelf, or let "
+                "the camera record them going into the trash."
+            )
+        if tablets is not None and tablets > inv.pooled_tablets:
+            raise ValueError(f"Only {inv.pooled_tablets} tablets are recorded for {receipt.medication_key}.")
+
+        last_bottles = inv.total_bottles == bottles
+        quantity = tablets if tablets is not None else (inv.pooled_tablets if last_bottles else 0)
+        inv.shelf_counts[shelf_id] = on_shelf - bottles
+        inv.total_bottles -= bottles
+        inv.disposed_bottles += bottles
+        inv.pooled_tablets -= quantity
+        receipt.remaining_bottles -= bottles
+
+        n = sum(1 for d in self.disposals if d.startswith("disp_manual_")) + 1
+        record = DisposalRecord(
+            disposal_id=f"disp_manual_{n:03d}",
+            session_id="manual",
+            medication_key=receipt.medication_key,
+            selected_receipt_id=receipt_id,
+            quantity_deducted=quantity,
+            is_default_quantity=tablets is None,
+            status="resolved",
+        )
+        self.disposals[record.disposal_id] = record
+        if receipt.remaining_bottles == 0:
+            self._resolve_alerts("expiry", receipt_id=receipt_id)
+        if inv.total_bottles == 0:
+            self._add_alert(
+                "out_of_stock", "error", receipt.medication_key,
+                f"Out of Stock: Total bottle count for {receipt.medication_key} reached zero.",
+            )
+        return record
+
+    def add_transaction(
+        self, medication_key: str, quantity: int, transaction_id: Optional[str] = None, status: str = "created"
+    ) -> PrescriptionTransaction:
+        """Record a prescription. Filled or paid ones deduct their tablets once, immediately."""
+        if medication_key not in self.inventory:
+            raise ValueError(f"{medication_key} is not a configured medication.")
+        if quantity < 1:
+            raise ValueError("Quantity must be at least 1.")
+        if status not in ("created", "confirmed_fill", "paid", "cancelled"):
+            raise ValueError(f"Unknown prescription status {status!r}.")
+        if transaction_id:
+            if transaction_id in self.transactions:
+                raise ValueError(f"Prescription {transaction_id} already exists.")
+        else:
+            n = len(self.transactions) + 1
+            while f"RX_{n:04d}" in self.transactions:
+                n += 1
+            transaction_id = f"RX_{n:04d}"
+        tx = PrescriptionTransaction(transaction_id=transaction_id, medication_key=medication_key, quantity=quantity)
+        self.transactions[transaction_id] = tx
+        if status != "created":
+            self.process_prescription_deduction(transaction_id, status)
+        return tx
 
     def process_prescription_deduction(self, transaction_id: str, status: str) -> bool:
         """Deduct prescription tablets ONCE on confirmed_fill or paid status (idempotent)."""

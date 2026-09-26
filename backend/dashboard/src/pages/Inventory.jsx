@@ -31,7 +31,7 @@ const HISTORY_KINDS = {
   recording_deleted: 'Deleted',
 };
 
-function ReceiptTable({ receipts, unit, highlight, alertsByReceipt }) {
+function ReceiptTable({ receipts, unit, highlight, alertsByReceipt, onDispose }) {
   if (receipts.length === 0) return <Empty>No received batches recorded.</Empty>;
   return (
     <table className="table table-inner">
@@ -43,6 +43,9 @@ function ReceiptTable({ receipts, unit, highlight, alertsByReceipt }) {
           <th scope="col">Expires</th>
           <th scope="col" className="num">Bottles left</th>
           <th scope="col" className="num">Received {unit}</th>
+          <th scope="col" className="actions">
+            <span className="sr-only">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -61,6 +64,17 @@ function ReceiptTable({ receipts, unit, highlight, alertsByReceipt }) {
               {r.remaining_bottles} / {r.bottle_count}
             </td>
             <td className="num">{formatNumber(r.total_tablets)}</td>
+            <td className="actions">
+              {r.remaining_bottles > 0 && (
+                <button
+                  type="button"
+                  className={`btn btn-sm ${alertsByReceipt.has(r.receipt_id) ? 'btn-danger' : 'btn-ghost'}`}
+                  onClick={() => onDispose(r.receipt_id)}
+                >
+                  Dispose…
+                </button>
+              )}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -146,7 +160,7 @@ function History() {
 
 export default function Inventory() {
   const { state, resetInventory } = useLive();
-  const { openReceive } = useDialogs();
+  const { openReceive, openDisposeBatch, openAddPrescription } = useDialogs();
   const [params, setParams] = useSearchParams();
   const highlight = params.get('receipt');
   const query = params.get('q') || '';
@@ -308,7 +322,7 @@ export default function Inventory() {
                         <tr className="expanded-row">
                           <td />
                           <td colSpan={8}>
-                            <ReceiptTable receipts={receipts} unit={med.unit} highlight={highlight} alertsByReceipt={alertsByReceipt} />
+                            <ReceiptTable receipts={receipts} unit={med.unit} highlight={highlight} alertsByReceipt={alertsByReceipt} onDispose={openDisposeBatch} />
                           </td>
                         </tr>
                       )}
@@ -354,7 +368,15 @@ export default function Inventory() {
           )}
         </Card>
 
-        <Card title="Prescriptions" flush>
+        <Card
+          title="Prescriptions"
+          actions={
+            <button type="button" className="btn btn-sm" onClick={openAddPrescription}>
+              <PlusIcon size={13} aria-hidden="true" /> Add prescriptions
+            </button>
+          }
+          flush
+        >
           {txs.length === 0 ? (
             <Empty>No prescriptions.</Empty>
           ) : (

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLive } from '../lib/live';
-import { NONE, SESSION_STATES, formatMs, medLabel, regionLabel } from '../lib/format';
+import { useDialogs } from '../lib/dialogs';
+import { JOINT_LABEL, NONE, SESSION_STATES, formatMs, medLabel, regionLabel } from '../lib/format';
 import { Badge, Card, Empty } from './ui';
 
 const REASONS = {
@@ -10,7 +11,18 @@ const REASONS = {
   nothing_parked_at_counter: 'Nothing parked at the counter',
 };
 
-export function SignalTable({ rows, layout, empty }) {
+/** Open uncertainty alert for a session, so its row can offer "Resolve". */
+export function useResolver() {
+  const { state } = useLive();
+  const { openConfirm } = useDialogs();
+  const open = new Map();
+  Object.values(state.alerts).forEach((a) => {
+    if (a.alert_type === 'uncertainty' && a.status === 'open') open.set(a.metadata.session_id, a.alert_id);
+  });
+  return (sessionId) => (open.has(sessionId) ? () => openConfirm(open.get(sessionId)) : null);
+}
+
+export function SignalTable({ rows, layout, empty, resolverFor }) {
   if (rows.length === 0) return <Empty>{empty}</Empty>;
   return (
     <div className="table-wrap">
@@ -34,12 +46,29 @@ export function SignalTable({ rows, layout, empty }) {
                 <td className="mono">{formatMs(a.media_time_ms)}</td>
                 <td className="nowrap">{a.event_type === 'pickup' ? 'Pickup' : 'Put-down'}</td>
                 <td>
-                  {a.nearest_region_id ? regionLabel(layout, a.nearest_region_id) : NONE}
-                  {a.reason && <div className="row-sub text-amber">{REASONS[a.reason] || a.reason}</div>}
+                  {a.confirmed_region_id ? (
+                    <>
+                      {regionLabel(layout, a.confirmed_region_id)}
+                      <div className="row-sub text-green">Confirmed by employee</div>
+                    </>
+                  ) : (
+                    <>
+                      {a.nearest_region_id ? regionLabel(layout, a.nearest_region_id) : NONE}
+                      {a.reason && <div className="row-sub text-amber">{REASONS[a.reason] || a.reason}</div>}
+                    </>
+                  )}
+                  {a.joint && a.joint !== 'wrist' && <div className="row-sub">From the {JOINT_LABEL[a.joint]}</div>}
                 </td>
                 <td className="num">{a.distance != null ? `${(a.distance * 100).toFixed(1)}%` : NONE}</td>
                 <td>
-                  <Badge tone={s.tone}>{a.held_pending ? 'Waiting on pickup confirmation' : s.label}</Badge>
+                  <div className="badges">
+                    <Badge tone={s.tone}>{a.held_pending ? 'Waiting on pickup confirmation' : s.label}</Badge>
+                    {resolverFor?.(a.session_id) && (a.state === 'NEEDS_CONFIRMATION' || a.held_pending) && (
+                      <button type="button" className="btn btn-sm btn-primary" onClick={resolverFor(a.session_id)}>
+                        Resolve
+                      </button>
+                    )}
+                  </div>
                   <div className="row-sub">{medLabel(layout?.medications, a.medication_key)}</div>
                 </td>
               </tr>
@@ -53,6 +82,7 @@ export function SignalTable({ rows, layout, empty }) {
 
 export default function ActivityLog() {
   const { state } = useLive();
+  const resolverFor = useResolver();
   if (!state.recording) return null;
   const upcoming = state.events.filter((e) => !e.processed).length;
   const limit = ((state.max_region_distance ?? 0) * 100).toFixed(0);
@@ -68,6 +98,7 @@ export default function ActivityLog() {
       <SignalTable
         rows={[...(state.activity || [])].reverse()}
         layout={state.layout}
+        resolverFor={resolverFor}
         empty="No signals applied yet. Press Play to run the recording."
       />
     </Card>

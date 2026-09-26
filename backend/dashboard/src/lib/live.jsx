@@ -57,6 +57,7 @@ export function LiveProvider({ children }) {
     return {
       refresh,
       control: (action) => post('/api/replay/control', { action }),
+      seek: (ms) => post('/api/replay/control', { action: 'seek', media_time_ms: Math.round(ms) }),
       loadRecording: (name) => post(`/api/recordings/${id(name)}/load`),
       applyRecording: (name) => post(`/api/recordings/${id(name)}/apply`),
       deleteRecording: async (name) => {
@@ -66,8 +67,11 @@ export function LiveProvider({ children }) {
       },
       resetInventory: () => post('/api/inventory/reset'),
       resolveAlert: (alertId) => post(`/api/inventory/confirmations/${id(alertId)}`),
-      confirmLocation: (alertId, regionId) =>
-        post(`/api/inventory/confirmations/${id(alertId)}`, { resolved_region_id: regionId }),
+      confirmLocation: (alertId, regionId, releaseRegionId) =>
+        post(`/api/inventory/confirmations/${id(alertId)}`, {
+          resolved_region_id: regionId,
+          release_region_id: releaseRegionId || null,
+        }),
       receiveStock: (body) => post('/api/inventory/receipts', body),
       setTransactionStatus: (txId, status) => post(`/api/transactions/${id(txId)}/status`, { status }),
       submitDisposal: (disposalId, receiptId, quantity) =>

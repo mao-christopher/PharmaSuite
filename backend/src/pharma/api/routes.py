@@ -1,11 +1,12 @@
 """REST API route handlers for Pharmacy Inventory Dashboard & Replay System."""
 
-import hashlib
+import csv
+import io
 import json
 import re
 import shutil
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -14,8 +15,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from pharma.api.replay_stream import ReplayController, ScenarioNotReady, pharmacy_today
-from pharma.db.models import BACKGROUND_PATTERN, Layout
-from pharma.services.layout import layout_path, list_layout_ids, load_layout, save_layout
+from pharma.db.models import BACKGROUND_PATTERN, Layout, Region, medication_key_for
+from pharma.services.layout import layout_path, load_layout, save_background, save_catalog, save_layout, split_view
 from pharma.services.recordings import EVENTS_FILE, VIDEO_EXTENSIONS, parse_events_file, probe_video, write_events
 
 router = APIRouter(prefix="/api")
@@ -49,6 +50,31 @@ class PrescriptionStatusRequest(BaseModel):
 
 class ConfirmationRequest(BaseModel):
     resolved_region_id: Optional[str] = None
+    # For a pickup whose put-down is also unresolved: settle both in one step.
+    release_region_id: Optional[str] = None
+
+
+class AssignViewRequest(BaseModel):
+    action: str  # use | replace | new
+    layout_id: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=80)
+    regions: Optional[List[Region]] = None
+
+
+class BackgroundFromRecordingRequest(BaseModel):
+    recording: str
+
+
+class DisposeBatchRequest(BaseModel):
+    bottles: int = Field(..., ge=1)
+    tablets: Optional[int] = Field(default=None, ge=0)
+
+
+class NewPrescriptionRequest(BaseModel):
+    medication_key: str
+    quantity: int = Field(..., ge=1)
+    transaction_id: Optional[str] = Field(default=None, max_length=40)
+    status: str = "created"
 
 
 class ReceiveStockRequest(BaseModel):
@@ -134,17 +160,22 @@ async def upload_recording(
     video: UploadFile = File(...),
     events: UploadFile = File(...),
     name: Optional[str] = Form(None),
-    layout_id: str = Form("default"),
+    layout_id: Optional[str] = Form(None),
     ctrl: ReplayController = Depends(get_controller),
 ):
-    """Upload a video plus pickup/release timestamps; skeletons are extracted in the background."""
+    """Upload a video plus pickup/release timestamps; skeletons are extracted in the background.
+
+    Without a layout_id the most similar saved camera view is suggested and used until
+    the employee confirms or edits it.
+    """
     ext = "." + (video.filename or "").rsplit(".", 1)[-1].lower() if "." in (video.filename or "") else ""
     if ext not in VIDEO_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported video type. Use one of: {', '.join(sorted(VIDEO_EXTENSIONS))}")
-    try:
-        layout = load_layout(ctrl.layouts_dir, layout_id)
-    except (FileNotFoundError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    if layout_id:
+        try:
+            load_layout(ctrl.layouts_dir, layout_id)
+        except (FileNotFoundError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
     raw_events = await events.read(MAX_EVENTS_BYTES + 1)
     if len(raw_events) > MAX_EVENTS_BYTES:
         raise HTTPException(status_code=400, detail="Timestamps file is too large.")
@@ -164,8 +195,15 @@ async def upload_recording(
         shutil.rmtree(path, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(e))
     write_events(path / EVENTS_FILE, parsed)
+    try:
+        suggestions = ctrl.suggest_views(folder) if not layout_id else []
+    except FileNotFoundError:
+        suggestions = []
+    layout_id = layout_id or (suggestions[0]["layout_id"] if suggestions else ctrl.default_layout_id)
+    layout = ctrl.view(layout_id)
     meta = {
         "layout_id": layout_id,
+        "view_confirmed": False,
         "label": label,
         "source": "upload",
         "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -192,10 +230,48 @@ async def upload_recording(
         "name": folder,
         "label": label,
         "duration_ms": info.duration_ms,
+        "width": info.width,
+        "height": info.height,
         "events": len(parsed),
         "status": "processing",
+        "layout_id": layout_id,
+        "view_suggestions": suggestions,
         "warnings": warnings,
     }
+
+
+@router.get("/recordings/{name}/frame")
+def recording_frame(name: str, ctrl: ReplayController = Depends(get_controller)):
+    """The recording's raw frame, used as the backdrop when annotating its camera view."""
+    frame = _recording_errors(lambda: ctrl.video_frame(name))
+    ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    return Response(content=jpeg.tobytes(), media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+
+@router.get("/recordings/{name}/views")
+def recording_view_suggestions(name: str, ctrl: ReplayController = Depends(get_controller)):
+    """Saved camera views ranked by similarity to this recording's frame."""
+    suggestions = _recording_errors(lambda: ctrl.suggest_views(name))
+    frame = ctrl.video_frame(name)
+    meta = ctrl.recording_summary(ctrl.scenario_dir(name))
+    return {
+        "suggestions": suggestions,
+        "width": frame.shape[1],
+        "height": frame.shape[0],
+        "layout_id": meta["layout_id"],
+        "label": meta["label"],
+    }
+
+
+@router.post("/recordings/{name}/view")
+async def assign_recording_view(name: str, req: AssignViewRequest, ctrl: ReplayController = Depends(get_controller)):
+    """Use a view as is, replace it with edits on this recording's frame, or save a new view."""
+    try:
+        view = _recording_errors(lambda: ctrl.assign_view(name, req.action, req.layout_id, req.name, req.regions))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    await ctrl.broadcast_state_snapshot()
+    return {"layout": view.model_dump(mode="json")}
 
 
 # ---------------------------------------------------------------- layouts
@@ -203,13 +279,35 @@ async def upload_recording(
 
 @router.get("/layouts")
 def list_layouts(ctrl: ReplayController = Depends(get_controller)):
-    return {"layouts": list_layout_ids(ctrl.layouts_dir)}
+    """Saved camera views and how many recordings use each."""
+    usage: Dict[str, List[Dict[str, Any]]] = {}
+    for r in ctrl.list_recordings():
+        usage.setdefault(r["layout_id"] or ctrl.default_layout_id, []).append(
+            {"name": r["name"], "label": r["label"], "width": r["width"], "height": r["height"], "has_video": r["has_video"]}
+        )
+    return {
+        "default": ctrl.default_layout_id,
+        "layouts": [
+            {
+                "layout_id": v.layout_id,
+                "name": v.name or v.layout_id,
+                "calibration_version": v.calibration_version,
+                "frame_width": v.frame_width,
+                "frame_height": v.frame_height,
+                "background_image": v.background_image,
+                "regions": len(v.regions),
+                "recordings": usage.get(v.layout_id, []),
+            }
+            for v in ctrl.views()
+        ],
+    }
 
 
 @router.get("/layouts/{layout_id}")
 def get_layout(layout_id: str, ctrl: ReplayController = Depends(get_controller)):
+    """A camera view with the shared medications and opening stock merged in."""
     try:
-        return load_layout(ctrl.layouts_dir, layout_id).model_dump(mode="json")
+        return ctrl.view(layout_id).model_dump(mode="json")
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -221,20 +319,22 @@ async def put_layout(
     reset_inventory: bool = Query(False, description="Also restore live inventory to the opening stock"),
     ctrl: ReplayController = Depends(get_controller),
 ):
-    """Save a layout and bump its calibration version. Live inventory is kept unless reset."""
+    """Save a camera view and the shared catalog (medications, opening stock).
+
+    Bumps the view's calibration version. Live inventory is kept unless reset.
+    """
     if layout.layout_id != layout_id:
         raise HTTPException(status_code=400, detail="layout_id in body does not match URL")
     if layout.background_image and not (ctrl.layouts_dir / layout_id / layout.background_image).exists():
         raise HTTPException(status_code=400, detail="Background image was not uploaded")
+    view, catalog = split_view(layout)
+    catalog = save_catalog(ctrl.layouts_dir, catalog)
     saved = save_layout(ctrl.layouts_dir, layout)
-    notes = []
-    applied = ctrl.layout.layout_id == layout_id
-    if applied:
-        notes = ctrl.apply_layout(saved, reset_inventory=reset_inventory)
-        await ctrl.broadcast_state_snapshot()
+    notes = ctrl.apply_layout(saved, reset_inventory=reset_inventory, catalog=catalog)
+    await ctrl.broadcast_state_snapshot()
     return {
-        "layout": saved.model_dump(mode="json"),
-        "inventory_reset": applied and reset_inventory,
+        "layout": ctrl.view(layout_id).model_dump(mode="json"),
+        "inventory_reset": reset_inventory,
         "notes": notes,
     }
 
@@ -254,15 +354,17 @@ async def upload_background(
     decoded = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if decoded is None:
         raise HTTPException(status_code=400, detail="Not a readable image. Use JPG or PNG.")
-    is_png = data[:8] == b"\x89PNG\r\n\x1a\n"
-    filename = f"background-{hashlib.sha256(data).hexdigest()[:12]}.{'png' if is_png else 'jpg'}"
-    folder.mkdir(parents=True, exist_ok=True)
-    if is_png or data[:3] == b"\xff\xd8\xff":
-        (folder / filename).write_bytes(data)
-    else:
-        cv2.imwrite(str(folder / filename), decoded)
+    filename = save_background(folder, data, decoded, is_png=data[:8] == b"\x89PNG\r\n\x1a\n")
     height, width = decoded.shape[:2]
     return {"background_image": filename, "width": width, "height": height}
+
+
+@router.post("/layouts/{layout_id}/background-from-recording")
+def background_from_recording(
+    layout_id: str, req: BackgroundFromRecordingRequest, ctrl: ReplayController = Depends(get_controller)
+):
+    """Use a recording's own frame as the view photo, so regions line up with its video exactly."""
+    return _recording_errors(lambda: ctrl.background_from_recording(layout_id, req.recording))
 
 
 @router.get("/layouts/{layout_id}/files/{filename}")
@@ -403,10 +505,29 @@ async def resolve_alert(alert_id: str, req: ConfirmationRequest, ctrl: ReplayCon
     if alert.alert_type == "uncertainty":
         if not req.resolved_region_id:
             raise HTTPException(status_code=400, detail="Choose the region the bottle was at.")
+        ctrl.use_view_for_alert(alert)
+        session_id = alert.metadata.get("session_id")
         try:
             engine.confirm_location(alert_id, req.resolved_region_id)
+            if req.release_region_id and alert.metadata.get("phase") == "pickup":
+                follow_up = next(
+                    (a for a in engine.alerts.values()
+                     if a.alert_type == "uncertainty" and a.status == "open"
+                     and a.metadata.get("session_id") == session_id and a.metadata.get("phase") == "release"),
+                    None,
+                )
+                if follow_up:
+                    follow_up.metadata.setdefault("layout_id", alert.metadata.get("layout_id"))
+                    engine.confirm_location(follow_up.alert_id, req.release_region_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        for a in engine.alerts.values():  # alerts raised by the confirmation keep their view
+            if a.metadata.get("session_id") == session_id and "layout_id" not in a.metadata:
+                a.metadata.update(recording=alert.metadata.get("recording"), layout_id=alert.metadata.get("layout_id"))
+        confirmed = {alert.metadata.get("phase"): req.resolved_region_id}
+        if req.release_region_id:
+            confirmed["release"] = req.release_region_id
+        ctrl.store.mark_confirmed(session_id, confirmed)
     elif alert.alert_type == "expiry":
         raise HTTPException(status_code=400, detail="Expiry alerts clear when the expired bottles are disposed of.")
     else:
@@ -418,3 +539,111 @@ async def resolve_alert(alert_id: str, req: ConfirmationRequest, ctrl: ReplayCon
     await ctrl.commit("correction", summary, alert_id=alert_id, alert_type=alert.alert_type,
                       region_id=req.resolved_region_id, medication_key=alert.medication_key)
     return {"status": "success", "alert": engine.alerts[alert_id].model_dump()}
+
+
+# ---------------------------------------------------------------- stock & prescriptions
+
+
+@router.post("/inventory/receipts/{receipt_id}/dispose")
+async def dispose_batch(receipt_id: str, req: DisposeBatchRequest, ctrl: ReplayController = Depends(get_controller)):
+    """Remove bottles of a batch from its shelf (for example expired stock found by an employee)."""
+    try:
+        record = ctrl.engine.dispose_batch(receipt_id, req.bottles, req.tablets)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await ctrl.commit(
+        "disposal",
+        f"Disposed {req.bottles} bottle(s) of {record.medication_key} from batch {receipt_id}.",
+        receipt_id=receipt_id, bottles=req.bottles, tablets=record.quantity_deducted,
+        default_quantity=record.is_default_quantity,
+    )
+    return {"status": "success", "disposal": record.model_dump()}
+
+
+def _add_prescription(ctrl: ReplayController, req: NewPrescriptionRequest):
+    return ctrl.engine.add_transaction(
+        req.medication_key, req.quantity, (req.transaction_id or "").strip() or None, req.status
+    )
+
+
+@router.post("/transactions")
+async def create_prescription(req: NewPrescriptionRequest, ctrl: ReplayController = Depends(get_controller)):
+    """Add a prescription by hand. Filled or paid prescriptions deduct their tablets once."""
+    try:
+        tx = _add_prescription(ctrl, req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await ctrl.commit("prescription", f"Added prescription {tx.transaction_id}.", transaction_id=tx.transaction_id)
+    return {"status": "success", "transaction": tx.model_dump()}
+
+
+STATUS_ALIASES = {
+    "": "created", "created": "created", "waiting": "created", "new": "created",
+    "confirmed_fill": "confirmed_fill", "filled": "confirmed_fill", "fill": "confirmed_fill",
+    "paid": "paid", "cancelled": "cancelled", "canceled": "cancelled",
+}
+
+
+def parse_prescriptions(content: str, medications) -> List[NewPrescriptionRequest]:
+    """Prescriptions from CSV (header row) or JSON/JSONL.
+
+    Columns: quantity, and either medication_key or medication/name + strength;
+    optional transaction_id (or rx) and status.
+    """
+    text = content.strip().lstrip("\ufeff")
+    if not text:
+        raise ValueError("The file is empty.")
+    if text.startswith("["):
+        rows = json.loads(text)
+    elif text.startswith("{"):
+        rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+    else:
+        rows = list(csv.DictReader(io.StringIO(text)))
+    keys = {m.medication_key for m in medications}
+    out = []
+    for n, raw in enumerate(rows, start=1):
+        row = {str(k).strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in raw.items()}
+        key = row.get("medication_key")
+        if not key and (row.get("medication") or row.get("name")) and row.get("strength"):
+            key = medication_key_for(str(row.get("medication") or row.get("name")), str(row["strength"]))
+        if not key:
+            raise ValueError(f"Row {n}: give medication_key, or medication and strength.")
+        if key not in keys:
+            raise ValueError(f"Row {n}: {key} is not a configured medication.")
+        try:
+            quantity = int(float(row.get("quantity") or row.get("qty") or 0))
+        except (TypeError, ValueError):
+            raise ValueError(f"Row {n}: quantity must be a whole number.") from None
+        status = STATUS_ALIASES.get(str(row.get("status") or "").strip().lower())
+        if status is None:
+            raise ValueError(f"Row {n}: unknown status {row.get('status')!r}; use waiting, filled, paid or cancelled.")
+        try:
+            out.append(NewPrescriptionRequest(
+                medication_key=key, quantity=quantity, status=status,
+                transaction_id=(row.get("transaction_id") or row.get("rx") or None),
+            ))
+        except Exception:
+            raise ValueError(f"Row {n}: quantity must be at least 1.") from None
+    if not out:
+        raise ValueError("The file has no prescriptions.")
+    return out
+
+
+@router.post("/transactions/import")
+async def import_prescriptions(file: UploadFile = File(...), ctrl: ReplayController = Depends(get_controller)):
+    """Add several prescriptions from a CSV or JSON file. Nothing is added if any row is invalid."""
+    raw = await file.read(MAX_EVENTS_BYTES + 1)
+    if len(raw) > MAX_EVENTS_BYTES:
+        raise HTTPException(status_code=400, detail="File is too large.")
+    try:
+        requests = parse_prescriptions(raw.decode("utf-8-sig"), ctrl.catalog.medications)
+        ids = [r.transaction_id for r in requests if r.transaction_id]
+        dupes = {i for i in ids if ids.count(i) > 1} | {i for i in ids if i in ctrl.engine.transactions}
+        if dupes:
+            raise ValueError(f"Prescription IDs already used: {', '.join(sorted(dupes))}.")
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    created = [_add_prescription(ctrl, r) for r in requests]
+    await ctrl.commit("prescription", f"Imported {len(created)} prescription(s) from {file.filename}.",
+                      transaction_ids=[t.transaction_id for t in created])
+    return {"status": "success", "transactions": [t.model_dump() for t in created]}

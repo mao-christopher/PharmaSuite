@@ -5,7 +5,7 @@ import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
 import { request } from '../lib/api';
 import { ALERT_TYPES, NONE, appliedState, formatDateTime, formatMs, medLabel, plural } from '../lib/format';
-import { SignalTable } from '../components/ActivityLog';
+import { SignalTable, useResolver } from '../components/ActivityLog';
 import { Badge, Card, ConfirmDialog, Empty, EmptyState, PageHeader } from '../components/ui';
 
 const FILTERS = [
@@ -56,6 +56,7 @@ function SkeletonStatus({ rec, onRetry }) {
 }
 
 function RecordingDetail({ rec, layout }) {
+  const resolverFor = useResolver();
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
 
@@ -81,6 +82,7 @@ function RecordingDetail({ rec, layout }) {
           <SignalTable
             rows={detail.activity}
             layout={layout}
+            resolverFor={resolverFor}
             empty={`None yet. ${plural(pending.length, 'signal')} will apply when it plays.`}
           />
         </div>
@@ -118,7 +120,7 @@ function RecordingDetail({ rec, layout }) {
 
 export default function Recordings() {
   const { state, loadRecording, applyRecording, deleteRecording } = useLive();
-  const { openUpload } = useDialogs();
+  const { openUpload, openViewReview } = useDialogs();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const filter = FILTERS.some((f) => f.id === params.get('show')) ? params.get('show') : 'all';
@@ -303,6 +305,14 @@ export default function Recordings() {
                                 {r.source === 'upload'
                                   ? `${r.video_filename || 'Video'}, uploaded ${formatDateTime(r.uploaded_at)}`
                                   : 'Bundled demo fixture'}
+                              </div>
+                              <div className="rec-meta">
+                                View: {r.view_name || r.layout_id}
+                                {r.has_video && !r.view_confirmed && (
+                                  <button type="button" className="link-btn view-check" onClick={() => openViewReview({ name: r.name, label: r.label })}>
+                                    Check camera view
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>

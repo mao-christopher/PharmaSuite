@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { CrosshairIcon, PlusIcon, TrashIcon, UploadSimpleIcon } from '@phosphor-icons/react';
-import { useLive } from '../lib/live';
-import { errorMessage, request } from '../lib/api';
+import { useJobs } from '../lib/jobs';
+import { errorMessage } from '../lib/api';
 import { formatMs, plural } from '../lib/format';
 import { Dialog } from './ui';
 
@@ -163,9 +162,8 @@ function ManualTimestamps({ rows, setRows, videoRef, videoUrl, previewFailed, cu
   );
 }
 
-export default function UploadRecordingDialog({ onClose }) {
-  const { loadRecording } = useLive();
-  const navigate = useNavigate();
+export default function UploadRecordingDialog({ onClose, onUploaded }) {
+  const { track } = useJobs();
   const videoRef = useRef(null);
   const [video, setVideo] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
@@ -176,9 +174,7 @@ export default function UploadRecordingDialog({ onClose }) {
   const [events, setEvents] = useState(null);
   const [rows, setRows] = useState(() => [row('pickup'), row('release')]);
   const [name, setName] = useState('');
-  const [phase, setPhase] = useState('form'); // form | uploading | processing | done
-  const [job, setJob] = useState(null);
-  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState('form'); // form | uploading
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -210,28 +206,6 @@ export default function UploadRecordingDialog({ onClose }) {
     };
   }, [videoUrl, mode]);
 
-  useEffect(() => {
-    if (phase !== 'processing' || !job) return undefined;
-    const timer = setInterval(async () => {
-      try {
-        const { recordings } = await request('/api/recordings');
-        const r = recordings.find((x) => x.name === job.name);
-        if (!r) return;
-        setProgress(r.progress ?? 0);
-        if (r.status === 'error') {
-          setError(`Skeleton extraction failed: ${r.error}. The recording is saved; retry it from Recordings.`);
-          setPhase('form');
-        } else if (r.status === 'ready') {
-          await loadRecording(job.name);
-          setPhase('done');
-        }
-      } catch (e) {
-        setError(e.message);
-      }
-    }, 700);
-    return () => clearInterval(timer);
-  }, [phase, job, loadRecording]);
-
   const issues = rowIssues(rows, durationS);
 
   const submit = async (e) => {
@@ -255,9 +229,10 @@ export default function UploadRecordingDialog({ onClose }) {
     try {
       const res = await fetch('/api/recordings', { method: 'POST', body });
       if (!res.ok) throw new Error(await errorMessage(res));
-      setJob(await res.json());
-      setProgress(0);
-      setPhase('processing');
+      const job = await res.json();
+      // Skeletons are extracted in the background; the window moves on to the camera view.
+      track(job.name, job.label);
+      onUploaded(job);
     } catch (err) {
       setError(err.message);
       setPhase('form');
@@ -265,7 +240,7 @@ export default function UploadRecordingDialog({ onClose }) {
     return undefined;
   };
 
-  const busy = phase === 'uploading' || phase === 'processing';
+  const busy = phase === 'uploading';
 
   return (
     <Dialog
@@ -273,48 +248,18 @@ export default function UploadRecordingDialog({ onClose }) {
       onClose={onClose}
       width={600}
       footer={
-        phase === 'done' ? (
-          <>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
-              Close
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                onClose();
-                navigate('/');
-              }}
-            >
-              Go to player
-            </button>
-          </>
-        ) : (
-          <>
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
-              {busy ? 'Close, keep processing' : 'Cancel'}
-            </button>
-            <button className="btn btn-primary" type="submit" form="upload-form" disabled={busy}>
-              <UploadSimpleIcon size={14} aria-hidden="true" />
-              {phase === 'uploading' ? 'Uploading…' : phase === 'processing' ? 'Processing…' : 'Upload and process'}
-            </button>
-          </>
-        )
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" type="submit" form="upload-form" disabled={busy}>
+            <UploadSimpleIcon size={14} aria-hidden="true" />
+            {busy ? 'Uploading…' : 'Upload and continue'}
+          </button>
+        </>
       }
     >
-      {phase === 'done' ? (
-        <div className="form" role="status">
-          <p className="lead">
-            <strong>{job.label}</strong> is stored and open in the player with {plural(job.events, 'signal')}. Its signals
-            update inventory when it plays, or apply them without playing from Recordings.
-          </p>
-          {job.warnings?.map((w) => (
-            <p key={w} className="banner banner-amber">
-              {w}
-            </p>
-          ))}
-        </div>
-      ) : (
+      {(
         <form id="upload-form" className="form" onSubmit={submit} noValidate>
           <label className="field">
             <span className="label">Video</span>
@@ -393,16 +338,10 @@ export default function UploadRecordingDialog({ onClose }) {
             />
             <span className="hint">Defaults to the video's file name.</span>
           </label>
-          {busy && (
-            <div className="field" role="status">
-              <span className="hint">
-                {phase === 'uploading' ? 'Uploading…' : `Running pose estimation… ${Math.round(progress * 100)}%`}
-              </span>
-              <div className="progress">
-                <div className="progress-fill" style={{ width: `${phase === 'uploading' ? 5 : Math.max(5, progress * 100)}%` }} />
-              </div>
-            </div>
-          )}
+          <p className="hint">
+            After the upload you'll confirm which camera view it uses. Pose estimation runs in the background; you'll get
+            a notice when it's ready.
+          </p>
           {error && (
             <p className="form-error" role="alert">
               {error}

@@ -49,10 +49,10 @@ def test_same_drug_different_strengths_are_separate_pools():
 
     assert inventory["AMOXICILLIN_500MG"].pooled_tablets == 2 * 100 + 3 * 50
     assert inventory["AMOXICILLIN_500MG"].total_bottles == 5
-    assert inventory["AMOXICILLIN_500MG"].shelf_counts == {"shelf_01": 5}
+    assert inventory["AMOXICILLIN_500MG"].shelf_counts == {"shelf_amoxicillin_500mg": 5}
     # A medication with a shelf but no receipts starts at zero stock.
     assert inventory["AMOXICILLIN_250MG"].total_bottles == 0
-    assert inventory["AMOXICILLIN_250MG"].shelf_counts == {"shelf_02": 0}
+    assert inventory["AMOXICILLIN_250MG"].shelf_counts == {"shelf_amoxicillin_250mg": 0}
 
     by_id = {r.receipt_id: r for r in receipts}
     assert by_id["R2"].total_tablets == 150
@@ -63,7 +63,6 @@ def test_same_drug_different_strengths_are_separate_pools():
 @pytest.mark.parametrize(
     "mutate, message",
     [
-        (lambda p: p["regions"].pop(1), "AMOXICILLIN_250MG has no shelf drawn"),
         (lambda p: p["regions"][1].update(medication_key="AMOXICILLIN_500MG"), "more than one shelf"),
         (lambda p: p["regions"][0].update(medication_key="UNKNOWN_1MG"), "no known medication"),
         (lambda p: p["regions"][2].update(medication_key="AMOXICILLIN_500MG"), "cannot hold a medication"),
@@ -90,5 +89,45 @@ def test_save_layout_bumps_calibration_version(tmp_path):
 
     second = save_layout(tmp_path, Layout(**layout_payload()))
     assert second.calibration_version == 2
-    assert load_layout(tmp_path, "test") == second
+    # On disk a view keeps only geometry; medications live in the shared catalog.
+    assert load_layout(tmp_path, "test") == second.view_only()
+    assert not load_layout(tmp_path, "test").medications
     assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_shelves_get_canonical_ids_and_views_may_omit_shelves():
+    payload = layout_payload()
+    payload["regions"].pop(1)  # this camera angle doesn't see the 250mg shelf
+    layout = Layout(**payload)
+    shelves = [r.region_id for r in layout.regions if r.region_type == "designated_shelf"]
+    assert shelves == ["shelf_amoxicillin_500mg"]
+
+
+def test_catalog_migrates_from_legacy_layout_and_round_trips(tmp_path):
+    from pharma.services.layout import load_catalog, merge_view, save_catalog, split_view
+
+    layouts = tmp_path / "layouts"
+    (layouts / "test").mkdir(parents=True)
+    (layouts / "test" / "layout.json").write_text(Layout(**layout_payload()).model_dump_json())
+    catalog = load_catalog(layouts)  # no catalog.json yet: taken from the legacy layout
+    assert [m.medication_key for m in catalog.medications] == ["AMOXICILLIN_500MG", "AMOXICILLIN_250MG"]
+
+    view, split = split_view(merge_view(Layout(**layout_payload()).view_only(), catalog))
+    assert not view.medications and len(split.receipts) == 2
+    save_catalog(layouts, split)
+    assert (tmp_path / "catalog.json").exists()
+    assert load_catalog(layouts).receipts[0].receipt_id == "R1"
+
+
+def test_frame_similarity_prefers_the_same_scene():
+    import numpy as np
+    from pharma.services.layout import frame_similarity
+
+    rng = np.random.default_rng(0)
+    scene = (rng.random((180, 320, 3)) * 255).astype(np.uint8)
+    brighter = np.clip(scene.astype(int) + 20, 0, 255).astype(np.uint8)
+    other = (rng.random((180, 320, 3)) * 255).astype(np.uint8)
+    assert frame_similarity(scene, brighter) > 0.8
+    assert frame_similarity(scene, brighter) > frame_similarity(scene, other)
+    portrait = scene[:, :100]
+    assert frame_similarity(scene, portrait) < frame_similarity(scene, brighter)

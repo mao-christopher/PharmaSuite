@@ -340,6 +340,41 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
   of order, or applied twice under different uploads of the same footage, will be
   counted as separate real events.
 
+### Camera views, joint fallback, and manual stock actions (implemented)
+
+Decided 2026-09-26.
+
+- **Views and catalog.** Medications and opening stock moved to `data/catalog.json`,
+  shared by every camera view; each `data/layouts/<id>/layout.json` now holds only a
+  view's frame size, photo, and regions (older layouts seed the catalog once). A shelf
+  always has the ID `shelf_<medication key>` in every view, so counts line up across
+  angles. A view may omit shelves it cannot see. Each recording names its view, and its
+  signals are associated with that view's regions.
+- **View suggestion on upload.** The server ranks saved views by how much their photo
+  looks like the video's first frame (thumbnail cross-correlation plus color histogram,
+  penalized by aspect-ratio difference). This is an unvalidated heuristic; the employee
+  always reviews it on the video's own frame and chooses: use the view unchanged,
+  replace it, or save a new view. Saving uses the video frame as the view photo, so
+  regions cannot drift between annotation and playback. Setup also warns when a view's
+  photo and its recordings differ in shape, and can take a recording's frame as the
+  photo or crop an imported photo to the recordings' aspect ratio.
+- **Joint fallback.** At each signal the hand position comes from the wrists, else the
+  elbows, else the shoulders, each searched within 3 frames. Elbows and shoulders are
+  coarser proxies for the bottle and have not been evaluated; the joint used is shown
+  in the signal log and confirmation dialog. If no joint is visible (seen in a Unity
+  clip where no person is detected around the pickup), the employee confirms.
+- **Confirmation.** The dialog lists regions nearest first with their distances, and
+  settles a pickup and its held put-down in one step. Confirmed rows in the signal log
+  show the employee's choice; the original evidence stays in the history.
+- **Manual disposal.** Employees can dispose of bottles from a batch (e.g. expired
+  stock they found). Bottles must be on the shelf; a blank tablet count follows the
+  same default as camera-detected disposal. Emptying the expired batch clears its alert.
+- **Prescriptions** can be added by form or imported from CSV/JSON (all rows validated
+  before any is added). Filled or paid ones deduct once, immediately.
+- **Player.** Skipping forward past a signal applies it, like playing through it;
+  skipping back never undoes one. Uploads close the window while skeletons are
+  extracted in the background, with a top-bar indicator and a notice when ready.
+
 ## Dashboard design (implemented)
 
 Decided 2026-09-26. The UI follows the Vercel DESIGN.md from awesome-design-md

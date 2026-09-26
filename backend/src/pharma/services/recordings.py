@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 
@@ -16,6 +16,8 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
 POSES_FILE = "poses.json"
 EVENTS_FILE = "imu_events.jsonl"
 LEFT_WRIST, RIGHT_WRIST = 9, 10
+# When wrists are hidden at a signal, fall back to elbows, then shoulders (proxies for the hand).
+JOINT_FALLBACK = (("wrist", (9, 10)), ("elbow", (7, 8)), ("shoulder", (5, 6)))
 # How far (in frames) to look around an event when the wrists aren't visible in its exact frame.
 WRIST_SEARCH_FRAMES = 3
 EVENT_ALIASES = {
@@ -85,21 +87,31 @@ class PoseTrack:
             return None
         return self.frames[self.frame_index(media_time_ms)]
 
-    def hands_at(self, media_time_ms: float, min_conf: float = 0.0) -> List[Hand]:
-        """Both wrists at the event's frame, falling back to the nearest frame with a visible wrist."""
+    def hand_points_at(self, media_time_ms: float, min_conf: float = 0.0) -> Tuple[List[Hand], Optional[str]]:
+        """Hand positions at a signal and which joint they came from.
+
+        Tries both wrists at the signal's frame, then the nearest frame within
+        WRIST_SEARCH_FRAMES; if no wrist is confident, the same search for elbows, then
+        shoulders. Returns (points, joint) or the low-confidence wrists and None.
+        """
         if not self.frames:
-            return []
+            return [], None
         center = self.frame_index(media_time_ms)
-        for offset in sorted(range(-WRIST_SEARCH_FRAMES, WRIST_SEARCH_FRAMES + 1), key=abs):
-            idx = center + offset
-            if not 0 <= idx < len(self.frames) or self.frames[idx] is None:
-                continue
-            kps = self.frames[idx]
-            hands = [tuple(kps[i]) for i in (LEFT_WRIST, RIGHT_WRIST) if i < len(kps)]
-            if any(h[2] >= min_conf for h in hands):
-                return hands
+        offsets = sorted(range(-WRIST_SEARCH_FRAMES, WRIST_SEARCH_FRAMES + 1), key=abs)
+        for joint, indices in JOINT_FALLBACK:
+            for offset in offsets:
+                idx = center + offset
+                if not 0 <= idx < len(self.frames) or self.frames[idx] is None:
+                    continue
+                kps = self.frames[idx]
+                points = [tuple(kps[i]) for i in indices if i < len(kps)]
+                if any(p[2] >= min_conf for p in points):
+                    return points, joint
         kps = self.frames[center]
-        return [tuple(kps[i]) for i in (LEFT_WRIST, RIGHT_WRIST)] if kps else []
+        return ([tuple(kps[i]) for i in (LEFT_WRIST, RIGHT_WRIST)] if kps else []), None
+
+    def hands_at(self, media_time_ms: float, min_conf: float = 0.0) -> List[Hand]:
+        return self.hand_points_at(media_time_ms, min_conf)[0]
 
 
 def _parse_time_ms(row: Dict[str, Any]) -> float:

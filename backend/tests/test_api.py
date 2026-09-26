@@ -19,6 +19,7 @@ def make_controller(tmp_path):
         shutil.copytree(data_dir / "scenarios", tmp_path / "scenarios", ignore=skip)
     if not (tmp_path / "layouts").exists():
         shutil.copytree(FIXTURE_LAYOUTS, tmp_path / "layouts")
+        shutil.copy(FIXTURE_LAYOUTS.parent / "catalog.json", tmp_path / "catalog.json")
     return ReplayController(scenarios_dir=tmp_path / "scenarios")
 
 
@@ -156,10 +157,11 @@ def test_put_layout_keeps_live_inventory_unless_reset(isolated_client):
 def test_put_layout_rejects_invalid_setup_without_writing(isolated_client):
     c = isolated_client
     before = c.get("/api/layouts/default").json()
-    bad = {**before, "regions": [r for r in before["regions"] if r["region_type"] != "designated_shelf"]}
+    bad = {**before, "regions": [{**r, "medication_key": "NOPE_1MG"} if r["region_type"] == "designated_shelf" else r
+                                 for r in before["regions"]]}
     res = c.put("/api/layouts/default", json=bad)
     assert res.status_code == 422
-    assert "has no shelf drawn" in res.text
+    assert "no known medication" in res.text
     assert c.get("/api/layouts/default").json() == before
 
     res = c.put("/api/layouts/other", json=before)
@@ -405,3 +407,128 @@ def test_reset_inventory_restores_opening_stock_and_unapplies_signals(client):
     assert not any(e["processed"] for e in state["events"]) and state["activity"] == []
     # The expired opening batch raises its alert again after the reset.
     assert [a["alert_type"] for a in state["alerts"].values()] == ["expiry"]
+
+
+def test_upload_suggests_a_view_and_saves_edits_as_new_or_replacement(isolated_client, tmp_path, monkeypatch):
+    import cv2
+    import numpy as np
+    import pharma.pose
+    from pharma.api import routes
+
+    monkeypatch.setattr(pharma.pose, "extract_video_keypoints", fake_keypoints)
+    c = isolated_client
+    # Give the default view a photo that matches the test video's look.
+    ok, png = cv2.imencode(".png", np.full((180, 320, 3), 200, np.uint8))
+    bg = c.post("/api/layouts/default/background", files={"image": ("room.png", png.tobytes(), "image/png")}).json()
+    view = c.get("/api/layouts/default").json()
+    view.update(background_image=bg["background_image"], frame_width=320, frame_height=180, name="Main camera")
+    assert c.put("/api/layouts/default", json=view).status_code == 200
+
+    make_video(tmp_path / "clip.mp4")
+    with open(tmp_path / "clip.mp4", "rb") as video:
+        res = c.post("/api/recordings", files={"video": ("clip.mp4", video), "events": ("e.csv", b"0.5,pickup\n")},
+                     data={"name": "Angle test"})
+    body = res.json()
+    assert body["layout_id"] == "default" and body["view_suggestions"][0]["layout_id"] == "default"
+    assert body["view_suggestions"][0]["same_aspect"] is True
+    name = body["name"]
+    frame = c.get(f"/api/recordings/{name}/frame")
+    assert frame.status_code == 200 and frame.content[:2] == b"\xff\xd8"
+
+    regions = [dict(r, polygon=[[x * 0.9, y * 0.9] for x, y in r["polygon"]]) for r in view["regions"]]
+    res = c.post(f"/api/recordings/{name}/view", json={"action": "new", "name": "Side angle", "regions": regions})
+    assert res.status_code == 200, res.text
+    new = res.json()["layout"]
+    assert new["layout_id"] == "side-angle" and (new["frame_width"], new["frame_height"]) == (320, 180)
+    assert new["background_image"] and len(new["medications"]) == len(view["medications"])
+    listing = {r["name"]: r for r in c.get("/api/recordings").json()["recordings"]}
+    assert listing[name]["layout_id"] == "side-angle" and listing[name]["view_confirmed"] is True
+    views = {v["layout_id"]: v for v in c.get("/api/layouts").json()["layouts"]}
+    assert set(views) == {"default", "side-angle"} and views["side-angle"]["recordings"][0]["name"] == name
+
+    before = c.get("/api/layouts/default").json()["calibration_version"]
+    res = c.post(f"/api/recordings/{name}/view", json={"action": "replace", "layout_id": "default", "regions": regions})
+    assert res.status_code == 200 and res.json()["layout"]["calibration_version"] == before + 1
+    assert c.post(f"/api/recordings/{name}/view", json={"action": "use", "layout_id": "side-angle"}).status_code == 200
+    assert c.post(f"/api/recordings/{name}/view", json={"action": "new"}).status_code == 422
+
+    # Signals from a recording apply with its own view's regions.
+    assert wait_ready(c, name)["status"] == "ready"
+    c.post(f"/api/recordings/{name}/apply")
+    assert routes.controller.store.recordings[name]["activity"][0]["layout_id"] == "side-angle"
+
+    res = c.post("/api/layouts/default/background-from-recording", json={"recording": name})
+    assert res.status_code == 200 and (res.json()["width"], res.json()["height"]) == (320, 180)
+
+
+def test_dispose_batch_endpoint_and_expiry_alert(client):
+    alerts = client.get("/api/inventory").json()["alerts"].values()
+    expiry = next(a for a in alerts if a["alert_type"] == "expiry")
+    res = client.post(f"/api/inventory/receipts/{expiry['metadata']['receipt_id']}/dispose", json={"bottles": 3})
+    assert res.status_code == 200, res.text
+    state = client.get("/api/inventory").json()
+    assert state["alerts"][expiry["alert_id"]]["status"] == "resolved"
+    assert state["inventory"]["IBUPROFEN_200MG"]["total_bottles"] == 4
+    assert client.post("/api/inventory/receipts/REC_IBU_2026_01/dispose", json={"bottles": 1}).status_code == 400
+    assert any(h["kind"] == "disposal" for h in client.get("/api/history").json()["history"])
+
+
+def test_add_and_import_prescriptions(client):
+    res = client.post("/api/transactions", json={"medication_key": "IBUPROFEN_200MG", "quantity": 12})
+    assert res.status_code == 200 and res.json()["transaction"]["transaction_id"].startswith("RX_")
+    assert client.post("/api/transactions", json={"medication_key": "NOPE_1MG", "quantity": 1}).status_code == 400
+
+    csv = b"rx,medication,strength,quantity,status\nRX_9001,Ibuprofen,200mg,20,filled\nRX_9002,Amoxicillin,500 mg,10,\n"
+    res = client.post("/api/transactions/import", files={"file": ("rx.csv", csv, "text/csv")})
+    assert res.status_code == 200, res.text
+    state = client.get("/api/inventory").json()
+    assert state["transactions"]["RX_9001"]["deducted"] is True
+    assert state["inventory"]["IBUPROFEN_200MG"]["pooled_tablets"] == 700 - 20
+    assert state["transactions"]["RX_9002"]["status"] == "created"
+
+    bad = b'[{"medication_key": "IBUPROFEN_200MG", "quantity": 5}, {"medication_key": "IBUPROFEN_200MG", "quantity": 0}]'
+    res = client.post("/api/transactions/import", files={"file": ("rx.json", bad)})
+    assert res.status_code == 400 and "Row 2" in res.text
+    again = client.post("/api/transactions/import", files={"file": ("rx.csv", csv)})
+    assert again.status_code == 400 and "already used" in again.text
+    assert len(client.get("/api/inventory").json()["transactions"]) == 4  # nothing partial
+
+
+def test_confirm_pickup_and_put_down_together(isolated_client):
+    from pharma.api import routes
+
+    c = isolated_client
+    ctrl = routes.controller
+    ctrl.engine.regions = {r.region_id: r for r in ctrl.layout.regions}
+    far = [(0.45, 0.95, 0.9)]
+    ctrl.engine.handle_pickup("demo_scenario_01:s9", far, 0)
+    ctrl.engine.handle_release("demo_scenario_01:s9", far, 0)  # held until the pickup is confirmed
+    alert = next(a for a in ctrl.engine.alerts.values() if a.alert_type == "uncertainty")
+    assert [cand["region_id"] for cand in alert.metadata["candidates"]]
+    res = c.post(f"/api/inventory/confirmations/{alert.alert_id}", json={
+        "resolved_region_id": "shelf_amoxicillin_500mg", "release_region_id": "shelf_ibuprofen_200mg",
+    })
+    assert res.status_code == 200, res.text
+    state = c.get("/api/inventory").json()
+    assert not [a for a in state["alerts"].values() if a["alert_type"] == "uncertainty" and a["status"] == "open"]
+    assert state["sessions"]["demo_scenario_01:s9"]["state"] == "MISPLACED"
+
+
+def test_confirmation_updates_the_signal_log(isolated_client, monkeypatch):
+    from pharma.api import replay_stream, routes
+
+    c = isolated_client
+    ctrl = routes.controller
+    monkeypatch.setattr(replay_stream, "synthetic_hand", lambda t: (0.99, 0.01, 0.9))  # far from every region
+    c.post("/api/replay/control", json={"action": "seek", "media_time_ms": 10000})
+    rows = c.get("/api/inventory").json()["activity"]
+    assert rows[0]["state"] == "NEEDS_CONFIRMATION" and rows[1]["held_pending"] is True
+    alert = next(a for a in ctrl.engine.alerts.values() if a.alert_type == "uncertainty")
+    assert alert.metadata["layout_id"] == "default" and alert.metadata["recording"] == "demo_scenario_01"
+    res = c.post(f"/api/inventory/confirmations/{alert.alert_id}", json={
+        "resolved_region_id": "shelf_amoxicillin_500mg", "release_region_id": "counter_dispensing_01",
+    })
+    assert res.status_code == 200, res.text
+    rows = c.get("/api/inventory").json()["activity"]
+    assert [r["confirmed_region_id"] for r in rows] == ["shelf_amoxicillin_500mg", "counter_dispensing_01"]
+    assert all(r["state"] == "AT_COUNTER" and not r["held_pending"] for r in rows)

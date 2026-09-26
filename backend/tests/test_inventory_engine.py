@@ -18,13 +18,13 @@ def rect(x0, y0, x1, y1):
 def base_setup():
     regions = [
         Region(
-            region_id="shelf_amx_500",
+            region_id="shelf_amoxicillin_500mg",
             region_type="designated_shelf",
             medication_key="AMOXICILLIN_500MG",
             polygon=rect(0.1, 0.1, 0.4, 0.4),
         ),
         Region(
-            region_id="shelf_ibup_200",
+            region_id="shelf_ibuprofen_200mg",
             region_type="designated_shelf",
             medication_key="IBUPROFEN_200MG",
             polygon=rect(0.1, 0.5, 0.4, 0.8),
@@ -48,7 +48,7 @@ def base_setup():
             medication_key="AMOXICILLIN_500MG",
             pooled_tablets=500,
             total_bottles=5,
-            shelf_counts={"shelf_amx_500": 5},
+            shelf_counts={"shelf_amoxicillin_500mg": 5},
             held_bottles=0,
             counter_bottles=0,
             disposed_bottles=0,
@@ -57,7 +57,7 @@ def base_setup():
             medication_key="IBUPROFEN_200MG",
             pooled_tablets=200,
             total_bottles=2,
-            shelf_counts={"shelf_ibup_200": 2},
+            shelf_counts={"shelf_ibuprofen_200mg": 2},
             held_bottles=0,
             counter_bottles=0,
             disposed_bottles=0,
@@ -155,7 +155,7 @@ def test_pickup_and_counter_placement(base_setup):
     assert sess.medication_key == "AMOXICILLIN_500MG"
 
     inv = engine.inventory["AMOXICILLIN_500MG"]
-    assert inv.shelf_counts["shelf_amx_500"] == 4
+    assert inv.shelf_counts["shelf_amoxicillin_500mg"] == 4
     assert inv.held_bottles == 1
     assert inv.total_bottles == 5  # Pickup does not change total stock!
 
@@ -185,7 +185,7 @@ def test_pickup_from_counter_and_return_to_shelf(base_setup):
     sess_return = engine.handle_release("sess_2", [(0.2, 0.2, 0.9)], 4000.0)
     assert sess_return.state == "ON_DESIGNATED_SHELF"
     assert inv.held_bottles == 0
-    assert inv.shelf_counts["shelf_amx_500"] == 5
+    assert inv.shelf_counts["shelf_amoxicillin_500mg"] == 5
 
 
 def test_wrong_shelf_release_triggers_misplacement_alert(base_setup):
@@ -334,19 +334,19 @@ def test_misplaced_bottle_is_corrected_by_moving_it_home(base_setup):
     engine.handle_pickup("s1", AMX_HAND, 0)
     engine.handle_release("s1", IBU_HAND, 0)
     assert len(open_alerts(engine, "misplacement")) == 1
-    assert amx.shelf_counts == {"shelf_amx_500": 4, "shelf_ibup_200": 1}
+    assert amx.shelf_counts == {"shelf_amoxicillin_500mg": 4, "shelf_ibuprofen_200mg": 1}
 
     # Picking up from the shelf holding the misplaced bottle is assumed to be the correction.
     sess = engine.handle_pickup("s2", IBU_HAND, 0)
     assert sess.medication_key == "AMOXICILLIN_500MG"
-    assert sess.original_shelf_id == "shelf_amx_500"
-    assert ibu.shelf_counts == {"shelf_ibup_200": 2}  # Ibuprofen untouched
-    assert amx.shelf_counts["shelf_ibup_200"] == 0
+    assert sess.original_shelf_id == "shelf_amoxicillin_500mg"
+    assert ibu.shelf_counts == {"shelf_ibuprofen_200mg": 2}  # Ibuprofen untouched
+    assert amx.shelf_counts["shelf_ibuprofen_200mg"] == 0
 
     engine.handle_release("s2", AMX_HAND, 0)
     assert open_alerts(engine, "misplacement") == []
-    assert amx.shelf_counts["shelf_amx_500"] == 5 and amx.held_bottles == 0
-    assert ibu.shelf_counts == {"shelf_ibup_200": 2} and ibu.held_bottles == 0
+    assert amx.shelf_counts["shelf_amoxicillin_500mg"] == 5 and amx.held_bottles == 0
+    assert ibu.shelf_counts == {"shelf_ibuprofen_200mg": 2} and ibu.held_bottles == 0
 
 
 def test_misplaced_bottle_moved_to_another_wrong_shelf_replaces_alert(base_setup):
@@ -368,14 +368,14 @@ def test_hand_too_far_needs_confirmation_then_applies_pickup(base_setup):
     amx = engine.inventory["AMOXICILLIN_500MG"]
     sess = engine.handle_pickup("s1", NOWHERE_HAND, 0)
     assert sess.state == "NEEDS_CONFIRMATION"
-    assert amx.shelf_counts["shelf_amx_500"] == 5  # nothing changes until confirmed
+    assert amx.shelf_counts["shelf_amoxicillin_500mg"] == 5  # nothing changes until confirmed
 
     alert = open_alerts(engine, "uncertainty")[0]
     assert alert.metadata["phase"] == "pickup" and alert.metadata["reason"] == "too_far"
-    engine.confirm_location(alert.alert_id, "shelf_amx_500")
+    engine.confirm_location(alert.alert_id, "shelf_amoxicillin_500mg")
     assert alert.status == "resolved"
     assert sess.state == "HELD" and sess.medication_key == "AMOXICILLIN_500MG"
-    assert amx.shelf_counts["shelf_amx_500"] == 4 and amx.held_bottles == 1
+    assert amx.shelf_counts["shelf_amoxicillin_500mg"] == 4 and amx.held_bottles == 1
 
 
 def test_release_during_unconfirmed_pickup_is_applied_after_confirmation(base_setup):
@@ -387,9 +387,9 @@ def test_release_during_unconfirmed_pickup_is_applied_after_confirmation(base_se
     assert open_alerts(engine, "reconciliation_issue") == []
 
     alert = open_alerts(engine, "uncertainty")[0]
-    sess = engine.confirm_location(alert.alert_id, "shelf_amx_500")
+    sess = engine.confirm_location(alert.alert_id, "shelf_amoxicillin_500mg")
     assert sess.state == "AT_COUNTER"
-    assert amx.shelf_counts["shelf_amx_500"] == 4 and amx.counter_bottles == 1 and amx.held_bottles == 0
+    assert amx.shelf_counts["shelf_amoxicillin_500mg"] == 4 and amx.counter_bottles == 1 and amx.held_bottles == 0
 
 
 def test_uncertain_release_confirmed_to_wrong_shelf_alerts(base_setup):
@@ -400,11 +400,11 @@ def test_uncertain_release_confirmed_to_wrong_shelf_alerts(base_setup):
     alert = open_alerts(engine, "uncertainty")[0]
     assert alert.metadata["phase"] == "release"
 
-    engine.confirm_location(alert.alert_id, "shelf_ibup_200")
+    engine.confirm_location(alert.alert_id, "shelf_ibuprofen_200mg")
     assert sess.state == "MISPLACED"
     assert len(open_alerts(engine, "misplacement")) == 1
     with pytest.raises(ValueError, match="already resolved"):
-        engine.confirm_location(alert.alert_id, "shelf_amx_500")
+        engine.confirm_location(alert.alert_id, "shelf_amoxicillin_500mg")
 
 
 def test_confirming_empty_counter_pickup_is_rejected(base_setup):
@@ -431,9 +431,9 @@ def test_receive_stock_adds_to_live_counts_on_shelf(base_setup):
     receipt = engine.receive_stock("AMOXICILLIN_500MG", 3, 60, "2027-05-31", "2026-09-26T10:00:00Z", "LOT-1")
     assert receipt.total_tablets == 180 and receipt.remaining_bottles == 3
     assert amx.total_bottles == 8 and amx.pooled_tablets == 680
-    assert amx.shelf_counts["shelf_amx_500"] == 7 and amx.held_bottles == 1
+    assert amx.shelf_counts["shelf_amoxicillin_500mg"] == 7 and amx.held_bottles == 1
 
-    with pytest.raises(ValueError, match="not configured"):
+    with pytest.raises(ValueError, match="not a configured medication"):
         engine.receive_stock("UNKNOWN_1MG", 1, 1, "2027-01-01", "2026-09-26")
 
 
@@ -478,3 +478,56 @@ def test_disposal_cannot_be_resolved_twice_or_against_other_medication(base_setu
     with pytest.raises(ValueError, match="already been identified"):
         engine.resolve_disposal("disp_s1", "REC_AMX_01")
     assert engine.receipts["REC_AMX_01"].remaining_bottles == 4
+
+
+def test_dispose_batch_defaults_and_clears_expiry(base_setup):
+    engine = base_setup
+    engine.trigger_expiry_alerts("2026-10-02")
+    expiry = next(a for a in engine.alerts.values() if a.alert_type == "expiry")
+    amx = engine.inventory["AMOXICILLIN_500MG"]
+
+    record = engine.dispose_batch("REC_AMX_01", 2)  # other bottles remain: blank means empty bottles
+    assert (record.quantity_deducted, record.is_default_quantity, record.status) == (0, True, "resolved")
+    assert (amx.total_bottles, amx.shelf_counts["shelf_amoxicillin_500mg"], amx.pooled_tablets) == (3, 3, 500)
+    assert engine.receipts["REC_AMX_01"].remaining_bottles == 3 and expiry.status == "open"
+
+    engine.dispose_batch("REC_AMX_01", 1, tablets=40)
+    assert amx.pooled_tablets == 460
+
+    engine.dispose_batch("REC_AMX_01", 2)  # the last bottles: blank discards the whole balance
+    assert (amx.total_bottles, amx.pooled_tablets, amx.disposed_bottles) == (0, 0, 5)
+    assert expiry.status == "resolved"
+    assert any(a.alert_type == "out_of_stock" and a.status == "open" for a in engine.alerts.values())
+
+
+def test_dispose_batch_rejects_more_than_on_shelf_or_in_batch(base_setup):
+    engine = base_setup
+    engine.handle_pickup("s1", AMX_HAND, 0)  # one bottle is in hand, not on the shelf
+    with pytest.raises(ValueError, match="Only 4 bottle"):
+        engine.dispose_batch("REC_AMX_01", 5)
+    with pytest.raises(ValueError, match="only 5 bottle"):
+        engine.dispose_batch("REC_AMX_01", 6)
+    with pytest.raises(ValueError, match="not found"):
+        engine.dispose_batch("NOPE", 1)
+    assert engine.inventory["AMOXICILLIN_500MG"].total_bottles == 5
+
+
+def test_add_transaction_ids_and_immediate_deduction(base_setup):
+    engine = base_setup
+    tx = engine.add_transaction("IBUPROFEN_200MG", 20)
+    assert tx.transaction_id.startswith("RX_") and tx.status == "created" and not tx.deducted
+    paid = engine.add_transaction("IBUPROFEN_200MG", 50, "RX_CUSTOM", status="paid")
+    assert paid.deducted and engine.inventory["IBUPROFEN_200MG"].pooled_tablets == 150
+    assert engine.process_prescription_deduction("RX_CUSTOM", "paid") is False  # still only once
+    with pytest.raises(ValueError, match="already exists"):
+        engine.add_transaction("IBUPROFEN_200MG", 1, "RX_CUSTOM")
+    with pytest.raises(ValueError, match="not a configured"):
+        engine.add_transaction("NOPE_1MG", 1)
+
+
+def test_uncertain_evidence_ranks_candidate_regions(base_setup):
+    region, evidence = nearest_region([(0.45, 0.25, 0.9)], list(base_setup.regions.values()), max_distance=0.01)
+    assert region is None and evidence["reason"] == "too_far"
+    ranked = [c["region_id"] for c in evidence["candidates"]]
+    assert ranked[:2] in (["shelf_amoxicillin_500mg", "counter_01"], ["counter_01", "shelf_amoxicillin_500mg"])
+    assert [c["distance"] for c in evidence["candidates"]] == sorted(c["distance"] for c in evidence["candidates"])

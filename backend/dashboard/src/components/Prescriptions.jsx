@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { CheckIcon } from '@phosphor-icons/react';
+import { CheckIcon, PlusIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
+import { useDialogs } from '../lib/dialogs';
 import { TX_STATUS, medLabel } from '../lib/format';
 import { Badge, Card, Empty } from './ui';
 
 export default function Prescriptions() {
   const { state, setTransactionStatus } = useLive();
+  const { openAddPrescription } = useDialogs();
   const [busy, setBusy] = useState(null);
   const meds = state.layout?.medications;
   const txs = Object.values(state.transactions);
@@ -20,7 +22,16 @@ export default function Prescriptions() {
   };
 
   return (
-    <Card title="Prescriptions" className="area-rx" flush>
+    <Card
+      title="Prescriptions"
+      className="area-rx"
+      actions={
+        <button type="button" className="btn btn-sm" onClick={openAddPrescription}>
+          <PlusIcon size={13} aria-hidden="true" /> Add
+        </button>
+      }
+      flush
+    >
       {txs.length === 0 ? (
         <Empty>No prescriptions yet.</Empty>
       ) : (

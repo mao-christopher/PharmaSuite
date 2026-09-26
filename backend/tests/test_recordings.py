@@ -72,6 +72,7 @@ def controller(tmp_path):
     skip = shutil.ignore_patterns("upload-*", "video.*", "poses.json", "thumb.jpg")
     shutil.copytree(DATA / "scenarios", tmp_path / "scenarios", ignore=skip)
     shutil.copytree(FIXTURE_LAYOUTS, tmp_path / "layouts")
+    shutil.copy(FIXTURE_LAYOUTS.parent / "catalog.json", tmp_path / "catalog.json")
     ctrl = ReplayController(scenarios_dir=tmp_path / "scenarios")
     ctrl.load_scenario("demo_scenario_01")
     return ctrl
@@ -162,16 +163,14 @@ def test_engine_state_round_trips_with_aliased_sessions(controller):
     assert clone._alert_counter == engine._alert_counter
 
 
-def test_layout_sync_moves_counts_from_a_redrawn_shelf(controller):
+def test_old_shelf_ids_are_rekeyed_to_canonical(controller):
     ctrl = controller
-    layout = ctrl.layout.model_copy(deep=True)
-    shelf = next(r for r in layout.regions if r.region_id == "shelf_amoxicillin_500mg")
-    shelf.region_id = "shelf_01"
-    notes = ctrl.apply_layout(layout)
-    assert amox(ctrl).shelf_counts == {"shelf_01": 5}
+    amox(ctrl).shelf_counts = {"shelf_01": 5}  # counts saved before shelf IDs were canonical
+    notes = ctrl.store.sync_catalog(ctrl.catalog)
+    assert amox(ctrl).shelf_counts == {"shelf_amoxicillin_500mg": 5}
     assert any("shelf_01" in n for n in notes)
-    ctrl.seek(2000)  # the pickup now resolves to the redrawn shelf
-    assert amox(ctrl).shelf_counts == {"shelf_01": 4} and amox(ctrl).held_bottles == 1
+    ctrl.seek(2000)
+    assert amox(ctrl).shelf_counts == {"shelf_amoxicillin_500mg": 4} and amox(ctrl).held_bottles == 1
 
 
 def test_stream_rendering_does_not_advance_the_clock(controller):
@@ -192,3 +191,18 @@ def test_activity_log_records_each_decision(controller):
         ("release", "counter_dispensing_01", "AT_COUNTER"),
     ]
     assert all(a["distance"] == 0 and a["hands_seen"] == 1 for a in ctrl.activity)
+
+
+def test_hand_points_fall_back_to_elbows_then_shoulders():
+    hidden = [0.0, 0.0, 0.0]
+    frame = [hidden] * 17
+    with_elbow = frame[:7] + [[0.4, 0.5, 0.8]] + frame[8:]
+    with_shoulder = frame[:6] + [[0.7, 0.3, 0.9]] + frame[7:]
+    track = PoseTrack(fps=10, width=100, height=100, frames=[with_elbow, with_shoulder, frame])
+    assert track.hand_points_at(0, 0.35) == ([(0.4, 0.5, 0.8), (0.0, 0.0, 0.0)], "elbow")
+    points, joint = track.hand_points_at(100, 0.35)
+    # The elbow two frames away still beats a shoulder in the signal's own frame.
+    assert joint == "elbow"
+    only_shoulder = PoseTrack(fps=10, width=100, height=100, frames=[with_shoulder])
+    assert only_shoulder.hand_points_at(0, 0.35)[1] == "shoulder"
+    assert PoseTrack(fps=10, width=100, height=100, frames=[frame]).hand_points_at(0, 0.35)[1] is None

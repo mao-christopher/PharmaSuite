@@ -18,6 +18,7 @@ export default function RegionCanvas({
   onChangePolygon,
   showGrid,
   imageUrl,
+  fitHeight = '(100dvh - 260px)',
 }) {
   const svgRef = useRef(null);
   const drag = useRef(null);
@@ -127,7 +128,7 @@ export default function RegionCanvas({
   const preview = hover && !nearFirst(hover) ? [...draft, hover] : draft;
 
   return (
-    <div className="canvas" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc((100vh - 260px) * ${W / H}))` }}>
+    <div className="canvas" style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc(${fitHeight} * ${W / H}))` }}>
       <img src={imageUrl} alt="Fixed camera view used for annotation" width={W} height={H} draggable={false} />
       <svg
         ref={svgRef}
