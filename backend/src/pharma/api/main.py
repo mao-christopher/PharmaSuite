@@ -3,7 +3,8 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from pharma.api import routes
@@ -78,7 +79,49 @@ async def websocket_events(websocket: WebSocket):
     await routes.controller.register_websocket(websocket)
     try:
         while True:
-            # Receive client ping/control messages if any
-            data = await websocket.receive_text()
+            await websocket.receive_text()
     except WebSocketDisconnect:
         routes.controller.unregister_websocket(websocket)
+
+
+dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
+if dashboard_dist.exists():
+    app.mount("/dashboard", StaticFiles(directory=str(dashboard_dist), html=True), name="dashboard")
+
+
+@app.get("/", response_class=HTMLResponse)
+def root_dashboard():
+    """Root landing page linking to API docs and Dashboard."""
+    index_file = dashboard_dist / "index.html"
+    if index_file.exists():
+        return HTMLResponse(content=index_file.read_text(), status_code=200)
+
+    return HTMLResponse(
+        content="""
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Pharma AI Platform Server</title>
+            <style>
+              body { background: #0b0f19; color: #f3f4f6; font-family: sans-serif; padding: 2rem; }
+              a { color: #00f0ff; text-decoration: none; }
+              .card { background: rgba(18,24,38,0.8); border: 1px solid rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 12px; max-width: 600px; margin-top: 1rem; }
+            </style>
+          </head>
+          <body>
+            <h1>Pharma AI Inventory Platform API</h1>
+            <p>API Server and Server-Driven Replay Engine is running.</p>
+            <div class="card">
+              <h3>Endpoints & Dashboard:</h3>
+              <ul>
+                <li><a href="/docs">Swagger API Documentation (/docs)</a></li>
+                <li><a href="/api/inventory">Current Inventory API (/api/inventory)</a></li>
+                <li><a href="/api/scenarios">Scenario List (/api/scenarios)</a></li>
+                <li><a href="/api/video/feed">Live MJPEG Video Feed (/api/video/feed)</a></li>
+              </ul>
+            </div>
+          </body>
+        </html>
+        """,
+        status_code=200,
+    )
