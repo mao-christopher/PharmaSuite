@@ -66,6 +66,7 @@ def nearest_region(
     frame_size: Tuple[int, int] = (1280, 720),
     max_distance: float = MAX_REGION_DISTANCE,
     min_conf: float = MIN_KEYPOINT_CONF,
+    min_margin: float = 0.0,
 ) -> Tuple[Optional[Region], Dict[str, Any]]:
     """Pick the region closest to any confident hand. Returns (region or None, evidence).
 
@@ -95,9 +96,10 @@ def nearest_region(
         evidence["reason"] = "too_far"
         return None, evidence
     rival = next((s for s in scored[1:] if s[2].region_id != best.region_id), None)
-    if rival and rival[0] - best_dist < 1e-9:
+    if rival and rival[0] - best_dist < max(1e-9, min_margin):
         evidence["reason"] = "ambiguous"
         evidence["tied_region_id"] = rival[2].region_id
+        evidence["min_margin"] = min_margin
         return None, evidence
     return best, evidence
 
@@ -198,9 +200,9 @@ class InventoryEngine:
             ):
                 alert.status = "resolved"
 
-    def _locate(self, hands: List[Hand], region_types: Tuple[str, ...]) -> Tuple[Optional[Region], Dict[str, Any]]:
+    def _locate(self, hands: List[Hand], region_types: Tuple[str, ...], min_margin: float = 0.0) -> Tuple[Optional[Region], Dict[str, Any]]:
         candidates = [r for r in self.regions.values() if r.region_type in region_types]
-        return nearest_region(hands, candidates, self.frame_size, self.max_region_distance)
+        return nearest_region(hands, candidates, self.frame_size, self.max_region_distance, min_margin=min_margin)
 
     def _uncertain(self, session: MovementSession, phase: str, evidence: Dict[str, Any],
                    description: Optional[str] = None) -> None:
@@ -217,7 +219,7 @@ class InventoryEngine:
 
     # ------------------------------------------------------------------ movement
 
-    def handle_pickup(self, session_id: str, hands: List[Hand], timestamp: float) -> MovementSession:
+    def handle_pickup(self, session_id: str, hands: List[Hand], timestamp: float, min_margin: float = 0.0) -> MovementSession:
         """Pickup signal: the bottle came from the region nearest the technician's hand."""
         current = self.sessions.get(session_id)
         if current and current.state in {"HELD", "NEEDS_CONFIRMATION"}:
@@ -225,7 +227,7 @@ class InventoryEngine:
                             "Pickup signal received while bottle handling is unresolved.",
                             {"session_id": session_id, "state": current.state})
             return current
-        region, evidence = self._locate(hands, PICKUP_REGION_TYPES)
+        region, evidence = self._locate(hands, PICKUP_REGION_TYPES, min_margin)
         if current and current.state in {"AT_COUNTER", "MISPLACED"} and region and region.region_id != current.current_location_id:
             self._add_alert("reconciliation_issue", "warning", current.medication_key,
                             "Pickup signal is away from the bottle's last recorded location.",
@@ -345,10 +347,10 @@ class InventoryEngine:
             self._resume_release(session, pending_release)
         return session
 
-    def handle_release(self, session_id: str, hands: List[Hand], timestamp: float) -> MovementSession:
+    def handle_release(self, session_id: str, hands: List[Hand], timestamp: float, min_margin: float = 0.0) -> MovementSession:
         """Release signal: the bottle went to the region nearest the technician's hand."""
         session = self.sessions.get(session_id)
-        region, evidence = self._locate(hands, ("designated_shelf", "dispensing_counter", "disposal"))
+        region, evidence = self._locate(hands, ("designated_shelf", "dispensing_counter", "disposal"), min_margin)
 
         if session and session.state == "NEEDS_CONFIRMATION" and session.evidence.get("awaiting") == "pickup":
             # Hold the release until an employee confirms where the bottle came from.

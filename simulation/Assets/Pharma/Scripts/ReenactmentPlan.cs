@@ -9,6 +9,7 @@ namespace Pharma.Simulation
     {
         public string schema, recording;
         public float fps, height_m;
+        public float privacy_lead_s; // Optional presentation-only pre-action rig window.
         public int width, height, frame_count;
         public PlanCamera camera;
         public PlanBox[] boxes;

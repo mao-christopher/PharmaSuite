@@ -1,5 +1,21 @@
 # Pharmacy inventory demo plan
 
+## Linux demo deployment — 2026-09-27
+
+The demo server now has a guided `/demo` page for the supplied September 27 GLB
+and IMG_3537 recording. Python-assisted frame review annotated six stock-bottle
+actions, with approximate ±250 ms timing; provenance is retained on the events.
+These annotations are not wristband measurements or a validated recognition model.
+The server completed pose extraction. Shelf regions and camera registration remain
+user setup tasks; no invented shelf identities were applied to inventory.
+
+The HTTP deployment exposed a startup failure from secure-context-only
+`crypto.randomUUID`. Event IDs now fall back to Web Crypto random bytes while
+preserving UUID v4 format. API regression/setup tests: 28 passed; UUID fallback
+test and production frontend build passed. Linux Unity 6000.6.3f1 was installed,
+but its launch returned exit 198 (no valid Editor license). Existing simulation
+playback works; fresh server rendering is not claimed complete until activation.
+
 ## Status and objective
 
 The agreed product requirements below remain the implementation baseline.
@@ -1188,3 +1204,104 @@ Implemented on `feature/shipment-stocking`; see [backend/SHIPMENTS.md](backend/S
 - Validation: 266 backend/simulation tests pass with real local MongoDB, including
   22 shipment-specific cases; dashboard production build passes. All eight imported
   shipments were inspected in an isolated browser preview. No new Unity run needed.
+
+## IMG_3537-only presentation — 2026-09-27
+
+The deployment now has one recording and one camera named Pharmacy security camera.
+Other room/view/recording fixtures are archived outside the served workspace. The
+setup selects its camera at startup while preserving the original dashboard and navigation.
+A separate pharmacy ID preserves the earlier demo's inventory history.
+
+The supplied scan remains the room reference. Four illustrative shelf boxes (two
+levels, two positions per level), four named medications with fictional demo stock, and a
+counter are prepared. Camera polygons are presentation-only: the scan has not been
+registered to the footage and no stock mutations are inferred from these drawings.
+
+The new Unity presentation reuses Rocketbox and bottle assets and follows the six
+visually reviewed actions at 14.60, 16.75, 28.70, 31.65, 37.30 and 40.35 seconds.
+Body motion is authored from video review, not calibrated motion capture. It is
+separate from the evidence-driven timeline and emits no inventory events.
+
+Privacy presentation supersedes the earlier always-visible skeleton request for
+this demo: actual CV skeletons and the separately labeled simulation rig appear
+only in the one second preceding each contact. Raw footage and analysis are still
+retained; this is display minimization, not anonymization or data deletion.
+
+Validation: 35 targeted backend tests pass (one integration check skipped); dashboard production build passes.
+Unity 6000.6.3f1 rendered 667 frames at 960x540 / 15 FPS. All six actions completed,
+with zero downgraded reaches and zero collision guard holds; four labels/bottles.
+The licensed Windows editor produced the render, then it was deployed as MP4.
+Server-side fresh rendering still requires Linux Unity activation.
+
+
+The user clarified that removing other demos must not remove the original interface.
+Restored App.jsx from the original repository commit a14f5f2. IMG_3537 is the only
+recording, auto-loaded into the original player, including Real / Simulation /
+Side by side. The authored render is explicitly flagged presentation-only and
+never masquerades as a render derived from confirmed inventory decisions. Named
+medications are Metformin 500 mg, Atorvastatin 20 mg, Ibuprofen 200 mg, and
+Amoxicillin 500 mg, with fictional opening stock. Existing quantities and audit
+history are preserved during the medication rename. Privacy windows remain.
+
+## Playback wristband notifications and IMG_3537 inventory wiring — 2026-09-27
+
+The original Notifications panel now includes the six pickup/put-down notices,
+with medication, clock time, inventory outcome, and a visible simulated-wristband
+label. Notices use persisted signal activity and follow the current playhead,
+including replay, without reapplying inventory events.
+
+Photo-annotated fallback regions were tested against six measured wrist samples.
+During deployment the server was found to have a newer user-saved room 9-27-2026
+and registered camera. That calibration is preserved; the fallback polygons are
+not installed over it. The current calibration matches the first five locations;
+the final return wrist is near the boundary. The supplied recording therefore
+uses a provisional 1% frame-diagonal minimum separation between candidate regions
+to abstain there instead of confidently assigning the wrong shelf. It requests
+location confirmation. This threshold is not an accuracy validation; other
+recordings retain the original exact-tie rule. Sensor signals contain
+only action/timing and retain video-review provenance, with no drug/shelf answers.
+
+Pickup moves one bottle from shelf/counter to hand; release places it at the
+counter or destination shelf. Total undisposed bottles and tablets stay unchanged.
+The Ibuprofen placement on the Amoxicillin shelf raises a misplacement alert.
+The fifth action still requires the employee to select which bottle was picked
+up because that shelf holds two medications. A later release waits for that
+answer. Selecting the misplaced Ibuprofen applies the pending return once.
+
+Before provisioning, the server migration pauses playback and archives the current
+MongoDB document, UI snapshot and camera layout. It then resets this demo's earlier
+unconfigured run to opening stock and time zero through the existing API.
+
+Validation: 64 backend engine/replay/API tests and 2 frontend notification tests pass;
+production dashboard build passes. Regression covers actual six-contact wrist
+samples, shelf/counter changes, original identity after misplacement, ambiguity,
+pending release, confirmation, restart/replay idempotency, and conserved totals.
+
+
+User-requested demo reset: Notifications has a Reset demo control. The supplied
+recording explicitly opts into reset_on_replay, so restart, playing again after
+EOF, loading/playing from zero, and seeking to zero restore opening stock and
+clear run activity/alerts. Each completed/partial run is copied into audit history
+before clearing. Other recordings retain the original replay idempotency policy;
+within one demo run, repeated event IDs still cannot mutate stock twice.
+Baseline stock suggestions may reappear because they derive from opening stock.
+
+Notifications now place open alerts, including misplaced bottles, above wristband
+activity. Removed the recorded-player reset/signal explanatory text and Apply
+without playing button at the user's request; playback-driven updates and reset
+controls remain active.
+
+Production domain correction: `pharmasuite.tech` and `www.pharmasuite.tech` both
+resolve to 64.177.51.214. Installed a Let's Encrypt certificate and enabled the
+Certbot renewal timer; HTTP redirects to HTTPS for these names. Both HTTPS home
+pages return 200 with certificate verification, and the dashboard WebSocket
+connects over HTTPS. The live UI verifies misplaced alerts above wristband events
+and absence of the removed player note/button. Frontend build and 7 tests pass.
+Certbot renewal dry-run also passes.
+
+The IMG_3537 recording's display label is now Pharmacy camera. The player subtitle
+shows the camera name without the skeleton timing description. Pre-action pose
+visibility is unchanged; only the user-facing label and caption were updated.
+
+Top-left dashboard branding now reads PharmaSuite, with a matching accessible
+home-link label.

@@ -1,0 +1,116 @@
+[
+  {
+    "region_id": "shelf_metformin_500mg",
+    "region_type": "designated_shelf",
+    "medication_key": "METFORMIN_500MG",
+    "polygon": [
+      [
+        0.486,
+        0.203
+      ],
+      [
+        0.574,
+        0.217
+      ],
+      [
+        0.579,
+        0.326
+      ],
+      [
+        0.484,
+        0.309
+      ]
+    ]
+  },
+  {
+    "region_id": "shelf_atorvastatin_20mg",
+    "region_type": "designated_shelf",
+    "medication_key": "ATORVASTATIN_20MG",
+    "polygon": [
+      [
+        0.574,
+        0.23
+      ],
+      [
+        0.699,
+        0.266
+      ],
+      [
+        0.701,
+        0.391
+      ],
+      [
+        0.579,
+        0.34
+      ]
+    ]
+  },
+  {
+    "region_id": "shelf_ibuprofen_200mg",
+    "region_type": "designated_shelf",
+    "medication_key": "IBUPROFEN_200MG",
+    "polygon": [
+      [
+        0.574,
+        0.58
+      ],
+      [
+        0.737,
+        0.708
+      ],
+      [
+        0.721,
+        0.883
+      ],
+      [
+        0.556,
+        0.714
+      ]
+    ]
+  },
+  {
+    "region_id": "shelf_amoxicillin_500mg",
+    "region_type": "designated_shelf",
+    "medication_key": "AMOXICILLIN_500MG",
+    "polygon": [
+      [
+        0.501,
+        0.433
+      ],
+      [
+        0.59,
+        0.49
+      ],
+      [
+        0.571,
+        0.634
+      ],
+      [
+        0.488,
+        0.567
+      ]
+    ]
+  },
+  {
+    "region_id": "counter",
+    "region_type": "dispensing_counter",
+    "polygon": [
+      [
+        0.175,
+        0.63
+      ],
+      [
+        0.322,
+        0.598
+      ],
+      [
+        0.366,
+        0.77
+      ],
+      [
+        0.185,
+        0.825
+      ]
+    ]
+  }
+]

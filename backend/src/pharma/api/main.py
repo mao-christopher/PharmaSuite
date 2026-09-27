@@ -1,6 +1,7 @@
 """Main FastAPI Application Entrypoint for Pharma Inventory Platform."""
 
 import asyncio
+import json
 import re
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -23,9 +24,11 @@ async def lifespan(app: FastAPI):
     scenarios_dir.mkdir(parents=True, exist_ok=True)
 
     # Live inventory is persisted under data/state and carries across recordings.
-    controller = ReplayController(scenarios_dir=scenarios_dir)
+    setup_path = cfg.data_dir / 'demo' / 'setup.json'
+    setup = json.loads(setup_path.read_text()) if setup_path.exists() else {}
+    controller = ReplayController(scenarios_dir=scenarios_dir, layout_id=setup.get('camera_layout_id', 'default'))
     routes.controller = controller
-    controller.restore_player(fallback="demo_scenario_01")
+    controller.restore_player(fallback=setup.get('recording', 'demo_scenario_01'))
 
     clock = asyncio.create_task(controller.run_clock())
     try:
@@ -118,6 +121,8 @@ app.include_router(shipment_routes.router)
 app.include_router(routes.router)
 app.include_router(room_routes.router)
 app.include_router(live_routes.router)
+from pharma.api import demo_routes
+app.include_router(demo_routes.router)
 
 
 @app.get("/api/video/feed")
@@ -159,6 +164,7 @@ if dashboard_dist.exists():
 @app.get("/setup", response_class=HTMLResponse)
 @app.get("/live", response_class=HTMLResponse)
 @app.get("/room", response_class=HTMLResponse)
+@app.get("/demo", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def root_dashboard():
     """Root landing page linking to API docs and Dashboard."""
