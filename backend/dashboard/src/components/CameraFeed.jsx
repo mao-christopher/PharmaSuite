@@ -5,7 +5,7 @@ import {
 } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
-import { appliedState, formatMs, plural } from '../lib/format';
+import { appliedState, formatMs } from '../lib/format';
 import { Badge, Card, EmptyState } from './ui';
 import RenderButton from './RenderButton';
 import { PanelSwitch } from './LiveFeed';
@@ -101,12 +101,11 @@ function Scrubber({ t, duration, events, onSeek }) {
 }
 
 export default function CameraFeed() {
-  const { state, control, seek, applyRecording } = useLive();
+  const { state, control, seek } = useLive();
   const { openUpload } = useDialogs();
   const capture = useLiveCapture();
   const playerRef = useRef(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const rec = state.recording;
 
@@ -148,7 +147,6 @@ export default function CameraFeed() {
   const [fw, fh] = state.frame_size || [16, 9];
   const liveClip = rec.source === 'live';
   const applied = liveClip ? { label: 'Live clip', tone: 'blue' } : appliedState(rec);
-  const remaining = liveClip ? 0 : rec.events_total - rec.events_applied;
   const toggle = () => control(playing ? 'pause' : 'play');
   const skip = (ms) => seek(clamp(t + ms, 0, duration));
   const toggleFullscreen = () =>
@@ -166,18 +164,6 @@ export default function CameraFeed() {
     else if (key === '0' || key === 'home') seek(0);
     else return;
     e.preventDefault();
-  };
-
-  const applyNow = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await applyRecording(rec.name);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
   };
 
   const source = state.player_source || 'real';
@@ -294,25 +280,13 @@ export default function CameraFeed() {
           </button>
         </div>
       </div>
-      <div className="player-note" aria-live="polite">
-        {rec.reset_on_replay && <span>Restarting this demo restores opening stock and clears notifications.</span>}
+      {(liveClip || (rec.presentation_only && source !== 'real') || error) && <div className="player-note" aria-live="polite">
         {rec.presentation_only && source !== 'real' && <span>Authored Unity illustration from video review; not calibrated motion capture.</span>}
-        {liveClip ? (
+        {liveClip && (
           <span>Analyzed once when the wristband event arrived. Replaying this clip never changes inventory.</span>
-        ) : remaining === 0 ? (
-          <span>Its signals are already in inventory. Replaying or skipping only moves the video.</span>
-        ) : (
-          <>
-            <span>
-              {plural(remaining, 'signal')} will update inventory as the playhead reaches them, including when you skip past them.
-            </span>
-            <button type="button" className="link-btn push" onClick={applyNow} disabled={busy}>
-              {busy ? 'Applying…' : 'Apply without playing'}
-            </button>
-          </>
         )}
         {error && <span className="form-error">{error}</span>}
-      </div>
+      </div>}
     </Card>
   );
 }

@@ -191,21 +191,6 @@ export default function Notifications() {
     >
       <div aria-live="polite">
         {resetError && <p className="form-error" role="alert">{resetError}</p>}
-        {movements.length > 0 && <>
-          <div className="suggestion-head"><span>Wristband activity</span><span>{movements.length} recent</span></div>
-          <ul className="notice-list">
-            {movements.map(m => <li key={m.event_id} className="notice">
-              <span className={`notice-icon tone-${m.alert ? 'amber' : 'blue'}`} aria-hidden="true"><InfoIcon /></span>
-              <div className="notice-content">
-                <div className="notice-title">{m.title}</div>
-                <div className="notice-med">{m.medication}</div>
-                <p className="notice-text">{m.message}</p>
-                <div className="row-sub">{formatMs(m.media_time_ms)} · {m.simulated ? 'Simulated wristband · video timing' : 'Wristband signal'}</div>
-              </div>
-              {m.alert && <div className="notice-action"><button className="btn btn-sm btn-primary" onClick={() => openConfirm(m.alert.alert_id)}>{m.alert.metadata?.reason === 'which_bottle' ? 'Confirm bottle' : 'Confirm location'}</button></div>}
-            </li>)}
-          </ul>
-        </>}
         {count === 0 && suggestions.length === 0 && movements.length === 0 && (
           <div className="notice-empty">
             <span className="notice-icon tone-green" aria-hidden="true">
@@ -272,6 +257,21 @@ export default function Notifications() {
             );
           })}
         </ul>
+        {movements.length > 0 && <>
+          <div className="suggestion-head"><span>Wristband activity</span><span>{movements.length} recent</span></div>
+          <ul className="notice-list">
+            {movements.map(m => <li key={m.event_id} className="notice">
+              <span className={`notice-icon tone-${m.alert ? 'amber' : 'blue'}`} aria-hidden="true"><InfoIcon /></span>
+              <div className="notice-content">
+                <div className="notice-title">{m.title}</div>
+                <div className="notice-med">{m.medication}</div>
+                <p className="notice-text">{m.message}</p>
+                <div className="row-sub">{formatMs(m.media_time_ms)} · {m.simulated ? 'Simulated wristband · video timing' : 'Wristband signal'}</div>
+              </div>
+              {m.alert && <div className="notice-action"><button className="btn btn-sm btn-primary" onClick={() => openConfirm(m.alert.alert_id)}>{m.alert.metadata?.reason === 'which_bottle' ? 'Confirm bottle' : 'Confirm location'}</button></div>}
+            </li>)}
+          </ul>
+        </>}
         <Suggestions suggestions={suggestions} meds={meds} onReceive={openReceive} />
       </div>
     </Card>

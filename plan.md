@@ -1285,3 +1285,16 @@ clear run activity/alerts. Each completed/partial run is copied into audit histo
 before clearing. Other recordings retain the original replay idempotency policy;
 within one demo run, repeated event IDs still cannot mutate stock twice.
 Baseline stock suggestions may reappear because they derive from opening stock.
+
+Notifications now place open alerts, including misplaced bottles, above wristband
+activity. Removed the recorded-player reset/signal explanatory text and Apply
+without playing button at the user's request; playback-driven updates and reset
+controls remain active.
+
+Production domain correction: `pharmasuite.tech` and `www.pharmasuite.tech` both
+resolve to 64.177.51.214. Installed a Let's Encrypt certificate and enabled the
+Certbot renewal timer; HTTP redirects to HTTPS for these names. Both HTTPS home
+pages return 200 with certificate verification, and the dashboard WebSocket
+connects over HTTPS. The live UI verifies misplaced alerts above wristband events
+and absence of the removed player note/button. Frontend build and 7 tests pass.
+Certbot renewal dry-run also passes.

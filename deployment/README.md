@@ -14,8 +14,14 @@ docker compose -f compose.server.yaml up -d api
 ```
 
 The nginx example proxies HTTP/WebSocket/video traffic to loopback port 8000.
-Set DNS and configure a valid TLS certificate before using browser camera/Bluetooth
-features. The app is an unauthenticated shared demo, not a patient-data deployment.
+The deployed domain is `pharmasuite.tech` (also `www.pharmasuite.tech`), with both
+DNS A records pointing to `64.177.51.214`. The separate domain vhost lets Certbot
+redirect domain HTTP traffic to HTTPS while preserving the IP-based HTTP demo.
+On a fresh server, install `certbot python3-certbot-nginx`, enable the bootstrap
+nginx config, then run `certbot --nginx -d pharmasuite.tech -d www.pharmasuite.tech --redirect`.
+Do not overwrite a live Certbot-managed config with the bootstrap template.
+The production certificate and automatic renewal timer are installed.
+The app is an unauthenticated shared demo, not a patient-data deployment.
 
 For the September 27 scan/video setup, place the supplied original files under
 `persistent/incoming/`, copy `provision_demo.py` into the API container, and run it
