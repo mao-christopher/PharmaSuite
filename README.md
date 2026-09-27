@@ -1,11 +1,42 @@
-# Pharma YOLO & Inventory Platform
+# PharmaSuite
 
-Pharmacy inventory demo that tracks bottles from camera footage. Upload one or more
-videos plus a file of pickup and put-down times. YOLO pose estimation finds the
-technician's hand at each signal, matches it to the shelf, counter or disposal region
-drawn for that camera, and updates a MongoDB-backed inventory that a React dashboard
-shows live. A Unity simulation renders the same workflows, so the pipeline can be
-tested on footage with known answers.
+PSA: We wrote this entire dev post ourselves without AI, so any typos are 100% our fault.
+
+## Inspiration
+
+Every year, thousands of Americans die due to pharmaceutical drug mishandling. Dr. Marv Shepard, the former Chairman of the Pharmacy Administration at the University of Texas, claims that the typical pharmacy makes 2 to 4 mistakes a day, which is an alarming rate for such a high-stakes action. After speaking with peers that worked as pharma technicians at Walgreens, CVS, and local stores, we began to better understand the issues that afflict the drug handling process. By developing our own edge compute model, we were confident we could create an automated system to reduce error. With tools like PharmaSuite, we hope to build a new tomorrow where everyone can trust healthcare professionals.
+
+## What it does
+
+PharmaSuite minimizes drug handling errors by monitoring all activities relating to prescription drug handling within a pharmacy. From the moment an item is shipped to the pharmacy, PharmaSuite keeps track of the quantities, expiry dates, and locations of every drug and pill bottle. When a pharmacy technician makes a transaction, throws away expired pills, or picks up a new product, PharmaSuite’s MongoDB database is automatically updated. If a pharmacist attempts to place a pill bottle on the wrong shelf or sell an expired product, they are alerted and the transaction is blocked. Replay data is collected for each transaction to maximize transparency. Whenever a pharmacy is low on stock, PharmaSuite will automatically ask providers for a new shipment. Through the full stack, almost all possible sources of error in a pharmacy would be automated.
+
+## How we use AI?
+
+We used the Meta API ecosystem in order to take shipping data of incoming medications, convert them into stock information, and sort out medications that commonly get mixed up in order to separate them. We have the model return a specific schema with specific prompting to ensure pharmacists will be alerted if the prescription doesn’t match the product. We also utilized a computer vision model (YOLO) to create skeletons of pharmacists so our model can better identify where a drug is being placed.
+
+However, the most ambitious part of our project was designing our own edge compute model gesture recognition, specifically to understand when a pharmacist places or picks up a pill bottle. We manually collected sample data of different states while wearing a watch with an Inertial Measurement Unit (IMU). Then, we did spectral analysis to determine features and created a classifier with 3 layers of 256 neurons, quantizing it to run on a ESP-32 with minimal ram. By doing this, we only track the pharmacist when they perform an action that involves the medication to reduce privacy concerns in the workplace.
+
+## How we built it
+
+Part 1: We developed synthetic MongoDB Atlas databases to mimic shipments of goods into a pharmacy. Then, we made a model that decides where each drug should be placed based on quantity, expiry date, and name to prevent handling mistakes. We used the Meta API ecosystem to transport the data onto the pharmacy’s database to ensure minimal data loss during transfer. In addition, during the setup phase we use LiDAR to map out the pharmacy and to allow for the model to create the custom shelving and organization. This means that behind the scenes throughout the entire process we create a parallel 3D environment to the real world.
+
+Part 2: We trained a custom model on IMU data so it correctly distinguishes between idle, random, putting down, and picking up actions with 98.21% accuracy over a custom 5,000 data point set that we collected through manual data collection over a couple of hours. As the pharmacist places bottles down on a shelf, our computer vision (CV) model, which can be connected to a standard surveillance camera, checks that the location the pharmacist placed the bottle matches the location PharmaSuite chose earlier. A CV model, YOLO, creates skeletons of people to confirm that the arm location matches where the bottle is supposed to be placed. When the pharmacist finishes stocking the pharmacy, the aggregated data of every placement is checked against the shipment data to confirm all of the pill bottles were appropriately placed and the inventory management system is updated to reflect the new quantities with new expiration dates.
+
+Part 3: Every individual transaction with clients is also tracked. When the pharmacist picks up a pill bottle from a shelf, the model takes a snapshot of the last 10 seconds so that the transaction can be tracked without excessively interfering with the pharmacist’s privacy in the workplace. When the pharmacist moves product from the pill bottle to the prescription bottle and the sale is made, the database updates to consider the change in quantity. Then, once again, it confirms that the product is being placed in the right section.
+
+## Challenges we ran into
+
+We needed more custom data than we expected to allow a neural network to recognize when a person was picking up or placing down an object with only sensor data. Although the model was successful at recognizing the difference between placing objects and being idle, it struggled to initially differentiate normal active movement patterns against placing/picking up items. After providing more data and doing hyperparameter optimization, we achieved a 40% improvement in our success rate.
+
+## Accomplishments that we're proud of
+
+We’re proud to develop such an extensive pipeline that covers so many aspects of technology from hardware, edge computing, computer vision, and software. We didn’t go into the project expecting to create something that encompassed so many stages of the pharmaceutical process, but we’re coming out of it thinking that it may be our first step to making a contribution to increased trust between patients and healthcare professionals.
+
+## What's next for PharmaSuite
+
+In the future, we plan to train the edge compute model to better classify a wider range of tasks. We recognize that pharmacists may not always place items in the exact same way, or that other tasks may have a similar range of motion to it. However, with a wider range of training data, it would be possible for the model to better isolate the tasks we want it to recognize. In addition, we haven’t configured YOLO to consider multiple pharmacy technicians, which would be necessary in many real world pharmacies. However, past a 36-hour hackathon, we can definitely implement these improvements.
+
+## Development and setup
 
 What works today, and what is still planned, is tracked in [plan.md](plan.md).
 Results on rendered footage are in [simulation/VALIDATION.md](simulation/VALIDATION.md);
