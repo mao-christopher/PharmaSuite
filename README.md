@@ -1,7 +1,5 @@
 # PharmaSuite
 
-PSA: We wrote this entire dev post ourselves without AI, so any typos are 100% our fault.
-
 ## Inspiration
 
 Every year, thousands of Americans die due to pharmaceutical drug mishandling. Dr. Marv Shepard, the former Chairman of the Pharmacy Administration at the University of Texas, claims that the typical pharmacy makes 2 to 4 mistakes a day, which is an alarming rate for such a high-stakes action. After speaking with peers that worked as pharma technicians at Walgreens, CVS, and local stores, we began to better understand the issues that afflict the drug handling process. By developing our own edge compute model, we were confident we could create an automated system to reduce error. With tools like PharmaSuite, we hope to build a new tomorrow where everyone can trust healthcare professionals.
