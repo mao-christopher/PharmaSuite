@@ -463,6 +463,9 @@ class InventoryEngine:
             if region_id != session.evidence["stocking_source"]:
                 raise ValueError("Confirm the current location of this shipment bottle; do not assign a different source.")
             session.state = session.evidence["stocking_previous_state"]
+            if bottle is None and session.state == "MISPLACED":
+                # A shipment correction already knows its bottle; don't ask which one.
+                bottle = session.session_id
         evidence = {"confirmed_by_employee": True, "region_id": region_id}
         if phase == "pickup":
             if region.region_type not in PICKUP_REGION_TYPES:

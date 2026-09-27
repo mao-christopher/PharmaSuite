@@ -179,7 +179,9 @@ def pickup(engine, recording, event, sid, hands):
                 },
             )
             return session
-        return engine._apply_pickup(sid, region, evidence)
+        # The shipment bottle is known, so a shelf also holding its own stock doesn't ask which.
+        bottle = session.session_id if session.state == "MISPLACED" else None
+        return engine._apply_pickup(sid, region, evidence, bottle)
     selected = stock["armed"]
     row = next(r for r in shipment["lines"] if r["line_id"] == selected["line_id"])
     inv = engine.inventory[row["medication_key"]]
