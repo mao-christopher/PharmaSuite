@@ -60,7 +60,8 @@ export function LiveProvider({ children }) {
       control: (action) => post('/api/replay/control', { action }),
       seek: (ms) => post('/api/replay/control', { action: 'seek', media_time_ms: Math.round(ms) }),
       loadRecording: (name) => post(`/api/recordings/${id(name)}/load`),
-      applyRecording: (name) => post(`/api/recordings/${id(name)}/apply`),
+      applyRecording: (name, includeEarlier = false) =>
+        post(`/api/recordings/${id(name)}/apply${includeEarlier ? '?include_earlier=true' : ''}`),
       deleteRecording: async (name) => {
         const result = await request(`/api/recordings/${id(name)}`, { method: 'DELETE' });
         await refresh();

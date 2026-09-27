@@ -3,6 +3,7 @@ import { useLive } from '../lib/live';
 import { formatNumber, inventoryTotals } from '../lib/format';
 import { Metric, Metrics } from '../components/ui';
 import CameraFeed from '../components/CameraFeed';
+import FloorMap from '../components/FloorMap';
 import Notifications from '../components/Notifications';
 import ActiveBottles from '../components/ActiveBottles';
 import ActivityLog from '../components/ActivityLog';
@@ -25,6 +26,7 @@ export default function Dashboard() {
       <div className="dash-grid">
         <div className="stack">
           <CameraFeed />
+          <FloorMap />
           <ActivityLog />
           <StockSummary />
         </div>

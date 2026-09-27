@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { CrosshairIcon, PlusIcon, TrashIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CrosshairIcon, PlusIcon, TrashIcon, UploadSimpleIcon, VideoCameraIcon } from '@phosphor-icons/react';
 import { useJobs } from '../lib/jobs';
-import { errorMessage } from '../lib/api';
+import { errorMessage, request } from '../lib/api';
 import { formatMs, plural } from '../lib/format';
-import { Dialog } from './ui';
+import CameraViewFields, { pickView } from './CameraViewFields';
+import { Badge, Dialog } from './ui';
 
 const EXAMPLE = 'time_s,event\n2.4,pickup\n7.9,release';
 const MODES = [
@@ -162,10 +163,251 @@ function ManualTimestamps({ rows, setRows, videoRef, videoUrl, previewFailed, cu
   );
 }
 
+const fileKey = (f) => `${f.name}-${f.size}-${f.lastModified}`;
+
+/** One or more camera videos of the same moment. The first is the main camera. */
+function CameraFiles({ videos, setVideos, disabled, draft }) {
+  const add = (files) => {
+    const chosen = Array.from(files); // copy now: the input is cleared right after
+    setVideos((vs) => {
+      const known = new Set(vs.map(fileKey));
+      return [...vs, ...chosen.filter((f) => !known.has(fileKey(f)))];
+    });
+  };
+  const remove = (i) => setVideos((vs) => vs.filter((_, j) => j !== i));
+  const makeMain = (i) => setVideos((vs) => [vs[i], ...vs.filter((_, j) => j !== i)]);
+
+  return (
+    <div className="field">
+      <span className="label" id="upload-videos-label">
+        {videos.length > 1 ? `Videos (${videos.length} cameras)` : 'Video'}
+      </span>
+      {videos.length > 0 && (
+        <ul className="camera-files" aria-labelledby="upload-videos-label">
+          {videos.map((v, i) => (
+            <li key={fileKey(v)} className="camera-file">
+              <VideoCameraIcon size={16} aria-hidden="true" className="muted" />
+              <span className="truncate" title={v.name}>
+                {v.name}
+              </span>
+              {videos.length > 1 &&
+                (i === 0 ? (
+                  <Badge tone="blue">Main camera</Badge>
+                ) : (
+                  <button type="button" className="link-btn" disabled={disabled} onClick={() => makeMain(i)}>
+                    Make main
+                  </button>
+                ))}
+              <button type="button" className="icon-btn push-right" aria-label={`Remove ${v.name}`} disabled={disabled} onClick={() => remove(i)}>
+                <TrashIcon aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input
+        className="file-input"
+        type="file"
+        name="videos"
+        multiple
+        aria-label={videos.length ? 'Add another camera video' : 'Choose video'}
+        accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
+        disabled={disabled}
+        onChange={(e) => {
+          add(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      <DraftStatus draft={draft} />
+      <span className="hint">
+        {videos.length > 1
+          ? 'Filmed at the same time and started together. The player switches to whichever camera sees the arm; times below follow the main camera.'
+          : 'Add more videos of the same moment from other cameras, and the player switches to whichever one sees the arm.'}
+      </span>
+    </div>
+  );
+}
+
+/** How the background video upload is going, and whether the cameras' lengths agree. */
+function DraftStatus({ draft }) {
+  if (!draft) return null;
+  if (draft.status === 'uploading') {
+    return (
+      <div className="draft-status">
+        <div className="progress" role="progressbar" aria-label="Uploading videos" aria-valuenow={Math.round(draft.progress * 100)}>
+          <div className="progress-fill" style={{ width: `${Math.round(draft.progress * 100)}%` }} />
+        </div>
+        <span className="hint">{draft.progress < 1 ? `Uploading ${Math.round(draft.progress * 100)}%…` : 'Reading the videos…'}</span>
+      </div>
+    );
+  }
+  if (draft.status === 'error') {
+    return (
+      <p className="form-error" role="alert">
+        {draft.error}{' '}
+        <button type="button" className="link-btn" onClick={draft.retry}>
+          Try again
+        </button>
+      </p>
+    );
+  }
+  const [main, ...rest] = draft.data.cameras;
+  const mismatched = rest.filter((c) => Math.abs(c.duration_ms - main.duration_ms) > 1000);
+  return (
+    <>
+      <span className="hint text-green">
+        <CheckIcon size={13} aria-hidden="true" /> Uploaded ({formatMs(main.duration_ms)}, {main.width}×{main.height})
+      </span>
+      {mismatched.length > 0 && (
+        <p className="hint text-amber">
+          {mismatched.map((c) => `${c.label} is ${formatMs(c.duration_ms)}`).join(', ')} but {main.label} is{' '}
+          {formatMs(main.duration_ms)}. Cameras are matched from their first frame, so check they started together.
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * Upload the videos in the background as soon as they're chosen, so the next step can
+ * show each camera's frame. The staged upload is discarded if the window closes first.
+ */
+function useStagedUpload(videos, keepRef) {
+  const [draft, setDraft] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const key = videos.map(fileKey).join('|');
+
+  useEffect(() => {
+    if (!videos.length) {
+      setDraft(null);
+      return undefined;
+    }
+    let created = null;
+    let cancelled = false;
+    const xhr = new XMLHttpRequest();
+    const body = new FormData();
+    body.append('video', videos[0]);
+    videos.slice(1).forEach((v) => body.append('extra_videos', v));
+    xhr.open('POST', '/api/uploads');
+    xhr.upload.onprogress = (e) => e.lengthComputable && setDraft((d) => ({ ...d, progress: e.loaded / e.total }));
+    xhr.onload = () => {
+      let res = {};
+      try {
+        res = JSON.parse(xhr.responseText);
+      } catch {
+        // fall through to the status check
+      }
+      if (xhr.status !== 200) {
+        setDraft({ status: 'error', error: res.detail || `Upload failed (${xhr.status}).`, retry });
+        return;
+      }
+      created = res.draft_id;
+      if (cancelled) fetch(`/api/uploads/${created}`, { method: 'DELETE' }).catch(() => {});
+      else setDraft({ status: 'ready', progress: 1, data: res });
+    };
+    xhr.onerror = () => setDraft({ status: 'error', error: 'The upload failed. Check the connection.', retry });
+    setDraft({ status: 'uploading', progress: 0 });
+    // A short wait lets several quick picks (or a reordering) go up as one upload.
+    const timer = setTimeout(() => xhr.send(body), 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      xhr.abort();
+      if (created && !keepRef.current) fetch(`/api/uploads/${created}`, { method: 'DELETE' }).catch(() => {});
+    };
+  }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return draft;
+}
+
+/** What to do with each camera's view: use it, update its photo, or add a new one. */
+function viewChoices(cameras, views) {
+  return cameras
+    .map(({ camera_id }) => {
+      const v = views[camera_id];
+      if (!v?.base) return null;
+      if (v.action === 'new') return { camera_id, action: 'new', name: v.newName.trim() || undefined };
+      return { camera_id, action: v.action, layout_id: v.baseId };
+    })
+    .filter(Boolean);
+}
+
+function CameraViewsStep({ draft, views, setViews, cameraId, setCameraId, visited, error, errorRef }) {
+  const cameras = draft.cameras;
+  const multi = cameras.length > 1;
+  const camera = cameras.find((c) => c.camera_id === cameraId) || cameras[0];
+  const view = views[camera.camera_id];
+  const update = (change) => setViews((vs) => ({ ...vs, [camera.camera_id]: { ...vs[camera.camera_id], ...change } }));
+  const chooseBase = (layoutId) => {
+    update({ baseId: layoutId, base: null });
+    request(`/api/layouts/${encodeURIComponent(layoutId)}`)
+      .then((layout) => update({ base: layout }))
+      .catch((e) => update({ error: e.message }));
+  };
+
+  const keepsView = (v) => v?.base && v.action !== 'new';
+  // Another camera uses the same view; one view can't fit two angles.
+  const sharedWith =
+    multi && keepsView(view)
+      ? cameras.filter((c) => c.camera_id !== camera.camera_id && views[c.camera_id]?.baseId === view.baseId && keepsView(views[c.camera_id])).map((c) => c.label)
+      : [];
+
+  return (
+    <>
+      {multi && (
+        <div className="camera-tabs segmented" role="tablist" aria-label="Cameras">
+          {cameras.map((c, i) => (
+            <button
+              key={c.camera_id}
+              type="button"
+              role="tab"
+              aria-selected={c.camera_id === camera.camera_id}
+              className={`camera-tab ${c.camera_id === camera.camera_id ? 'active' : ''}`}
+              onClick={() => setCameraId(c.camera_id)}
+            >
+              {visited.has(c.camera_id) && <CheckIcon size={13} aria-label="Checked" />}
+              {i + 1}. {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {!view?.info ? (
+        <p className={view?.error ? 'form-error' : 'hint'}>{view?.error || `Comparing ${camera.label} with saved views…`}</p>
+      ) : (
+        <CameraViewFields
+          info={view.info}
+          baseId={view.baseId}
+          onBaseId={chooseBase}
+          base={view.base}
+          action={view.action}
+          onAction={(action) => update({ action })}
+          imageUrl={`/api/uploads/${draft.draft_id}/frame?camera=${encodeURIComponent(camera.camera_id)}`}
+          multi={multi}
+          sharedWith={sharedWith}
+          newName={view.newName}
+          onNewName={(newName) => update({ newName })}
+          fitHeight={multi ? '(100dvh - 600px)' : '(100dvh - 550px)'}
+        />
+      )}
+      {error && (
+        <p ref={errorRef} className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
+const STEPS = ['Video and times', 'Camera views'];
+
 export default function UploadRecordingDialog({ onClose, onUploaded }) {
   const { track } = useJobs();
   const videoRef = useRef(null);
-  const [video, setVideo] = useState(null);
+  const keepDraft = useRef(false);
+  const [step, setStep] = useState(0);
+  const [videos, setVideos] = useState([]); // first one is the main camera
+  const video = videos[0] || null;
   const [videoUrl, setVideoUrl] = useState(null);
   const [currentS, setCurrentS] = useState(0);
   const [durationS, setDurationS] = useState(null);
@@ -174,8 +416,14 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
   const [events, setEvents] = useState(null);
   const [rows, setRows] = useState(() => [row('pickup'), row('release')]);
   const [name, setName] = useState('');
-  const [phase, setPhase] = useState('form'); // form | uploading
+  const [views, setViews] = useState({});
+  const [cameraId, setCameraId] = useState(null);
+  const [visited, setVisited] = useState(() => new Set());
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const errorRef = useRef(null);
+  const draft = useStagedUpload(videos, keepDraft);
+  const draftData = draft?.status === 'ready' ? draft.data : null;
 
   useEffect(() => {
     if (!video) return undefined;
@@ -204,74 +452,148 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
       el.removeEventListener('loadedmetadata', onMeta);
       el.removeEventListener('error', onError);
     };
-  }, [videoUrl, mode]);
+  }, [videoUrl, mode, step]);
+
+  // New videos mean new frames: start the views over.
+  useEffect(() => {
+    setViews({});
+    setVisited(new Set());
+    setCameraId(draftData?.cameras[0].camera_id ?? null);
+  }, [draftData?.draft_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (step === 1 && cameraId) setVisited((v) => (v.has(cameraId) ? v : new Set(v).add(cameraId)));
+  }, [step, cameraId]);
+
+  // Suggest a view for each camera (best match first, one view per camera where possible).
+  useEffect(() => {
+    if (step !== 1 || !draftData) return undefined;
+    let stopped = false;
+    (async () => {
+      const taken = new Set(Object.values(views).map((v) => v.baseId).filter(Boolean));
+      const label = name.trim() || draftData.label;
+      for (const cam of draftData.cameras) {
+        if (views[cam.camera_id]) continue;
+        const set = (value) => !stopped && setViews((vs) => ({ ...vs, [cam.camera_id]: value }));
+        try {
+          const info = await request(`/api/uploads/${draftData.draft_id}/views?camera=${encodeURIComponent(cam.camera_id)}`);
+          const baseId = pickView(info.suggestions, taken);
+          taken.add(baseId);
+          const base = await request(`/api/layouts/${encodeURIComponent(baseId)}`);
+          const newName = `View from ${label}${draftData.cameras.length > 1 ? `, ${cam.label}` : ''}`;
+          set({ info, baseId, base, newName, action: 'use' });
+        } catch (e) {
+          set({ error: e.message });
+        }
+        if (stopped) return;
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [step, draftData?.draft_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The form is long; bring a validation message into view.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [error]);
 
   const issues = rowIssues(rows, durationS);
 
-  const submit = async (e) => {
+  const eventsFile = () => {
+    if (mode === 'file') return events;
+    const filled = rows.filter((r) => r.time !== '');
+    return new File([toCsv(filled)], 'manual-timestamps.csv', { type: 'text/csv' });
+  };
+
+  const next = (e) => {
     e.preventDefault();
-    let eventsFile = events;
-    if (!video) return setError('Choose a video.');
+    if (!video) return setError('Choose at least one video.');
     if (mode === 'file' && !events) return setError('Choose a timestamps file, or switch to Enter manually.');
     if (mode === 'manual') {
       const filled = rows.filter((r) => r.time !== '');
       if (filled.length === 0) return setError('Add at least one pickup or put-down time.');
       if (filled.some((r) => issues.has(r.id))) return setError('Fix the highlighted times first.');
-      eventsFile = new File([toCsv(filled)], 'manual-timestamps.csv', { type: 'text/csv' });
     }
+    if (draft?.status === 'error') return setError('The videos did not upload. Try again, or choose them again.');
     setError(null);
-    setPhase('uploading');
     videoRef.current?.pause();
-    const body = new FormData();
-    body.append('video', video);
-    body.append('events', eventsFile);
-    if (name.trim()) body.append('name', name.trim());
-    try {
-      const res = await fetch('/api/recordings', { method: 'POST', body });
-      if (!res.ok) throw new Error(await errorMessage(res));
-      const job = await res.json();
-      // Skeletons are extracted in the background; the window moves on to the camera view.
-      track(job.name, job.label);
-      onUploaded(job);
-    } catch (err) {
-      setError(err.message);
-      setPhase('form');
-    }
+    setStep(1);
     return undefined;
   };
 
-  const busy = phase === 'uploading';
+  const cameras = draftData?.cameras || [];
+  const loading = cameras.some((c) => !views[c.camera_id]?.base && !views[c.camera_id]?.error);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!draftData || loading) return;
+    setSubmitting(true);
+    setError(null);
+    const body = new FormData();
+    const file = eventsFile();
+    body.append('events', file, file.name);
+    if (name.trim()) body.append('name', name.trim());
+    body.append('views', JSON.stringify(viewChoices(cameras, views)));
+    try {
+      const res = await fetch(`/api/uploads/${draftData.draft_id}/finish`, { method: 'POST', body });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      const job = await res.json();
+      keepDraft.current = true; // it is a recording now
+      // Skeletons are extracted in the background; the window closes.
+      track(job.name, job.label, job.warnings);
+      onUploaded(job);
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  };
+
+  const waiting = step === 1 && (!draftData || loading);
 
   return (
     <Dialog
       title="Upload recording"
       onClose={onClose}
-      width={600}
+      width={step === 0 ? 600 : 1000}
       footer={
-        <>
-          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button className="btn btn-primary" type="submit" form="upload-form" disabled={busy}>
-            <UploadSimpleIcon size={14} aria-hidden="true" />
-            {busy ? 'Uploading…' : 'Upload and continue'}
-          </button>
-        </>
+        step === 0 ? (
+          <>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" type="submit" form="upload-form">
+              Next: camera views <ArrowRightIcon size={14} aria-hidden="true" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn btn-ghost" disabled={submitting} onClick={() => setStep(0)}>
+              <ArrowLeftIcon size={14} aria-hidden="true" /> Back
+            </button>
+            <span className="hint push-right">
+              {cameras.length > 1 && visited.size < cameras.length
+                ? `${plural(cameras.length - visited.size, 'camera')} not checked will use the suggested view.`
+                : 'Skeleton extraction starts when you upload.'}
+            </span>
+            <button className="btn btn-primary" type="submit" form="upload-views-form" disabled={submitting || waiting}>
+              <UploadSimpleIcon size={14} aria-hidden="true" />
+              {submitting ? 'Uploading…' : waiting ? 'Preparing…' : 'Upload'}
+            </button>
+          </>
+        )
       }
     >
-      {(
-        <form id="upload-form" className="form" onSubmit={submit} noValidate>
-          <label className="field">
-            <span className="label">Video</span>
-            <input
-              className="file-input"
-              type="file"
-              name="video"
-              accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm"
-              disabled={busy}
-              onChange={(e) => setVideo(e.target.files[0] || null)}
-            />
-          </label>
+      <ol className="steps" aria-label="Steps">
+        {STEPS.map((label, i) => (
+          <li key={label} className={i === step ? 'active' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>
+            <span className="step-num">{i < step ? <CheckIcon size={12} aria-hidden="true" /> : i + 1}</span> {label}
+          </li>
+        ))}
+      </ol>
+      {step === 0 ? (
+        <form id="upload-form" className="form" onSubmit={next} noValidate>
+          <CameraFiles videos={videos} setVideos={setVideos} disabled={false} draft={draft} />
 
           <fieldset className="field" aria-labelledby="upload-times-label">
             <div className="field-head">
@@ -280,14 +602,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
               </span>
               <div className="segmented" role="group" aria-label="How to provide times">
                 {MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={mode === m.id ? 'active' : ''}
-                    aria-pressed={mode === m.id}
-                    disabled={busy}
-                    onClick={() => setMode(m.id)}
-                  >
+                  <button key={m.id} type="button" className={mode === m.id ? 'active' : ''} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>
                     {m.label}
                   </button>
                 ))}
@@ -302,7 +617,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
                 previewFailed={previewFailed}
                 currentS={currentS}
                 durationS={durationS}
-                disabled={busy}
+                disabled={false}
                 issues={issues}
               />
             ) : (
@@ -313,9 +628,9 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
                   name="events"
                   aria-label="Timestamps file"
                   accept=".csv,.json,.jsonl,.txt"
-                  disabled={busy}
                   onChange={(e) => setEvents(e.target.files[0] || null)}
                 />
+                {events && <span className="hint">Using {events.name}.</span>}
                 <span className="hint">
                   CSV, JSON or JSONL with a time (<code>time_s</code> or <code>media_time_ms</code>) and an event (
                   <code>pickup</code>/<code>grab</code> or <code>release</code>/<code>drop</code>). For example:
@@ -333,19 +648,41 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
               autoComplete="off"
               placeholder="Morning restock…"
               value={name}
-              disabled={busy}
               onChange={(e) => setName(e.target.value)}
             />
             <span className="hint">Defaults to the video's file name.</span>
           </label>
-          <p className="hint">
-            After the upload you'll confirm which camera view it uses. Pose estimation runs in the background; you'll get
-            a notice when it's ready.
-          </p>
+          <p className="hint">Next you'll pick the camera view for each video, then upload. Pose estimation runs in the background.</p>
           {error && (
-            <p className="form-error" role="alert">
+            <p ref={errorRef} className="form-error" role="alert">
               {error}
             </p>
+          )}
+        </form>
+      ) : (
+        <form id="upload-views-form" onSubmit={submit} noValidate>
+          {!draftData ? (
+            draft?.status === 'error' ? (
+              <p className="form-error" role="alert">
+                {draft.error}{' '}
+                <button type="button" className="link-btn" onClick={draft.retry}>
+                  Try again
+                </button>
+              </p>
+            ) : (
+              <DraftStatus draft={draft} />
+            )
+          ) : (
+            <CameraViewsStep
+              draft={draftData}
+              views={views}
+              setViews={setViews}
+              cameraId={cameraId}
+              setCameraId={setCameraId}
+              visited={visited}
+              error={error}
+              errorRef={errorRef}
+            />
           )}
         </form>
       )}

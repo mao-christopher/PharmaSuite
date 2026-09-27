@@ -1,13 +1,13 @@
 import React from 'react';
 import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
-import { JOINT_LABEL, NONE, SESSION_STATES, formatMs, medLabel, regionLabel } from '../lib/format';
+import { NONE, jointNote, jointOffset, SESSION_STATES, formatMs, medLabel, regionLabel } from '../lib/format';
 import { Badge, Card, Empty } from './ui';
 
 const REASONS = {
   too_far: 'Too far from any region',
   ambiguous: 'Overlapping regions',
-  no_confident_hand: 'No wrist visible',
+  no_confident_hand: 'No hand visible',
   nothing_parked_at_counter: 'Nothing parked at the counter',
 };
 
@@ -22,7 +22,7 @@ export function useResolver() {
   return (sessionId) => (open.has(sessionId) ? () => openConfirm(open.get(sessionId)) : null);
 }
 
-export function SignalTable({ rows, layout, empty, resolverFor }) {
+export function SignalTable({ rows, layout, empty, resolverFor, cameras }) {
   if (rows.length === 0) return <Empty>{empty}</Empty>;
   return (
     <div className="table-wrap">
@@ -57,7 +57,10 @@ export function SignalTable({ rows, layout, empty, resolverFor }) {
                       {a.reason && <div className="row-sub text-amber">{REASONS[a.reason] || a.reason}</div>}
                     </>
                   )}
-                  {a.joint && a.joint !== 'wrist' && <div className="row-sub">From the {JOINT_LABEL[a.joint]}</div>}
+                  {jointNote(a.joint, jointOffset(a)) && <div className="row-sub">From {jointNote(a.joint, jointOffset(a))}</div>}
+                  {a.camera_id && cameras?.length > 1 && (
+                    <div className="row-sub">Seen by {cameras.find((c) => c.camera_id === a.camera_id)?.label || a.camera_id}</div>
+                  )}
                 </td>
                 <td className="num">{a.distance != null ? `${(a.distance * 100).toFixed(1)}%` : NONE}</td>
                 <td>
@@ -98,6 +101,7 @@ export default function ActivityLog() {
       <SignalTable
         rows={[...(state.activity || [])].reverse()}
         layout={state.layout}
+        cameras={state.recording.cameras}
         resolverFor={resolverFor}
         empty="No signals applied yet. Press Play to run the recording."
       />

@@ -3,19 +3,39 @@
 ## Status and objective
 
 The agreed product requirements below remain the implementation baseline.
+Status as of 2026-09-26, after PRs #2 (Unity simulation) and #3 (MongoDB, camera
+handoff, and the dashboard branch) merged into `main`:
 
-The `simulation/` Unity project now implements the fixed-camera room, a textured
-rigged technician, stateful bottle handling with navigation and collision guards, offline frame/video export, synchronized
-mock sensor events, calibration, synthetic receiving/prescription fixtures, and
-separate evaluator ground truth. It includes a deliberate occlusion variant and an
-offline evaluation script that calls the existing backend pose helper. See
-[simulation/VALIDATION.md](simulation/VALIDATION.md) for measured results.
+**Implemented**
 
-This covers the simulation feasibility work in milestone 1 and the recording/fixture
-portion of milestone 2. It does not implement the downstream replay/event-fusion
-service, inventory mutations, MongoDB persistence, or working dashboard. The terminal
-in the scene is a visual prop. Generic runtime replay/pause and recovery beyond Unity
-scene playback remain separate work.
+- `simulation/`: a Unity room with a textured, rigged technician. It has stateful
+  bottle handling with navigation and collision guards, and exports offline video.
+  Mock sensor events, calibration, synthetic receiving/prescription fixtures, and
+  evaluator-only ground truth are exported alongside. Measured results are in
+  [simulation/VALIDATION.md](simulation/VALIDATION.md).
+- `backend/`: a FastAPI service that replays uploaded recordings on a server-side
+  media clock and extracts YOLO skeletons in the background. At each signal it
+  matches the hand to a region and applies the inventory rules below once per signal.
+  State lives in MongoDB (see `backend/MONGODB.md`).
+- `backend/dashboard/`: a React dashboard with the player, signal log,
+  notifications, recordings library, inventory, and camera-view setup.
+- Multi-camera recordings. They come from the simulator's bundle format or from
+  uploading several videos. The player switches to whichever camera sees the arm
+  (see `backend/MULTICAMERA.md`).
+- A single upload window: videos, pickup and put-down times, then each camera's shelf
+  boxes. Upload closes the window and extracts skeletons in the background.
+- Proactive stock suggestions: low stock, last bottle, run-out forecast, and
+  batches expiring soon.
+
+**Not implemented or not validated**
+
+- Region association has not been scored against ground truth. That covers the
+  distance threshold, the joint fallbacks, and camera switching. The 10/10 result in
+  `simulation/VALIDATION.md` is a feasibility check on one scripted clip.
+- No real pharmacy footage has been processed.
+- Per-action clips, the real IMU adapter, and real-to-simulation re-enactment are
+  not implemented. The same goes for the mixed real and simulated presentation.
+- The terminal in the Unity scene is a visual prop.
 
 Demonstrate medication pickup, valid temporary counter placement, correct/incorrect
 return, disposal, expiry notification, and transaction-based tablet inventory using
@@ -29,10 +49,10 @@ inventory and prompts employees when input is needed. MongoDB stores state/histo
 | --- | --- |
 | People and handling | One active technician; one bottle handled at a time |
 | Prescription | One active prescription, one medication + strength |
-| Camera | Fixed room-camera POV with visible shelf/counter/disposal regions |
+| Camera | Fixed, calibrated cameras; with several, the player switches to the one that sees the arm |
 | Shelf map | Employee-drawn polygons on the dashboard Setup page (see "Shared camera layout") |
 | Medication identity | Infer from the configured pickup region, not label OCR |
-| Rendering | Moderately realistic human and motions; Unity proposed default |
+| Rendering | Moderately realistic human and motions; Unity 6000.6.3f1 |
 | Execution | Offline-rendered footage replayed through actual YOLO pose inference |
 | Sensor input | Synchronized mock pickup/movement/release events |
 | Tablet stock | Pool across all bottles of each medication + strength |
@@ -56,9 +76,8 @@ Employee confirmations and corrections -------------------------------> inventor
                                                                          MongoDB + dashboard
 ```
 
-Use Python for the existing inference pipeline and proposed event/inventory service.
-A small web dashboard is proposed; exact API/UI frameworks are implementation
-choices, not user commitments. Start with replayable files before streaming.
+The inference pipeline and event/inventory service are Python (FastAPI); the
+dashboard is React (Vite). Recordings are replayable files; live streaming is future work.
 
 The simulator may know exact bottle and joint transforms for animation and scoring.
 The runtime receives only rendered video, legitimate mock sensor events, configured
@@ -241,9 +260,14 @@ JSON, or JSONL; `time_s` or `media_time_ms`; `pickup`/`grab` and `release`/`drop
 standing in for wearable IMU signals. Each pickup opens a movement session and the
 next release closes it. On upload, YOLO11n-pose runs over every frame in the
 background and stores the most confident person's 17 keypoints in `poses.json`.
+Inference runs at 960 px on the long side (`POSE_IMGSZ`, decided 2026-09-26; was the
+640 default), which finds distant people more often at roughly twice the processing
+time. The stored video is never resized, and `poses.json` records the size used.
 
-- At each signal, both wrists are taken from the frame at the signal's media time
-  (or the nearest frame within 3 frames that shows a confident wrist, conf >= 0.35).
+- At each signal, both wrists are taken from the frame at the signal's media time,
+  or the nearest frame within 5 before or after it, when confident (conf >= 0.35).
+  Fallbacks when no wrist qualifies are under "Multi-camera uploads, hand fallback,
+  upload order, and stock suggestions" below.
 - The region nearest either wrist wins: distance 0 inside a polygon, otherwise
   distance to its edge as a fraction of the frame diagonal. Pickups consider shelves
   and counters; releases also consider disposal regions.
@@ -272,16 +296,19 @@ Uploaded recordings are kept in `data/scenarios/upload-*` with their metadata
 and listed on a Recordings page. Inventory is one live state that carries across
 recordings instead of resetting per recording.
 
-- Live state is saved to `data/state/pharmacy.json` (atomic write, gitignored) after
-  every change and reloaded on server start. This JSON store stands in for MongoDB;
-  moving it into the collections above remains open.
+- Live state was first saved to `data/state/pharmacy.json`. It now lives in one
+  revision-checked MongoDB document per pharmacy; the JSON file is imported once
+  and kept as a backup (see "MongoDB workflow and camera handoff" and
+  `backend/MONGODB.md`).
 - A recording's signals change inventory the first time the playhead passes them, or
   all at once with "Apply". Applied event IDs are recorded per recording, so replays,
   seeks backward, restarts, and repeated Apply calls never apply a signal twice and
   never undo one. Movement sessions are namespaced `<recording>:<session>` because
   every upload numbers its sessions from `sess_001`.
-- Recordings apply in whatever order they are played or applied, not by capture time.
-  A partially played recording leaves its bottle in hand until the rest is applied.
+- Superseded 2026-09-26: uploads are assumed to have happened in upload order (see
+  below). Playing or applying still works in any order; Apply offers to catch up earlier
+  uploads first. A partially played recording leaves its bottle in hand until the rest
+  is applied.
 - Deleting an uploaded recording removes its files; inventory changes it made stay.
   Bundled fixtures cannot be deleted.
 - "Reset to opening stock" restores the layout's preset batches, clears alerts,
@@ -291,11 +318,10 @@ recordings instead of resetting per recording.
 
 Use unique IDs and atomic/idempotent processing so replay, retries, and restart do
 not repeat mutations. Keep event acceptance and its stock update consistent across
-crashes. Choose a MongoDB transaction-capable setup or a documented recoverable
-event-ledger approach before implementing multi-document writes. The JSON store
-writes the whole state in one atomic replace, so an event and its stock update land
-together; a crash between applying and saving can lose the latest change but not
-split it.
+crashes. The MongoDB store writes the whole pharmacy state (counts, applied event
+IDs, history) in one revision-checked document replace, so an event and its stock
+update land together. A long-running service would need to split that ledger before
+MongoDB's document size limit (see `backend/MONGODB.md`).
 
 ## Implementation milestones
 
@@ -376,7 +402,7 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 
 - The simulator uses Unity 6000.6.3f1, the MIT-licensed Microsoft Rocketbox Medical_Male_03
   character, procedural animation, and a fixed camera recorded at 1920 x 1080 / 30 FPS.
-  Dashboard framework and production CV thresholds remain to be selected.
+  The dashboard is React; production CV thresholds remain to be selected.
 - Unity is implemented for the simulation. The measured prototype results are in
   the simulation validation report; they do not establish real-camera performance.
   Prerecorded playback separates rendering from inference.
@@ -389,13 +415,16 @@ few scripted clips. Passing simulated clips does not establish real-camera accur
 - Real IMU timing, release detection reliability, and attachment/identity conventions
   require agreement with the separate hardware effort before real integration.
 - The wrist is a proxy for the bottle. Shelf depth, which hand holds the bottle, and
-  occlusion are not modeled; the nearest-region rule and its distance constant have
-  not been evaluated against ground truth on rendered footage.
+  occlusion are not modeled. The nearest-region rule, its distance constant, and the
+  elbow and nearest-wrist fallbacks have not been evaluated against ground truth on
+  rendered footage. A nearest wrist can be up to 1 s before or after the signal; the
+  hand may have moved in between.
 - Only the most confident person per frame is tracked; a second person in view can
   be picked instead of the technician.
-- Live inventory now depends on the order recordings are applied. Clips recorded out
-  of order, or applied twice under different uploads of the same footage, will be
-  counted as separate real events.
+- Decided 2026-09-26: every upload is a new set of real events, even identical
+  footage uploaded twice, and upload order is the order they happened. Uploading
+  clips out of order, or uploading footage by mistake, therefore changes stock. The
+  fix is a correction or a reset, not deduplication.
 
 ### Camera views, joint fallback, and manual stock actions (implemented)
 
@@ -415,11 +444,10 @@ Decided 2026-09-26.
   regions cannot drift between annotation and playback. Setup also warns when a view's
   photo and its recordings differ in shape, and can take a recording's frame as the
   photo or crop an imported photo to the recordings' aspect ratio.
-- **Joint fallback.** At each signal the hand position comes from the wrists, else the
-  elbows, else the shoulders, each searched within 3 frames. Elbows and shoulders are
-  coarser proxies for the bottle and have not been evaluated; the joint used is shown
-  in the signal log and confirmation dialog. If no joint is visible (seen in a Unity
-  clip where no person is detected around the pickup), the employee confirms.
+- **Joint fallback.** Superseded 2026-09-26 by the chain under "Multi-camera uploads,
+  hand fallback, upload order, and stock suggestions": shoulders are no longer used,
+  and a recently seen wrist is tried last. Signals applied before the change keep the
+  joint they were recorded with.
 - **Confirmation.** The dialog lists regions nearest first with their distances, and
   settles a pickup and its held put-down in one step. Confirmed rows in the signal log
   show the employee's choice; the original evidence stays in the history.
@@ -490,6 +518,534 @@ The 106-second recording switches at 6.033 s and 33.833 s; 75 frames have no rel
 arm in the selected view and remain uncertain. All 10 scripted bottle-action regions
 were correct in the integrated inventory replay, with no action abstentions/wrong
 regions. MongoDB state and applied-event counts remained unchanged after replay and
-controller restart. This does not validate real-camera performance. The multi-camera
-upload form and unsynchronized live capture remain future work; synchronized groups
-are generated/imported using the documented bundle format in `backend/MULTICAMERA.md`.
+controller restart. This does not validate real-camera performance. Multi-camera
+uploads were added afterwards (see the next section); unsynchronized live capture
+remains future work. Simulator groups use the bundle format in `backend/MULTICAMERA.md`.
+
+## Multi-camera uploads, hand fallback, upload order, and stock suggestions (implemented)
+
+Decided 2026-09-26. The thresholds below are unvalidated demo defaults.
+
+- **Multi-camera uploads.** The upload window accepts several videos of the same moment
+  plus one timestamps file. The first video is the main camera: its clock drives the
+  player and the timestamps, and any other can be made main. The cameras are assumed
+  to start together; they may differ in frame rate or length, and a camera is treated
+  as having no view once its video ends. A difference over 1 s is shown as a warning.
+  Each camera gets the most similar saved view, preferring one no other camera of the
+  upload uses, and a camera's recordings follow its view's current calibration. Simulator bundles still pin a
+  calibration version and require identical clocks.
+- **One upload window** (decided 2026-09-26). Everything happens before the upload
+  finishes, so a recording never needs revisiting to draw boxes:
+  1. *Video and times.* Choosing videos starts uploading them to a draft
+     (`POST /api/uploads`, kept under `scenarios/.drafts/`) while the employee marks
+     pickup and put-down times on the main camera's preview, types them, or picks a
+     timestamps file.
+  2. *Shelf boxes.* Each camera's first frame, with its most similar saved view,
+     preferring one no other camera uses. The employee can switch views or adjust
+     boxes. Edited cameras are saved as a new view (default) or as an update to that
+     view. Unchanged or unopened cameras use their view as is.
+
+  Upload (`POST /api/uploads/{id}/finish`) checks the times and choices first, so a
+  rejected request keeps the draft to fix. It then turns the draft into a recording
+  with every camera's view confirmed, starts skeleton extraction, and closes the
+  window. Progress shows in the top bar, then as a toast. Cancelling or closing the
+  window deletes the draft. Drafts left by a closed browser tab are deleted after
+  24 h. The one-request `POST /api/recordings` still works; its views stay
+  unconfirmed and are reviewed from Recordings, where any recording's views can
+  still be changed later.
+- **Where the hand is at a signal.** Each step is tried only when the previous one
+  finds nothing:
+  1. Camera switching (`backend/MULTICAMERA.md`): the selected camera's complete
+     arm, meaning shoulder, elbow and wrist at confidence >= 0.5.
+  2. Any confident wrist, then any confident elbow (>= 0.35). Each is looked for in
+     the signal's frame, then outwards up to 5 frames before or after it (earlier
+     first on ties), in every camera: the selected camera first, then the others by
+     arm score.
+  3. The nearest confident wrist before or after the signal, within 1 s: its last
+     or next known position.
+  4. Nothing: the employee confirms the location. Anything needing more than 1 s
+     either way lands here (decided 2026-09-26).
+
+  A single camera runs the same chain without step 1. Steps 2 and 3 read frames after
+  the signal, which is fine because recordings are processed before they play; camera
+  selection itself still never looks ahead. Shoulders are not used.
+
+  A person missing from the start of a clip, or from every camera, gives step 4 with
+  no error. The signal log shows which camera was used and when the hand came from
+  an elbow or a wrist seen earlier or later (with how far). The engine's distance
+  threshold still decides whether the position is confident enough to act on.
+  Activity rows store the offset as `joint_offset_ms` (negative means before);
+  earlier rows stored `joint_age_ms`.
+- **Upload order.** Every upload is a new set of events, even the same footage again.
+  Uploads are numbered in upload order, which is taken as the order they happened.
+  Applying a recording while earlier uploads still have unapplied signals asks
+  whether to apply those first, oldest first; "Only this one" is still available.
+- **Simulator event files.** Timestamp files may contain the simulator's `movement`
+  samples. They are skipped, since they carry no location, and the original file
+  is saved beside the recording as `events-source.*`.
+- **Stock suggestions.** Derived from live stock on every read, not stored, so they
+  never duplicate. They change nothing; alerts still come from the inventory rules.
+  - *Running low:* tablets at or below the medication's reorder point. The default is
+    20% of opening stock; it can be set per medication on Setup.
+  - *Last bottle:* one bottle left, which replaces "Running low".
+  - *Forecast to run out:* at the average of the last 14 days' prescription
+    deductions, stock lasts fewer than 7 days. This needs the new `deducted_at` time
+    on prescriptions, so deductions made before this change don't count.
+  - *Expiring soon:* a batch with bottles left expires within 30 days, marked urgent
+    within 7 days. If nothing else would be left, or only one bottle, it says to
+    order more.
+
+  "Dismiss" hides a suggestion until it changes. The expiry suggestion comes back
+  when it escalates to the 7-day stage; the stock suggestions come back after a new
+  batch is received. Dismissals are stored with the pharmacy state and cleared by a
+  reset.
+
+## Real footage and the simulation (direction)
+
+Recorded 2026-09-26 as context; nothing in this section is implemented.
+
+The intended flow starts with real footage plus a pickup and put-down signal. The
+real footage gets the CV annotations: skeleton, regions, and the decided shelf. A
+Unity re-enactment of the same actions highlights which shelf or bottle was picked up
+and where it was put down. The final demo cross-fades between real and simulated
+footage; that edit is separate work. For now the simulation is rendered first and
+then repeated in real life. Either way the pipeline uses only what real film would
+provide: video and signals. It never uses Unity calibration or rig truth.
+
+Proposed path for real-to-Unity, simplest first:
+
+1. **Event-driven re-enactment (recommended).**
+   - The dashboard exports the confirmed action timeline of a recording: time, pickup
+     or put-down, region and medication.
+   - The Unity simulation plays those actions through its existing guarded action
+     system, walking to the shelf, picking and placing, and highlights the shelf,
+     bottle and destination.
+   - This needs a timeline export endpoint and a table mapping each dashboard region
+     to a Unity shelf or region. On the Unity side it needs the "configurable
+     scenario format" from "Task flexibility" above, plus slack in the schedule for
+     walking time.
+   - Only the action moments line up with the real clip, not body motion.
+   - Moderate effort, mostly on the Unity side.
+2. **Motion reconstruction (not recommended for the demo).**
+   - Lift the real 2D keypoints to 3D with a monocular human pose or mesh model, then
+     retarget them onto the Rocketbox rig in a Unity room built to match the real one.
+   - This needs real camera intrinsics and extrinsics, a matched room model, and
+     foot-contact cleanup.
+   - Research-grade effort, with visible artefacts likely.
+
+## Room scan, camera registration and floor track (implemented M1–M4) — 2026-09-26
+
+Plan A from the real-footage discussion: scan the room once with a LiDAR iPhone, tag
+shelves on the scan, register one fixed camera by clicking matching points, then
+place the technician on the floor from the skeleton alone. IMU events still give
+pickup and put-down timing. Unity playback of this track (M5 onward) is not built.
+Everything here is presentation data: inventory, events and alerts never read rooms,
+3D regions, registrations or floor tracks.
+
+Decisions agreed with the user:
+
+- One camera. If the technician isn't seen, nothing is inferred: the map holds the
+  last position greyed out while bottles and highlights keep following whatever the
+  dashboard decided.
+- On reappearing: a quick blend if they moved a little, otherwise a cut. This is for
+  Unity playback, so it isn't built yet.
+- The lens is solved from the clicked points. Film a calibration board only if the
+  overlay shows that isn't accurate enough.
+
+What is built:
+
+- **M1 scan import:**
+  - `POST /api/rooms` takes an uncompressed GLB (Polycam or 3D Scanner App export)
+    and stores `data/rooms/<id>/` (git-ignored): `room.json`, `mesh.glb`, `plan.png`
+    and `obstacles.png`.
+  - The scan is leveled: the floor is fitted, tilt of 10° or less is corrected, walls
+    are turned onto X/Z, and the floor is set to y = 0. It is never rescaled.
+  - Draco/meshopt-compressed files and scans without a floor are rejected with a
+    message.
+- **M2 3D tagging (Room page, Shelves & regions):**
+  - Two clicks on the scan make a box. A vertical face gives a box 35 cm deep into
+    the shelf, turned to face out; a horizontal top gives a box rising 35 cm.
+  - Numeric fields adjust center, size and turn.
+  - Rules match the 2D layout: shelf IDs are `shelf_<key>`, one shelf per
+    medication, and only configured medications.
+  - Saves are versioned; a stale save gets 409.
+- **M3 camera registration (Room page, Cameras):**
+  - Pairs are clicked in the view's photo and the scan, in either order.
+  - With 6 or more pairs the solve runs automatically: a focal-length search with the
+    principal point at the image center, square pixels and no distortion, then
+    SQPnP and LM refinement.
+  - It reports the average and worst reprojection error for each pair, and draws the
+    reprojected points, region edges, a 50 cm floor grid and a see-through scan over
+    the photo.
+  - A registration belongs to one room. Saving bumps its revision, and the page
+    warns when the view's photo changed after registration.
+- **M4 floor track and minimap (Dashboard, Floor map):**
+  - `GET /api/recordings/{name}/floor-track` runs on the recording's cached
+    skeletons. The result is cached in `floor_track.json` and keyed to the poses
+    file, room version and registration revision.
+  - **Position:** the ankle-midpoint ray meets the plane 8 cm above the floor. When
+    the feet are hidden, the hip ray meets the measured hip height.
+  - **Facing:** the best of 72 yaws at matching the projected shoulders and hips,
+    with a face-visibility term. Travel direction blends in while walking.
+  - **Clean-up:** jumps are rejected, gaps of up to 10 frames are bridged,
+    smoothing is applied, and positions are pushed off furniture onto free floor.
+  - The map shows the plan, region footprints, the camera and its field of view, the
+    technician's dot and facing arrow, a 2 s trail, and a greyed-out "not in view,
+    holding" state.
+
+Assumptions and constants (proposed, **not validated on real footage**):
+
+- Ankle keypoint 0.08 m above the floor.
+- Default hip height 0.95 m (measured per recording when the feet are seen).
+- Shoulder half-width 0.18 m and hip half-width 0.13 m.
+- Face confidence: 0.5 or above counts as seen, 0.2 or below as hidden.
+- Bridge gaps of up to 10 frames. Reject jumps over 0.4 m against a 7-frame median.
+- Smoothing σ: 0.10 s for position and 0.15 s for yaw.
+- Obstacles are anything 0.15–1.8 m high, on a 2 cm plan grid.
+- Registration quality: RMS of 0.4% of the image diagonal or less is "good", 1% or
+  less is "check", anything above is "poor".
+
+Measured so far (synthetic only; a perfect skeleton that matches the model's own
+assumptions, so these are **not accuracy claims**):
+
+- Unit tests recover the true focal length and pose, and put people within a few
+  centimetres and a few degrees at every yaw, including with the feet hidden.
+- A browser check through a separate, isolated server:
+  - Setup: a synthetic scan, a rendered 1280×720 "photo", and 17 pairs clicked with
+    1.5 px of simulated noise.
+  - Registration came out "good": 2.2 px RMS and 5.4 px worst, with a 71° field of
+    view against the true 70.8° and a camera height of 2.40 m.
+  - A 12 s synthetic walk was placed in 96% of frames. The gap of 15 hidden frames
+    stayed unplaced (held in grey on the map) rather than being guessed.
+- Real accuracy is unknown until a real scan and recording are registered. Check the
+  overlay first: if shelf edges and the floor grid visibly miss the photo, add pairs
+  farther apart, and film a calibration board only if that fails.
+
+Scan-capture checklist:
+
+- Use LiDAR mode and walk slowly. Keep the floor in frame, and cover the shelf fronts,
+  the counter and everything the camera sees.
+- Export GLB **without** Draco/mesh compression.
+- For registration, pick points spread across the image and at different heights:
+  floor tape marks and corners, shelf corners, and counter-top corners. Two or three
+  above the floor help fix the lens.
+
+Not built yet: Unity playback of the floor track (M5 onward), multi-camera floor
+tracks, and lens distortion. Distortion is to be added only if the overlay shows it
+matters.
+
+## Next steps after M1–M4 — 2026-09-26
+
+### Status (updated 2026-09-26)
+
+- **N0:** the user tested the real-footage flow and reported it "works well". That is
+  the user's judgement, not a measurement: the proposed 15 cm / 0.5 s / 90% bar below
+  has not been measured on real footage.
+- **N1 built:** Setup is removed (`/setup` redirects to `/room`). The Cameras tab
+  stacks the photo over the 3D scan. Views are created, renamed and deleted there;
+  photos are uploaded or taken from a recording frame. After a new photo the old
+  registration's overlay is drawn on it and "Keep registration" re-saves the same
+  pairs, allowed only when the aspect ratio is unchanged (verified: identical pose,
+  no calibration bump). Medications and opening stock moved to an Inventory section.
+  The two-camera upload was checked in a browser against an isolated server: camera 1
+  used the generated regions and camera 2 became a new view with no regions.
+- **N2 built:**
+  - 2D regions are generated from the 3D boxes (`box-visibility/1`). Hand-drawn
+    edits to a generated view are refused.
+  - The simulator's side: `backend/src/pharma/services/sim_scene.py` and
+    `backend/scripts/import_sim_room.py` turn a render's `scene_geometry.json`
+    (format in the module docstring) into a room. The solid boxes become the mesh;
+    the regions become 3D boxes with their fronts facing the camera; the Unity
+    camera becomes a registration from exact projected corners.
+  - A round-trip test through the API recovers the Unity projection. Registration
+    RMS is under 0.05 px, and region corners reproject within 0.5 px.
+  - Sim medication IDs are matched to catalog keys by letters and digits. Regions
+    whose medication isn't in the catalog are skipped and reported.
+  - The Unity exporter that writes `scene_geometry.json` is delegated with M7/M8.
+- **N3 evaluated on rendered footage:** `simulation/tools/evaluate_floor_track.py`
+  (evaluator-only) scores a floor track against `simulation_states.jsonl` (body
+  position) and the rig's shoulders and hips, unprojected with the exact camera. It
+  reports cm/degree medians, p90 and max per source (ankles, hips, bridged), placed
+  fraction, and facing flips over 90°. A synthetic test checks the axis conversion.
+  A fresh local replay placed 83.21% of 3,180 frames. Position error was
+  4.75 cm median / 9.53 cm p90; facing error was 6.3 degrees median /
+  42.23 degrees p90, with 41 frames over 90 degrees. Facing remains a limitation.
+  See the scan-to-simulation validation section for provenance and limits.
+- **N4 built:** `rebuild/2` (`services/room_rebuild.py`, `GET /api/rooms/{id}/rebuilt`,
+  and the Scan/Rebuilt toggle). Fixture measurements only: walls fall 0–11 mm from
+  the scanned inner faces, the 0.9 m doorway is found, board heights are within 1 cm
+  and the colours match within 12/255. Nothing has been measured on a real scan.
+- **M5 built:** `GET /api/recordings/{name}/timeline` writes the recording's
+  `timeline.json` (`timeline/1`, `services/timeline.py`). It holds:
+  - the floor track, the room's regions, medications, every camera's registration
+    and the rebuilt room
+  - one action per wearable signal
+  - bottle counts before the first signal
+
+  Details:
+  - Actions carry the signal's event ID, contact time, bottle (movement session),
+    status (`decided`, `confirmed`, `pending` or `not_applied`), region, and outcome
+    (`in_hand`, `returned`, `misplaced`, `counter`, `disposed` or `pending`).
+  - A pending action has no region, only `suggested_region_id`.
+  - Starting counts come from a snapshot taken at the recording's first applied
+    signal. Recordings applied before this change fall back to current counts and
+    say so (`current_after_recording`).
+  - The file is byte-identical for the same inputs. `inputs_key` is a cheap hash of
+    the same inputs, used to key renders.
+- **M6 built:** `PharmacySimulation.cs` is split into `RoomDescription.cs` (room
+  data), `MotionSource.cs` (`IMotionSource`; `PlannedWalk` is the existing route) and
+  `ActionSchedule.cs` (cues, ownership, commits). Pose validation stays in the host.
+  - Prior-session baseline: the demo re-rendered with byte-identical rig skeleton, per-frame states,
+    calibration and fixtures. IMU events and ground truth are identical once the
+    per-run IDs are removed. SimulationChecks passes with the same metrics.
+  - Frames are not byte-identical, even between two renders of the unchanged code:
+    font rasterization varies from run to run. The measured noise is a mean pixel
+    difference of 0.0015 (about 120–150 of 2.07 M pixels per frame, on sign text).
+    The refactor stayed within that noise. A fresh local post-host-edit comparison
+    of all 3,180 raw frames measured 0.000802 mean pixel difference, with identical
+    states and sensor schedule; collision checks passed again.
+- **M7/M8 implemented and preview-verified:** static scene export/import, registered
+  camera, rebuilt-room scene, floor-track player, and `render.py --timeline`.
+  The 65-frame action preview shows 7 reaches, 2 counter highlight fallbacks and
+  1 state-follow fallback, with zero guard holds or refused reaches.
+  Cutaway walls retain colliders; thin shelf tags extend over furniture; bottle
+  selection preserves medication identity; tagged rows reuse nearby scanned boards.
+  The full 3,180-frame product render passed with the same results.
+  Full product-render results are recorded in `simulation/VALIDATION.md`.
+- **M9 backend, UI and Unity renderer implemented:**
+  - Queue (`services/render_jobs.py`): one render at a time, queued and cancellable,
+    keyed on `inputs_key` so the same inputs reuse the finished render. Verified
+    through the live API and player; an edited region marks the result stale. Each queued
+    job owns an immutable timeline snapshot; later exports cannot change its inputs.
+    POSIX cancellation terminates the wrapper and its Unity/encoder process group.
+  - Output per render: `sim.mp4`, `side_by_side.mp4` and `manifest.json` (input and
+    output hashes, requested vs rendered fps/frames, the renderer's report).
+  - Staleness: after a correction or new signals the render is marked stale and the
+    button reads "Re-render".
+  - The button is on Recordings rows and in the player header, beside a Real /
+    Simulation / Side by side switch. That switch is server-side, on the shared
+    clock, and every rendered frame is labelled "Simulation re-enactment (not camera
+    footage)". Render jobs also appear in the top-bar job indicator.
+  - Configuration: `UNITY_PATH` (and optionally `SIMULATION_DIR`). Without it the
+    button is disabled and says why.
+  - Checks: tests use a fake renderer, and a browser check used a stand-in render
+    script. The real Unity `render.py --timeline` mode is part of the delegated
+    M7/M8 work.
+
+Decisions from review:
+
+- **The 3D room tags are the only tags.** Nobody draws 2D polygons any more.
+- **The Setup page goes away.** Everything it does moves to the Room page, except
+  medications and opening stock (see N1).
+- **Unity uses a clean room rebuilt from the plan and the region boxes**, not the raw
+  scan mesh. It must carry enough real detail to be recognizably the same room,
+  reskinned.
+- **The Unity character keeps its default size.** No height scaling.
+- **A "Render simulation" button** starts the Unity render from the dashboard.
+- **On the Room page Cameras tab:**
+  - The photo and the 3D scan are stacked vertically, each full width, instead of
+    side by side.
+  - A new camera photo can be uploaded there directly.
+
+### N0 — Real-footage check (in progress, user testing)
+
+- Run the full flow on the real room:
+  - scan with tape crosses on the floor
+  - register the camera
+  - a 20 s standing test on the crosses, facing marked directions
+  - one normal workflow recording
+- **Proposed bar for moving to the Unity work** (awaiting confirmation; not validated):
+  - about 15 cm median position error
+  - no facing flips longer than 0.5 s while standing at a shelf
+  - technician placed in 90% or more of frames
+- **Likely first fixes:**
+  - a lighter browser copy of large scans (clicking lags on million-triangle meshes)
+  - lens distortion, if shelf edges drift toward the image edges
+  - following the same person across frames, so a passer-by can't take over the track
+  - warning when a recording's frames no longer match the registered view
+
+### N1 — Room page becomes the only setup page; Setup is removed
+
+**Cameras tab:**
+
+- **Layout:** the photo on top and the 3D scan below, both full width. The pair list
+  and solve results stay in the side panel. Clicking a pair highlights it in both views.
+- **Camera views are managed here:** create, rename and delete, moved from Setup.
+- **Photo sources:**
+  - "Replace photo" (upload a PNG or JPEG)
+  - "Use a recording frame…", which takes a frame from any recording of this camera
+  - The size-mismatch warning moves here too: a recording whose frame size differs
+    from the photo gets a warning and a "Use its frame" action.
+- **Replacing the photo of a registered camera:**
+  1. Draw the existing registration's overlay on the new photo.
+  2. If the shelf edges and floor grid still line up, the employee keeps the
+     registration and nothing is re-solved.
+  3. If they don't (the camera moved), clear the pairs and re-register.
+  - This way a new photo never silently invalidates a registration, and never
+    silently keeps a wrong one.
+
+**Medications & opening stock** (catalog, receiving records, expiry and lot numbers):
+
+- **Default home:** a new section of the Inventory page, since this is stock data, not
+  room layout.
+- The Room page's shelf medication picker links there.
+
+**Removing Setup:**
+
+- Remove the page and its nav link. `/setup` redirects to `/room`.
+- Update every link that points to Setup, for example the ones on the Room page and in
+  the upload dialog.
+- Delete `RegionEditor` only after N2 has landed and nothing uses it.
+- **Test:** the upload flow still works end to end with no Setup page, including new
+  camera views created during a multi-camera upload.
+
+### N2 — 3D tags become the only tags (2D regions are derived)
+
+The inventory pipeline still associates wrists with image regions, so its logic stays
+the same. The difference is where the polygons come from:
+
+- For each registered camera, they are generated from the room's 3D boxes and saved
+  into that view's `layout.json` as they are today.
+- Each generated region records where it came from: `room_id`, `room_version` and the
+  registration revision.
+- The view's `calibration_version` goes up whenever the generated polygons change.
+- Existing observations keep identifying their camera and calibration version
+  (AGENTS rule 15).
+
+**How the polygons are made:**
+
+- Project each box and clip it to the camera's view and the frame. Planned default:
+  the outline of the box's front face plus its top face.
+- **Overlapping shelves** (a near shelf covering a far one in the image) need a
+  decided rule:
+  - Option A: the nearer region wins the overlap.
+  - Option B: keep both, and let the existing ambiguity path ask for confirmation.
+  - This is decided by the regression comparison below, not assumed.
+- **A camera with no registration has no regions.** Its events can't be placed, so
+  they stay uncertain and ask for confirmation (AGENTS rule 6). The upload dialog tells
+  the employee to register the new camera on the Room page.
+- **Legacy views** keep their hand-drawn polygons, read-only, until registered. The
+  first registration replaces them after showing a preview.
+
+**Validation:**
+
+- **Regression comparison.** Replay the existing recordings twice, once with the
+  hand-drawn polygons and once with the generated ones. Compare region decisions and
+  confidence, and report changed decisions separately from new abstentions.
+- **Tests:**
+  - projection and clipping
+  - a box behind the camera or partly out of frame
+  - overlap handling
+  - `calibration_version` bumps
+  - idempotent regeneration: the same inputs give the same polygons and no bump
+  - no regions for an unregistered camera
+- **Simulated footage needs a room too.** The Unity exporter writes `room.json`
+  (exact shelf boxes) and a registration built from the exact Unity camera, so
+  rendered recordings follow the same 3D-only path. This is shared with N3.
+
+### N3 — Floor-track accuracy on the existing simulation (small)
+
+- Run the floor track on the existing Unity render, using the exact room and camera
+  from N2's exporter.
+- Compare it with the rig truth, which is used for evaluation only and never enters
+  the track.
+- Report position error (cm) and facing error (degrees), split by ankle and hip
+  source.
+- This also exercises the Unity-to-room axis conversion that M7 needs in reverse.
+
+### N4 — Clean room rebuild ("reskin")
+
+Built in Python, as a data file. Unity (M7) only turns it into objects, and the Room
+page previews it with a **Scan / Rebuilt** toggle, so problems show up before any
+Unity work.
+
+**Detail that makes it recognizably the same room:**
+
+- **Walls:** traced from the plan outline, with the real height from the scan bounds.
+  Gaps in the trace are kept as openings (doorways).
+- **Shelf units:** each tagged shelf box becomes a shelving unit. The number and heights
+  of its boards come from the scan's horizontal surfaces inside the box. It gets a
+  medication label on its front.
+- **Counter and disposal:** built from their boxes (top, base, bin).
+- **Untagged furniture:** the plan's other obstacle shapes become simple blocks with
+  their measured height, so nothing is missing.
+- **Colors:** sampled from the scan texture (the average color of floor, walls, shelves
+  and counter), so the palette matches the real room. A plain floor and the measured
+  materials, no photo textures.
+- **The camera** is placed from its registration, so the rebuilt view matches the
+  photo's framing.
+
+**Checks:**
+
+- The rebuilt objects stay within the scan: walls within a few cm of the scanned wall
+  surfaces, shelves inside their tagged boxes.
+- The side-by-side preview against the photo is judged by eye.
+
+**Walking area:** the obstacle grid plus the rebuilt objects. The noisy scan mesh
+never becomes a collider.
+
+### M5–M9 — Unity re-enactment (updated)
+
+- **M5 Timeline export:**
+  - Contents: floor track, confirmed actions (pending ones stay pending), starting
+    bottle counts per shelf, and the rebuilt room and camera.
+  - Nothing evaluator-only goes in.
+  - Idempotent, with stable event IDs.
+- **M6 Unity refactor, no behavior change:**
+  - Split `PharmacySimulation.cs` into three parts: the room description, where the
+    motion comes from (its own planned walk, or a floor track), and the pickup and
+    put-down actions.
+  - The existing demo must re-render identically.
+- **M7 Scene from the rebuilt room:**
+  - Unity builds the scene from N4's primitives. Importing the scan mesh (and the
+    glTF package that would need) is no longer required.
+  - Includes collision layers, regions, bottles and the registered camera.
+  - Alignment check: project the registration points in Unity; they must match the
+    photo within a few px.
+- **M8 Re-enactment player:**
+  - The character follows the track and turns with the tracked facing.
+  - The reach starts about 0.6 s before each wearable contact time.
+  - If the target is just out of reach, the character leans or steps up to 0.3 m.
+    Beyond that it only highlights the region, never showing a completed put-down.
+  - Bottles keep their original medication identity. A misplaced bottle is shown in
+    red, a counter placement in amber, disposal in gray, and a pending decision as
+    translucent with a "?".
+  - While the technician is out of view, the body holds its last position and
+    bottles and highlights follow the dashboard. On reappearing it blends if they
+    moved under 1 m, otherwise it cuts.
+- **M9 Render and the "Render simulation" button:**
+  - **Where:** a button on each recording, on the Recordings page and in the
+    dashboard player.
+  - **Job:**
+    - It runs in the background through the existing job indicator: export the
+      timeline, build the scene, render at the recording's exact fps, frame size and
+      duration, then package.
+    - One render at a time, because the Unity project allows only one editor
+      instance. Other renders wait in a queue, and a render can be cancelled.
+  - **Needs:** a licensed Unity editor on the server machine, configured through an
+    environment variable (`UNITY_PATH`). Without it, the button is disabled and says
+    why.
+  - **Output:**
+    - `sim.mp4`, plus a real-vs-sim side-by-side for checking alignment, and a render
+      manifest with the input hashes.
+    - The player gets a Real / Simulation / Side-by-side switch. The cross-fade edit
+      stays separate (AGENTS rule 16).
+  - **Stale renders:** if the decisions, room or registration change after a render
+    (for example an employee correction), the render is marked stale and the button
+    becomes "Re-render". Rendering the same inputs again reuses the result.
+
+### Order and rough size
+
+| Step | Depends on | Size |
+|---|---|---|
+| N0 real-footage check | — | user time, plus small fixes |
+| N1 Room page as the only setup (UI half) | — | M |
+| N2 3D-only tags, generated 2D regions, regression comparison | N1 | M |
+| N1 finish: remove Setup | N2 | S |
+| N3 simulation accuracy check | N2 exporter | S |
+| N4 clean room rebuild and preview | N0 | M |
+| M5 timeline export | N2, N4 | S |
+| M6 Unity refactor | — (can start any time) | M |
+| M7 Unity scene from rebuilt room | N4, M6 | S–M |
+| M8 re-enactment player | M5–M7 | L |
+| M9 render job and button | M8 | M |

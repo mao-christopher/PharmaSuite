@@ -1,76 +1,90 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { CheckIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { request } from '../lib/api';
-import RegionEditor, { useRegionEditor } from './RegionEditor';
-import { Badge, Dialog } from './ui';
-
-const pct = (score) => `${Math.round(score * 100)}% match`;
+import CameraViewFields from './CameraViewFields';
+import { Dialog } from './ui';
 
 /**
- * After an upload: suggest the saved camera view that looks most like the video, let the
- * employee adjust its regions on the video's own frame, then keep, replace, or add a view.
+ * After an upload: suggest the saved camera view that looks most like the video, then use
+ * it, update its photo with the video's frame, or add a new view. Regions are shown
+ * read-only; they come from the room's 3D tags. A multi-camera recording is reviewed one
+ * camera at a time.
  */
 export default function ViewReviewDialog({ recording, onClose }) {
   const { refresh } = useLive();
-  const editor = useRegionEditor();
+  const cameras = recording.cameras || [];
+  const multi = cameras.length > 1;
+  const [cameraId, setCameraId] = useState(multi ? cameras[0].camera_id : null);
+  const [done, setDone] = useState(() => new Set(cameras.filter((c) => c.view_confirmed).map((c) => c.camera_id)));
   const [info, setInfo] = useState(null);
   const [baseId, setBaseId] = useState(null);
   const [base, setBase] = useState(null);
-  const [regions, setRegions] = useState(null);
+  const [action, setAction] = useState('use');
   const [newName, setNewName] = useState('');
-  const [busy, setBusy] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const camera = cameras.find((c) => c.camera_id === cameraId);
+  const query = cameraId ? `?camera=${encodeURIComponent(cameraId)}` : '';
 
   useEffect(() => {
-    request(`/api/recordings/${encodeURIComponent(recording.name)}/views`)
+    setInfo(null);
+    setBase(null);
+    setError(null);
+    setBusy(false);
+    setAction('use');
+    request(`/api/recordings/${encodeURIComponent(recording.name)}/views${query}`)
       .then((r) => {
         setInfo(r);
         setBaseId(r.layout_id || r.suggestions[0]?.layout_id);
-        setNewName(`View from ${r.label}`);
+        const cam = r.cameras?.find((c) => c.camera_id === cameraId);
+        setNewName(`View from ${r.label}${cam ? `, ${cam.label}` : ''}`);
       })
       .catch((e) => setError(e.message));
-  }, [recording.name]);
+  }, [recording.name, cameraId]);
 
   useEffect(() => {
     if (!baseId) return;
     setBase(null);
     request(`/api/layouts/${encodeURIComponent(baseId)}`)
-      .then((layout) => {
-        setBase(layout);
-        setRegions(layout.regions);
-        editor.setSelectedId(null);
-      })
+      .then(setBase)
       .catch((e) => setError(e.message));
-  }, [baseId]);
+  }, [baseId, cameraId]);
 
-  const onRegions = useCallback((fn) => setRegions((rs) => fn(rs)), []);
-
-  const decide = async (action) => {
-    setBusy(action);
+  const decide = async () => {
+    setBusy(true);
     setError(null);
     try {
       await request(`/api/recordings/${encodeURIComponent(recording.name)}/view`, {
         method: 'POST',
         body: {
           action,
-          layout_id: baseId,
+          layout_id: action === 'new' ? undefined : baseId,
+          camera_id: cameraId,
           name: action === 'new' ? newName.trim() || undefined : undefined,
-          regions: action === 'use' ? undefined : regions,
         },
       });
       await refresh();
-      onClose();
+      const next = new Set(done).add(cameraId);
+      const remaining = cameras.find((c) => !next.has(c.camera_id));
+      if (multi && remaining) {
+        setDone(next);
+        setCameraId(remaining.camera_id);
+      } else {
+        onClose();
+      }
     } catch (e) {
       setError(e.message);
-      setBusy(null);
+      setBusy(false);
     }
   };
 
-  const suggestion = info?.suggestions.find((s) => s.layout_id === baseId);
-  const edited = base && regions && JSON.stringify(regions) !== JSON.stringify(base.regions);
   const baseName = base?.name || baseId;
-  const draft = base && regions && { ...base, regions, frame_width: info.width, frame_height: info.height };
-  const unassigned = regions?.some((r) => r.region_type === 'designated_shelf' && !r.medication_key);
+  // Another camera of this recording already uses this view; one view can't fit two angles.
+  const sharedWith = multi
+    ? (info?.cameras || []).filter((c) => c.camera_id !== cameraId && c.layout_id === baseId && (done.has(c.camera_id) || c.view_confirmed))
+    : [];
+  const label = { use: `Use ${baseName}`, replace: `Update ${baseName}'s photo`, new: 'Add camera view' }[action];
 
   return (
     <Dialog
@@ -80,77 +94,56 @@ export default function ViewReviewDialog({ recording, onClose }) {
       footer={
         <>
           <span className="hint push-right">Skeleton extraction keeps running while you decide.</span>
-          <button type="button" className="btn btn-ghost" disabled={!base || busy} onClick={() => decide('use')}>
-            {busy === 'use' ? 'Saving…' : edited ? "Don't save edits" : `Use ${baseName} as is`}
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Later
           </button>
-          <button type="button" className="btn" disabled={!base || busy || unassigned} onClick={() => decide('replace')}>
-            {busy === 'replace' ? 'Saving…' : `Replace ${baseName}`}
-          </button>
-          <button type="button" className="btn btn-primary" disabled={!base || busy || unassigned} onClick={() => decide('new')}>
-            {busy === 'new' ? 'Saving…' : 'Save as new view'}
+          <button type="button" className="btn btn-primary" disabled={(!base && action !== 'new') || busy} onClick={decide}>
+            {busy ? 'Saving…' : label}
           </button>
         </>
       }
     >
+      {multi && (
+        <div className="camera-tabs segmented" role="tablist" aria-label="Cameras">
+          {cameras.map((c, i) => (
+            <button
+              key={c.camera_id}
+              type="button"
+              role="tab"
+              aria-selected={c.camera_id === cameraId}
+              className={`camera-tab ${c.camera_id === cameraId ? 'active' : ''}`}
+              disabled={busy}
+              onClick={() => setCameraId(c.camera_id)}
+            >
+              {done.has(c.camera_id) && <CheckIcon size={13} aria-label="View chosen" />}
+              {i + 1}. {c.label}
+            </button>
+          ))}
+        </div>
+      )}
       {!info ? (
-        <p className="hint">{error || 'Comparing this video with saved views…'}</p>
+        <p className="hint">{error || `Comparing ${camera ? camera.label : 'this video'} with saved views…`}</p>
       ) : (
-        <div className="form">
-          <div className="review-head">
-            <label className="field">
-              <span className="label">Start from</span>
-              <select className="input" name="base-view" value={baseId || ''} onChange={(e) => setBaseId(e.target.value)}>
-                {info.suggestions.map((s, i) => (
-                  <option key={s.layout_id} value={s.layout_id}>
-                    {s.name} ({s.has_photo ? pct(s.score) : 'no photo'}){i === 0 && s.has_photo ? ', suggested' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="label">New view name</span>
-              <input className="input" name="new-view-name" autoComplete="off" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            </label>
-          </div>
-          {suggestion && (
-            <p className="hint">
-              {suggestion.has_photo ? (
-                <>
-                  <Badge tone={suggestion.score >= 0.7 ? 'green' : suggestion.score >= 0.4 ? 'amber' : 'red'}>{pct(suggestion.score)}</Badge>{' '}
-                  Its regions are drawn on this video's first frame ({info.width}×{info.height}).
-                </>
-              ) : (
-                'This view has no photo to compare with, so the match is unknown.'
-              )}
-              {!suggestion.same_aspect &&
-                ` The view was annotated at ${suggestion.frame_width}×${suggestion.frame_height}, a different shape, so check every region lines up.`}
-            </p>
-          )}
-          {draft ? (
-            <div className="card">
-              <RegionEditor
-                draft={draft}
-                onRegions={onRegions}
-                imageUrl={`/api/recordings/${encodeURIComponent(recording.name)}/frame`}
-                editor={editor}
-                inlinePanel
-                fitHeight="(100dvh - 470px)"
-              />
-            </div>
-          ) : (
-            <p className="hint">Loading {baseId}…</p>
-          )}
-          <p className="hint">
-            Replace updates {baseName} for every recording that uses it, with this video's frame as its photo. Save as new
-            view keeps {baseName} and adds this angle. Either way the regions match this video exactly.
-          </p>
-          {unassigned && <p className="form-error">Assign a medication to every shelf before saving.</p>}
+        <CameraViewFields
+          info={info}
+          baseId={baseId}
+          onBaseId={setBaseId}
+          base={base}
+          action={action}
+          onAction={setAction}
+          imageUrl={`/api/recordings/${encodeURIComponent(recording.name)}/frame${query}`}
+          multi={multi}
+          sharedWith={sharedWith.map((c) => c.label)}
+          newName={newName}
+          onNewName={setNewName}
+          fitHeight={multi ? '(100dvh - 520px)' : '(100dvh - 470px)'}
+        >
           {error && (
             <p className="form-error" role="alert">
               {error}
             </p>
           )}
-        </div>
+        </CameraViewFields>
       )}
     </Dialog>
   );

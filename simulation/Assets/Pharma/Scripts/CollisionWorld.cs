@@ -16,23 +16,18 @@ namespace Pharma.Simulation
         NavMeshData data;
         NavMeshDataInstance instance;
 
-        public void Build()
+        /// <summary>Bakes navigation from the room's boxes. Live guards query the scene colliders.</summary>
+        public void Build(RoomDescription room)
         {
             if (instance.valid) instance.Remove();
             if (data) DestroyImmediate(data);
             Physics.SyncTransforms();
             var sources = new List<NavMeshBuildSource>();
-            foreach (var box in FindObjectsByType<BoxCollider>(FindObjectsSortMode.None))
-            {
-                if (!box.enabled || box.isTrigger || !box.gameObject.activeInHierarchy) continue;
-                int layer = box.gameObject.layer;
-                if (layer != SolidLayer && layer != FloorLayer) continue;
+            foreach (var box in room.collisionBoxes)
                 sources.Add(new NavMeshBuildSource {
                     shape = NavMeshBuildSourceShape.Box,
-                    transform = box.transform.localToWorldMatrix * Matrix4x4.Translate(box.center),
-                    size = box.size, area = layer == FloorLayer ? 0 : 1
+                    transform = box.transform, size = box.size, area = box.walkable ? 0 : 1
                 });
-            }
             var settings = NavMesh.GetSettingsByIndex(0);
             // Carrying arms need more corridor clearance than the central body capsule.
             settings.agentRadius = BodyRadius + .20f;
@@ -42,7 +37,7 @@ namespace Pharma.Simulation
             settings.overrideVoxelSize = true;
             settings.voxelSize = .035f;
             data = NavMeshBuilder.BuildNavMeshData(settings, sources,
-                new Bounds(new Vector3(0, 1, 2), new Vector3(10, 5, 12)), Vector3.zero, Quaternion.identity);
+                room.navigationBounds, Vector3.zero, Quaternion.identity);
             if (!data) throw new InvalidOperationException("Could not build pharmacy navigation surface");
             instance = NavMesh.AddNavMeshData(data);
         }

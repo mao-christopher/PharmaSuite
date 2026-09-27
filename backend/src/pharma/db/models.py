@@ -29,6 +29,9 @@ class Medication(BaseModel):
     name: str = Field(..., min_length=1, description="Display name e.g. Amoxicillin")
     strength: str = Field(..., min_length=1, description="Strength e.g. 500mg")
     unit: str = Field(default="tablets", description="Dosage form unit")
+    reorder_point: Optional[int] = Field(
+        default=None, ge=0, description="Suggest reordering at or below this many units; None uses the default"
+    )
 
 
 class Region(BaseModel):
@@ -111,6 +114,7 @@ class PrescriptionTransaction(BaseModel):
     quantity: int = Field(..., gt=0, description="Tablet quantity to deduct")
     status: str = Field(default="created", description="created | confirmed_fill | paid | cancelled")
     deducted: bool = Field(default=False, description="True if tablet deduction has been applied")
+    deducted_at: Optional[str] = Field(default=None, description="When the deduction was applied (ISO time)")
 
 
 class DisposalRecord(BaseModel):
@@ -191,11 +195,22 @@ class Catalog(BaseModel):
         return self
 
 
+class RegionsSource(BaseModel):
+    """Where a view's region polygons came from, when they were generated from a room's 3D boxes."""
+
+    room_id: str
+    room_version: int = Field(..., ge=1)
+    registration_revision: int = Field(..., ge=1)
+    algorithm: str
+
+
 class Layout(BaseModel):
     """One fixed-camera view: frame, background photo, and region polygons.
 
     On disk a view holds only geometry; the API merges the shared catalog's
     medications and opening stock in (and splits them out again on save).
+    `regions_source` is set when the polygons are generated from a scanned room's 3D
+    boxes through this camera's registration; None means older hand-drawn polygons.
     """
 
     layout_id: str = Field(..., pattern=LAYOUT_ID_PATTERN)
@@ -209,6 +224,7 @@ class Layout(BaseModel):
     )
     medications: List[Medication] = Field(default_factory=list)
     regions: List[Region] = Field(default_factory=list)
+    regions_source: Optional[RegionsSource] = None
     receipts: List[LayoutReceipt] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -244,3 +260,146 @@ class Layout(BaseModel):
 
     def view_only(self) -> "Layout":
         return self.model_copy(update={"medications": [], "receipts": []})
+
+
+# ---------------------------------------------------------------- scanned rooms
+#
+# Room frame: meters, right-handed, Y up, floor at y = 0 (the glTF convention), with
+# the scan's walls turned to line up with X and Z. Scan geometry and registrations are
+# setup data for the floor map and the simulation; inventory never reads them.
+
+Vec3 = Tuple[float, float, float]
+Matrix3 = Tuple[Vec3, Vec3, Vec3]
+
+
+class RoomBox(BaseModel):
+    """An upright box: `size` is (width along its own X, height, depth along its own Z)."""
+
+    center: Vec3
+    size: Vec3
+    yaw_deg: float = Field(default=0.0, description="Rotation about +Y, counterclockwise seen from above")
+
+    @field_validator("size")
+    @classmethod
+    def _positive(cls, size: Vec3) -> Vec3:
+        if any(s <= 0 or s > 20 for s in size):
+            raise ValueError("box sizes must be between 0 and 20 m")
+        return size
+
+
+class Region3D(BaseModel):
+    """A shelf, counter or disposal region in the room, named like its camera-view polygons."""
+
+    region_id: str = Field(..., min_length=1)
+    region_type: RegionType
+    medication_key: Optional[str] = None
+    box: RoomBox
+
+
+class Correspondence(BaseModel):
+    """One point clicked in both the camera photo (normalized 0-1) and the 3D room."""
+
+    image: Tuple[float, float]
+    room: Vec3
+
+    @field_validator("image")
+    @classmethod
+    def _normalized(cls, pt: Tuple[float, float]) -> Tuple[float, float]:
+        if not (0.0 <= pt[0] <= 1.0 and 0.0 <= pt[1] <= 1.0):
+            raise ValueError("image points must be normalized to 0.0-1.0")
+        return pt
+
+
+class CameraIntrinsics(BaseModel):
+    """Pinhole lens in pixels of `CameraRegistration.frame_size`; no distortion model yet."""
+
+    fx: float = Field(..., gt=0)
+    fy: float = Field(..., gt=0)
+    cx: float
+    cy: float
+
+
+class CameraRegistration(BaseModel):
+    """Where one fixed camera (a camera view) sits in the room.
+
+    Pose is OpenCV's world-to-camera transform: x_cam = rotation @ x_room + translation,
+    with camera x right, y down, z forward.
+    """
+
+    layout_id: str = Field(..., pattern=LAYOUT_ID_PATTERN)
+    revision: int = Field(default=1, ge=1)
+    frame_size: Tuple[int, int]
+    view_calibration_version: int = Field(..., ge=0, description="The view's calibration when registered")
+    background_image: Optional[str] = Field(default=None, description="The view photo the points were clicked on")
+    intrinsics: CameraIntrinsics
+    rotation: Matrix3
+    translation: Vec3
+    position: Vec3 = Field(..., description="Camera center in room coordinates")
+    rms_px: float = Field(..., ge=0)
+    max_px: float = Field(..., ge=0)
+    correspondences: List[Correspondence] = Field(..., min_length=6)
+    solved_at: str
+
+
+class RoomPlan(BaseModel):
+    """Top-down images of the room: column -> +X, row -> +Z, starting at `origin` (x, z)."""
+
+    image: str
+    obstacles: str
+    origin: Tuple[float, float]
+    resolution_m: float = Field(..., gt=0)
+    width: int = Field(..., gt=0)
+    height: int = Field(..., gt=0)
+
+
+class RoomMesh(BaseModel):
+    file: str
+    source_name: Optional[str] = None
+    sha256: str
+    bytes: int = Field(..., ge=0)
+    triangles: int = Field(..., ge=0)
+
+
+class Room(BaseModel):
+    room_id: str = Field(..., pattern=LAYOUT_ID_PATTERN)
+    name: Optional[str] = Field(default=None, max_length=80)
+    room_version: int = Field(default=1, ge=1)
+    created_at: str
+    updated_at: str
+    mesh: RoomMesh
+    mesh_to_room: Tuple[Tuple[float, float, float, float], ...] = Field(
+        ..., min_length=4, max_length=4, description="4x4 row-major transform from scan to room coordinates"
+    )
+    bounds_min: Vec3
+    bounds_max: Vec3
+    floor_fit: Dict[str, Any] = Field(default_factory=dict, description="How the floor was leveled")
+    plan: RoomPlan
+    regions: List[Region3D] = Field(default_factory=list)
+    cameras: List[CameraRegistration] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "Room":
+        issues: List[str] = []
+        shelves_by_med: Dict[str, int] = {}
+        for r in self.regions:
+            if r.region_type == "designated_shelf":
+                if not r.medication_key:
+                    issues.append(f"Shelf {r.region_id} has no medication assigned")
+                    continue
+                r.region_id = shelf_region_id(r.medication_key)
+                shelves_by_med[r.medication_key] = shelves_by_med.get(r.medication_key, 0) + 1
+            elif r.medication_key is not None:
+                issues.append(f"Region {r.region_id} is not a shelf and cannot hold a medication")
+        for key, count in shelves_by_med.items():
+            if count > 1:
+                issues.append(f"{key} is assigned to more than one shelf")
+        ids = [r.region_id for r in self.regions]
+        for rid in {i for i in ids if ids.count(i) > 1}:
+            if not rid.startswith("shelf_"):
+                issues.append(f"Duplicate region ID {rid}")
+        views = [c.layout_id for c in self.cameras]
+        for vid in {v for v in views if views.count(v) > 1}:
+            issues.append(f"Camera view {vid} is registered twice")
+        if issues:
+            raise ValueError("; ".join(sorted(issues)))
+        return self

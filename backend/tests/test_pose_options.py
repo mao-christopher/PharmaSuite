@@ -21,3 +21,19 @@ def test_pose_forwards_streaming_resolution_and_returns_iterator(monkeypatch, tm
     assert result is stream
     assert calls['stream'] is True and calls['imgsz'] == 960
     assert calls['save'] is False and calls['verbose'] is False
+
+
+def test_upload_extraction_uses_the_configured_inference_size(monkeypatch):
+    import pharma.pose as pose
+    calls = {}
+    class Model:
+        def __init__(self, path): pass
+        def predict(self, **kwargs):
+            calls.update(kwargs)
+            return iter([])
+    monkeypatch.setattr(pose, 'YOLO', Model)
+    settings = SimpleNamespace(device='cpu', pose_imgsz=960)
+    assert pose.extract_video_keypoints('camera.mp4', 0, 'weights.pt', settings=settings) == []
+    assert calls['imgsz'] == 960
+    pose.extract_video_keypoints('camera.mp4', 0, 'weights.pt', settings=settings, imgsz=640)
+    assert calls['imgsz'] == 640

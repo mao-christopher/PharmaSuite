@@ -28,7 +28,9 @@ def test_complete_arm_required_and_nan_rejected():
 def test_handoff_debounced_and_no_future_observations():
     g=group([pose(),None,None,None,pose(),pose()], [pose()]*6)
     assert g.at(100)['camera_id']=='front'
-    assert g.hands_at(100)==([],None)  # lost arm is never borrowed from a future frame
+    # Front lost its arm but hasn't handed off yet; the fallback uses its wrist a frame earlier.
+    fix=g.locate(100)
+    assert (fix.joint,fix.camera_id,fix.offset_ms)==('wrist','front',-100.0)
     assert g.at(200)['camera_id']=='side'
     assert g.at(200)['switched']
     assert g.at(400)['camera_id']=='side'  # no jump back while current camera remains usable
@@ -40,6 +42,40 @@ def test_no_visible_camera_preserves_uncertainty():
     assert not any(row['reliable_arm'] for row in g.timeline)
     assert not any(row['switched'] for row in g.timeline)
     assert g.hands_at(400)==([],None)
+    assert g.hands_at(0)==([],None)  # nobody in view from the very start: no error, no location
+
+
+def elbow_only(conf=.9):
+    points=[[.2,.2,0] for _ in range(17)]
+    points[8]=[.4,.6,conf]
+    return points
+
+
+def test_fallback_uses_elbows_in_any_camera_then_nearest_wrist():
+    # Neither camera has a complete arm; the side camera shows an elbow.
+    g=group([None]*6,[elbow_only()]*6)
+    fix=g.locate(300)
+    assert (fix.joint,fix.camera_id,fix.points[1])==('elbow','side',(.4,.6,.9))
+    # A wrist seen 0.7 s earlier in the front camera, nothing since: last-seen wrist.
+    g=group([pose()]+[None]*11,[None]*12)
+    fix=g.locate(700)
+    assert (fix.joint,fix.camera_id,fix.offset_ms)==('last_seen_wrist','front',-700.0)
+    assert g.locate(0).joint=='wrist'
+    # The next known wrist counts up to a second ahead; further than that, confirm.
+    g=group([None]*15+[pose()],[None]*16)
+    fix=g.locate(700)
+    assert (fix.joint,fix.offset_ms)==('next_seen_wrist',800.0)
+    assert g.locate(0).joint is None
+    # Camera selection itself never looks ahead.
+    assert not g.at(1400)['reliable_arm']
+
+
+def test_uploaded_cameras_may_differ_in_length(tmp_path):
+    specs=[write_camera(tmp_path,'front',[pose()]*3),write_camera(tmp_path,'side',[pose()]*4)]
+    (tmp_path/'multicam.json').write_text(json.dumps({'schema_version':1,'clock':'media_time','cameras':specs}))
+    g=CameraGroup.load(tmp_path)
+    assert g.frame_count==3 and g.cameras['side'].keypoints_at(350) is not None
+    assert g.cameras['front'].keypoints_at(350) is None  # past the end of the shorter camera
 
 
 def test_multiple_switches_return_to_recovered_camera():

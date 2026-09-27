@@ -48,6 +48,7 @@ namespace Pharma.Simulation.Editor
             public string session_id, camera_id="room-camera-01", calibration_version="pharmacy-v3";
             public string frames="frames/%06d.png", imu_events="imu_events.jsonl", calibration="calibration.json";
             public string initial_inventory="initial_inventory.json", business_events="business_events.jsonl";
+            public string scene_geometry=SceneGeometry.FileName;
             public string coordinate_system="top_left_pixels";
         }
         [MenuItem("Pharma/2. Export recording (106 seconds, 30 FPS)")]
@@ -134,6 +135,7 @@ namespace Pharma.Simulation.Editor
                     File.WriteAllText(Path.Combine(output,"capture.json"),JsonUtility.ToJson(capture,true));
                 }
                 WriteCalibration(sim,width,height,output,cameraId,calibrationVersion);
+                SceneGeometry.Write(sim,camera,width,height,output,cameraId,calibrationVersion);
                 if(sim.CompletedActions != sim.Cues.Count)
                     throw new InvalidOperationException("Export did not complete every action");
                 var actualEvents=sim.SensorEvents.ToArray();

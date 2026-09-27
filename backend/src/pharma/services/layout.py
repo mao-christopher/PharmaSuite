@@ -55,11 +55,16 @@ def load_layout(layouts_dir: Path, layout_id: str) -> Layout:
     return Layout.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def save_layout(layouts_dir: Path, layout: Layout) -> Layout:
-    """Persist a view (geometry only), bumping calibration_version past the stored one."""
+def save_layout(layouts_dir: Path, layout: Layout, bump: bool = True) -> Layout:
+    """Persist a view (geometry only), bumping calibration_version past the stored one.
+
+    bump=False keeps the stored version, for changes that leave the region geometry as
+    it was (a new name, or the provenance of unchanged generated regions).
+    """
     path = layout_path(layouts_dir, layout.layout_id)
     previous = load_layout(layouts_dir, layout.layout_id).calibration_version if path.exists() else 0
-    saved = layout.model_copy(update={"calibration_version": previous + 1, "updated_at": _now()})
+    version = previous + 1 if bump or not previous else previous
+    saved = layout.model_copy(update={"calibration_version": version, "updated_at": _now()})
     _atomic_write(path, saved.view_only().model_dump(mode="json"))
     return saved
 

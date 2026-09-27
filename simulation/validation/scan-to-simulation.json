@@ -1,0 +1,283 @@
+{
+  "date": "2026-09-26",
+  "source_branch": "feature/room-scan-floor-track",
+  "unity_version": "6000.6.3f1",
+  "python_tests_passed": 240,
+  "mongodb": "7.0.14 real isolated test databases",
+  "dashboard_build": "passed",
+  "import": {
+    "room_id": "simulated-pharmacy",
+    "layout_id": "default",
+    "mesh_to_room": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.129999876
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        -0.0
+      ],
+      [
+        -0.0,
+        0.0,
+        1.0,
+        2.214999914
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "regions": [
+      "shelf_vitamin_d_50000iu",
+      "shelf_atorvastatin_20mg",
+      "shelf_amoxicillin_500mg",
+      "shelf_lisinopril_10mg",
+      "shelf_metformin_500mg",
+      "shelf_omeprazole_20mg",
+      "counter",
+      "disposal"
+    ],
+    "skipped": [],
+    "rms_px": 0.0005695937586371095,
+    "max_px": 0.0009993784833300001,
+    "generated_regions": [
+      "shelf_vitamin_d_50000iu",
+      "shelf_atorvastatin_20mg",
+      "shelf_amoxicillin_500mg",
+      "shelf_lisinopril_10mg",
+      "shelf_metformin_500mg",
+      "shelf_omeprazole_20mg",
+      "counter",
+      "disposal"
+    ]
+  },
+  "region_regression": {
+    "events": 10,
+    "changed_decisions": 0,
+    "decisions": [
+      {
+        "event_id": "evt_001",
+        "nearest_region_id": "shelf_vitamin_d_50000iu",
+        "state": "HELD",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_002",
+        "nearest_region_id": "counter",
+        "state": "AT_COUNTER",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_003",
+        "nearest_region_id": "counter",
+        "state": "HELD",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_004",
+        "nearest_region_id": "shelf_amoxicillin_500mg",
+        "state": "MISPLACED",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_005",
+        "nearest_region_id": "shelf_amoxicillin_500mg",
+        "state": "HELD",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_006",
+        "nearest_region_id": "shelf_vitamin_d_50000iu",
+        "state": "ON_DESIGNATED_SHELF",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_007",
+        "nearest_region_id": "shelf_vitamin_d_50000iu",
+        "state": "HELD",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_008",
+        "nearest_region_id": "disposal",
+        "state": "DISPOSED",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_009",
+        "nearest_region_id": "shelf_vitamin_d_50000iu",
+        "state": "HELD",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      },
+      {
+        "event_id": "evt_010",
+        "nearest_region_id": "disposal",
+        "state": "DISPOSED",
+        "held_pending": false,
+        "medication_key": "VITAMIN_D_50000IU"
+      }
+    ]
+  },
+  "floor_track": {
+    "frames": 3180,
+    "placed_fraction": 0.8321,
+    "position_cm": {
+      "all": {
+        "frames": 2646,
+        "median": 4.75,
+        "p90": 9.53,
+        "max": 27.57
+      },
+      "ankles": {
+        "frames": 2636,
+        "median": 4.77,
+        "p90": 9.53,
+        "max": 27.57
+      },
+      "bridged": {
+        "frames": 10,
+        "median": 2.86,
+        "p90": 4.89,
+        "max": 5.32
+      }
+    },
+    "facing_deg": {
+      "all": {
+        "frames": 2646,
+        "median": 6.3,
+        "p90": 42.23,
+        "max": 178.2
+      },
+      "ankles": {
+        "frames": 2636,
+        "median": 6.22,
+        "p90": 40.92,
+        "max": 178.2
+      },
+      "bridged": {
+        "frames": 10,
+        "median": 120.7,
+        "p90": 165.89,
+        "max": 175.39
+      },
+      "standing": {
+        "frames": 926,
+        "median": 8.06,
+        "p90": 50.0,
+        "max": 73.04
+      }
+    },
+    "facing_flips_over_90deg": 41
+  },
+  "render": {
+    "schema": "render-report/1",
+    "recording": "upload-scan-validation-original-render-20260926-205730",
+    "timeline_inputs_sha256": "7edac948455cb93151b76858015bb7bf4267f64f86c8503e44d994811256cdcf",
+    "unity_version": "6000.6.3f1",
+    "fps": 30.0,
+    "frame_size": [
+      1920,
+      1080
+    ],
+    "frames": 3180,
+    "preview_frames": null,
+    "camera_layout_id": "default",
+    "alignment": {
+      "points": 64,
+      "median_px": 0.0001,
+      "max_px": 0.0002
+    },
+    "out_of_view_frames": 534,
+    "technician_hidden_frames": 0,
+    "pushed_out_of_solid_frames": 0,
+    "cuts": 2,
+    "blends": 0,
+    "guard_holds": 0,
+    "actions": {
+      "total": 10,
+      "shown": 7,
+      "highlight_only": 2,
+      "followed_out_of_view": 1,
+      "pending": 0,
+      "not_applied": 0,
+      "reach_not_completed": 0,
+      "pending_without_region": 0
+    },
+    "bottles": {
+      "placed_at_start": 22,
+      "without_region": 0,
+      "spawned": 0
+    },
+    "scene": {
+      "boxes": 47,
+      "colliders": 40,
+      "labels": 6
+    },
+    "notes": []
+  },
+  "scripted_regression": {
+    "frames": 3180,
+    "raw_pixel_mean_absolute_difference": 0.0008024633730297273,
+    "raw_pixel_max_difference": 108,
+    "mean_changed_pixels_per_frame": 73.98364779874214,
+    "sensor_schedule_identical": true,
+    "simulation_states_identical": true,
+    "baseline": "pharmacy-detailed-release-frames"
+  },
+  "collision_checks": {
+    "frame_samples": 6362,
+    "passed": true,
+    "max_foot_error_m": 6.692679e-07,
+    "max_stance_drift_m": 7.650916e-07
+  },
+  "product_checks": {
+    "real_sim_side_player": true,
+    "same_input_render_reused": true,
+    "replay_no_inventory_change": true,
+    "region_edit_marks_stale": true
+  },
+  "videos": [
+    {
+      "file": "simulation-reenactment.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "size": [
+        1920,
+        1080
+      ],
+      "sha256": "63f25c23d42afef23bb4c6e7e092c8930c0ff5964ff0eb9c48bb505896f50549"
+    },
+    {
+      "file": "camera-vs-reenactment.mp4",
+      "frames": 3180,
+      "fps": 30.0,
+      "size": [
+        3840,
+        1080
+      ],
+      "sha256": "dde80a6ea7cf60a7849c61e0c2cf3de8d6c069a1dfd3fcc8ef577652d7252744"
+    }
+  ],
+  "limitations": [
+    "Synthetic box-mesh scan, not a real pharmacy scan.",
+    "41 facing errors over 90 degrees; 534 frames lack a tracked position.",
+    "Two counter actions highlight only, one action follows state without a visible reach.",
+    "No cross-camera reenactment or real/sim edited transition validation."
+  ]
+}

@@ -15,6 +15,7 @@ dependencies = [
     "uvicorn>=0.30",
     "python-multipart>=0.0.9",
     "websockets>=13",
+    "trimesh>=4.4",
 ]
 
 [tool.setuptools.packages.find]

@@ -30,7 +30,7 @@ export function DialogProvider({ children }) {
 
   let content = null;
   if (dialog?.type === 'upload') {
-    content = <UploadRecordingDialog onClose={close} onUploaded={(job) => api.openViewReview(job)} />;
+    content = <UploadRecordingDialog onClose={close} onUploaded={close} />;
   } else if (dialog?.type === 'view') {
     content = <ViewReviewDialog key={dialog.recording.name} recording={dialog.recording} onClose={close} />;
   } else if (dialog && state) {

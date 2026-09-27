@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useLive } from '../lib/live';
-import { JOINT_LABEL, REGION_TYPES, formatMs, medLabel, regionLabel } from '../lib/format';
+import { REGION_TYPES, jointNote, jointOffset, formatMs, medLabel, regionLabel } from '../lib/format';
 import { Dialog } from './ui';
 
 const REASONS = {
   too_far: 'The hand was too far from every region.',
   ambiguous: 'The hand was inside two overlapping regions.',
-  no_confident_hand: 'No wrist, elbow or shoulder was confidently visible at that moment.',
+  no_confident_hand: 'No wrist or elbow was confidently visible in any camera, and no wrist was seen within a second before or after.',
   nothing_parked_at_counter: 'The hand was at a counter, but no bottle was parked there.',
   no_regions: 'No regions are configured.',
 };
@@ -98,7 +98,7 @@ export default function ConfirmLocationDialog({ alert, onClose }) {
       <form id="confirm-form" className="form" onSubmit={submit}>
         <p className="lead">
           {REASONS[m.reason] || 'The location was uncertain.'}
-          {m.joint && m.joint !== 'wrist' && ` Position came from the ${JOINT_LABEL[m.joint]}.`}
+          {jointNote(m.joint, jointOffset(m)) && ` Position came from ${jointNote(m.joint, jointOffset(m))}.`}
           {session && session.medication_key !== 'UNKNOWN' && ` Bottle: ${medLabel(state.layout.medications, session.medication_key)}.`}
           {m.recording && m.recording !== state.scenario && ` Recording: ${m.recording}.`}
           {' '}Choose where it happened; the nearest options are listed first.

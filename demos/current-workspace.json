@@ -1,0 +1,15 @@
+{
+  "schema": "pharma-workspace-reference/1",
+  "repository": "mao-christopher/Pharma",
+  "release_tag": "workspace-2026-09-26",
+  "asset": "pharma-workspace-2026-09-26.zip",
+  "sha256": "e765725c1ef6531966f0ffdb24957d18f8e03f87a75c710abd670d9afc99c30f",
+  "files": 40,
+  "recordings": 2,
+  "player": {
+    "scenario": "upload-img-3515-20260926-215800",
+    "media_time_ms": 1686,
+    "player_source": "real"
+  },
+  "restore_guide": "backend/WORKSPACE_RESTORE.md"
+}

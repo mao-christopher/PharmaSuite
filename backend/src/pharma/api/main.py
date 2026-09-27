@@ -1,6 +1,7 @@
 """Main FastAPI Application Entrypoint for Pharma Inventory Platform."""
 
 import asyncio
+import re
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -9,7 +10,7 @@ from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarg
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from pharma.api import routes
+from pharma.api import room_routes, routes
 from pharma.api.replay_stream import ReplayController
 from pharma.config import Settings
 
@@ -45,11 +46,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Reading rooms, importing a scan and trying a camera solve never touch inventory, and a
+# large scan import mustn't stall playback. Saving 3D regions or a registration does:
+# it regenerates camera views' regions, so those writes take the lock like any other.
+LOCK_FREE_PATHS = re.compile(r"^/api/(video/feed$|recordings/[^/]+/floor-track$)")
+LOCK_FREE_ROOM_READS = re.compile(r"^/api/rooms(/|$)")
+LOCK_FREE_ROOM_WRITES = re.compile(r"^/api/rooms(/[^/]+/cameras/solve)?$")
+
+
+def lock_free(method: str, path: str) -> bool:
+    if LOCK_FREE_PATHS.match(path):
+        return True
+    if method in ("GET", "HEAD"):
+        return bool(LOCK_FREE_ROOM_READS.match(path))
+    return method == "POST" and bool(LOCK_FREE_ROOM_WRITES.match(path))
+
+
 @app.middleware("http")
 async def inventory_consistency(request, call_next):
     """Serialize local read/modify/write operations with replay; Mongo revisions guard other workers."""
     ctrl = routes.controller
-    if ctrl is None or not request.url.path.startswith("/api/") or request.url.path == "/api/video/feed":
+    if ctrl is None or not request.url.path.startswith("/api/") or lock_free(request.method, request.url.path):
         return await call_next(request)
     async with ctrl.inventory_lock:
         try:
@@ -82,6 +99,7 @@ app.add_middleware(
 
 # Mount REST API routes
 app.include_router(routes.router)
+app.include_router(room_routes.router)
 
 
 @app.get("/api/video/feed")
@@ -120,6 +138,7 @@ if dashboard_dist.exists():
 @app.get("/recordings", response_class=HTMLResponse)
 @app.get("/inventory", response_class=HTMLResponse)
 @app.get("/setup", response_class=HTMLResponse)
+@app.get("/room", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def root_dashboard():
     """Root landing page linking to API docs and Dashboard."""

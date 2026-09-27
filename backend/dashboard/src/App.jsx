@@ -8,7 +8,8 @@ import { JobsIndicator, JobsProvider } from './lib/jobs';
 import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
-import Setup from './pages/Setup';
+
+const Room = React.lazy(() => import('./pages/Room')); // three.js loads only on this page
 
 const ICONS = { size: 16, weight: 'bold' };
 
@@ -25,7 +26,7 @@ function Shell() {
   useEffect(() => {
     const fresh = pending.find((d) => !seenDisposals.current.has(d.disposal_id));
     seenDisposals.current = new Set(pending.map((d) => d.disposal_id));
-    if (fresh && !location.pathname.startsWith('/setup')) openDisposal(fresh.disposal_id);
+    if (fresh && !location.pathname.startsWith('/room')) openDisposal(fresh.disposal_id);
   }, [state?.disposals]);
 
   return (
@@ -52,7 +53,7 @@ function Shell() {
             </NavLink>
             <NavLink to="/recordings">Recordings</NavLink>
             <NavLink to="/inventory">Inventory</NavLink>
-            <NavLink to="/setup">Setup</NavLink>
+            <NavLink to="/room">Room</NavLink>
           </nav>
           <div className="topbar-right">
             <JobsIndicator />
@@ -98,7 +99,15 @@ function Shell() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/recordings" element={<Recordings />} />
             <Route path="/inventory" element={<Inventory />} />
-            <Route path="/setup" element={<Setup />} />
+            <Route path="/setup" element={<Navigate to="/room" replace />} />
+            <Route
+              path="/room"
+              element={
+                <React.Suspense fallback={<p className="muted">Loading…</p>}>
+                  <Room />
+                </React.Suspense>
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}

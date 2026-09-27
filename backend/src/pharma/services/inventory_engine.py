@@ -5,6 +5,7 @@ disposal defaults, prescription deductions, and alerts as specified in AGENTS.md
 """
 
 import math
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from pharma.db.models import (
     InventoryState,
@@ -593,6 +594,7 @@ class InventoryEngine:
             if inv:
                 inv.pooled_tablets = max(0, inv.pooled_tablets - tx.quantity)
             tx.deducted = True
+            tx.deducted_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             return True
         return False
 

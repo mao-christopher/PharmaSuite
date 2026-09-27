@@ -39,8 +39,10 @@ class PharmacyStore:
         self.engine: Optional[InventoryEngine] = None
         self.created_at: Optional[str] = None
         self.current_recording: Optional[str] = None
+        self.player_state: Dict[str, Any] = {}
         self.recordings: Dict[str, Dict[str, Any]] = {}  # name -> applied event IDs + activity
         self.history: List[Dict[str, Any]] = []
+        self.dismissed_suggestions: Dict[str, str] = {}  # suggestion ID -> when it was dismissed
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -91,8 +93,10 @@ class PharmacyStore:
         self.layout_id = data.get("layout_id")
         self.created_at = data.get("created_at")
         self.current_recording = data.get("current_recording")
+        self.player_state = data.get("player_state", {})
         self.recordings = data.get("recordings", {})
         self.history = data.get("history", [])
+        self.dismissed_suggestions = data.get("dismissed_suggestions", {})
         self.engine = InventoryEngine.from_dict(data["engine"], regions=[])
         self._durable = copy.deepcopy(data)
 
@@ -100,11 +104,12 @@ class PharmacyStore:
         _, inventory, receipts = build_initial_state(catalog)
         transactions = self.engine.transactions if self.engine else {}
         for tx in transactions.values():
-            tx.status, tx.deducted = "created", False
+            tx.status, tx.deducted, tx.deducted_at = "created", False, None
         self.engine = InventoryEngine(inventory=inventory, regions=[], receipts=receipts,
                                       transactions=transactions)
         self.created_at = now_iso()
         self.recordings = {}
+        self.dismissed_suggestions = {}
         self.record("reset", note)
 
     def save(self) -> None:
@@ -115,9 +120,11 @@ class PharmacyStore:
             "created_at": self.created_at,
             "saved_at": now_iso(),
             "current_recording": self.current_recording,
+            "player_state": self.player_state,
             "engine": self.engine.to_dict(),
             "recordings": self.recordings,
             "history": self.history,
+            "dismissed_suggestions": self.dismissed_suggestions,
         }
         try:
             saved = self.repository.save(payload, self.revision)
@@ -238,6 +245,7 @@ class PharmacyStore:
         joint: Optional[str] = "wrist",
         camera_id: Optional[str] = None,
         calibration_version: Optional[int] = None,
+        joint_offset_ms: float = 0.0,
     ) -> Optional[Dict[str, Any]]:
         """Apply one pickup/release signal exactly once. Returns its activity entry, or None if seen."""
         entry = self.recording_entry(recording)
@@ -245,6 +253,12 @@ class PharmacyStore:
             return None
         entry["applied_event_ids"].append(event["event_id"])
         entry.setdefault("first_applied_at", now_iso())
+        # Where the bottles stood before this recording's first signal (for the re-enactment).
+        entry.setdefault("start_inventory", {
+            key: {"shelf_counts": dict(inv.shelf_counts), "held_bottles": inv.held_bottles,
+                  "counter_bottles": inv.counter_bottles, "total_bottles": inv.total_bottles}
+            for key, inv in self.engine.inventory.items()
+        })
         entry["last_applied_at"] = now_iso()
         if event["event_type"] not in ("pickup", "release"):
             return None
@@ -261,7 +275,8 @@ class PharmacyStore:
             session = engine.handle_release(sid, hands, event.get("timestamp", 0.0))
         for alert_id in set(engine.alerts) - before:
             engine.alerts[alert_id].metadata.update(recording=recording, layout_id=layout_id, joint=joint,
-                                                         camera_id=camera_id, calibration_version=calibration_version)
+                                                         joint_offset_ms=round(joint_offset_ms), camera_id=camera_id,
+                                                         calibration_version=calibration_version)
         evidence = session.evidence.get("pending_release", {}).get("evidence") or session.evidence
         activity = {
             "raw_event": copy.deepcopy(event),
@@ -279,6 +294,7 @@ class PharmacyStore:
             "reason": evidence.get("reason"),
             "hands_seen": sum(1 for h in hands if h[2] >= MIN_KEYPOINT_CONF),
             "joint": joint,
+            "joint_offset_ms": round(joint_offset_ms),
             "layout_id": layout_id,
         }
         entry["activity"].append(activity)

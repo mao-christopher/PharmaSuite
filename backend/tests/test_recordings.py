@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from pharma.api.replay_stream import ReplayController
-from pharma.services.recordings import PoseTrack, parse_events_file
+from pharma.services.recordings import PoseTrack, locate_hands, parse_events_file
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 
@@ -55,14 +55,18 @@ def test_parse_rejects_bad_files(content, message):
         parse_events_file(content, duration_ms=10000)
 
 
-def test_pose_track_hands_fall_back_to_nearby_frame():
+def test_pose_track_hands_search_a_few_frames_either_way():
     empty = [[0.0, 0.0, 0.0]] * 17
     visible = [[0.0, 0.0, 0.0]] * 17
     visible = visible[:9] + [[0.3, 0.4, 0.9], [0.6, 0.5, 0.2]] + visible[11:]
     track = PoseTrack(fps=10, width=100, height=100, frames=[empty, None, visible, empty])
-    # 100 ms = frame 1 (no person); nearest frame with a confident wrist is frame 2.
-    hands = track.hands_at(100, min_conf=0.35)
-    assert hands == [(0.3, 0.4, 0.9), (0.6, 0.5, 0.2)]
+    wrists = [(0.3, 0.4, 0.9), (0.6, 0.5, 0.2)]
+    # 100 ms = frame 1 (no person); the wrist a frame later counts as being at the signal.
+    assert track.hand_points_at(100, min_conf=0.35) == (wrists, "wrist")
+    assert locate_hands([(None, track)], 100, 0.35).offset_ms == 100.0
+    # 300 ms = frame 3; the wrist one frame earlier.
+    assert track.hand_points_at(300, min_conf=0.35) == (wrists, "wrist")
+    assert locate_hands([(None, track)], 300, 0.35).offset_ms == -100.0
 
 
 @pytest.fixture
@@ -193,16 +197,38 @@ def test_activity_log_records_each_decision(controller):
     assert all(a["distance"] == 0 and a["hands_seen"] == 1 for a in ctrl.activity)
 
 
-def test_hand_points_fall_back_to_elbows_then_shoulders():
+def test_hand_falls_back_to_elbow_then_nearest_wrist_then_nothing():
     hidden = [0.0, 0.0, 0.0]
     frame = [hidden] * 17
+    with_wrist = frame[:10] + [[0.6, 0.6, 0.9]] + frame[11:]
     with_elbow = frame[:7] + [[0.4, 0.5, 0.8]] + frame[8:]
     with_shoulder = frame[:6] + [[0.7, 0.3, 0.9]] + frame[7:]
-    track = PoseTrack(fps=10, width=100, height=100, frames=[with_elbow, with_shoulder, frame])
-    assert track.hand_points_at(0, 0.35) == ([(0.4, 0.5, 0.8), (0.0, 0.0, 0.0)], "elbow")
-    points, joint = track.hand_points_at(100, 0.35)
-    # The elbow two frames away still beats a shoulder in the signal's own frame.
-    assert joint == "elbow"
-    only_shoulder = PoseTrack(fps=10, width=100, height=100, frames=[with_shoulder])
-    assert only_shoulder.hand_points_at(0, 0.35)[1] == "shoulder"
-    assert PoseTrack(fps=10, width=100, height=100, frames=[frame]).hand_points_at(0, 0.35)[1] is None
+    # 10 fps: a wrist at 0 s, nothing until an elbow at 2 s, then only a shoulder.
+    frames = [with_wrist] + [frame] * 19 + [with_elbow] + [with_shoulder] * 20
+    track = PoseTrack(fps=10, width=100, height=100, frames=frames)
+    assert track.hand_points_at(2000, 0.35) == ([(0.4, 0.5, 0.8), (0.0, 0.0, 0.0)], "elbow")
+    # An elbow three frames away (either side) beats a wrist further off.
+    assert track.hand_points_at(2300, 0.35)[1] == "elbow"
+    assert track.hand_points_at(1700, 0.35)[1] == "elbow"
+    # Nothing within 5 frames: the wrist seen 0.8 s earlier.
+    fix = locate_hands([(None, track)], 800, 0.35)
+    assert (fix.joint, fix.offset_ms, fix.points[1]) == ("last_seen_wrist", -800.0, (0.6, 0.6, 0.9))
+    # More than a second from any wrist: the employee confirms.
+    assert track.hand_points_at(1200, 0.35)[1] is None
+    # Shoulders are not used.
+    assert track.hand_points_at(3500, 0.35)[1] is None
+    assert PoseTrack(fps=10, width=100, height=100, frames=[with_shoulder]).hand_points_at(0, 0.35)[1] is None
+    # The wrist's next known position counts too, up to a second after the signal.
+    later = PoseTrack(fps=10, width=100, height=100, frames=[frame] * 8 + [with_wrist] + [frame] * 10)
+    fix = locate_hands([(None, later)], 0, 0.35)
+    assert (fix.joint, fix.offset_ms) == ("next_seen_wrist", 800.0)
+    far = PoseTrack(fps=10, width=100, height=100, frames=[frame] * 12 + [with_wrist])
+    assert locate_hands([(None, far)], 0, 0.35).joint is None
+
+
+def test_no_person_at_the_start_reports_nothing_without_error():
+    empty = PoseTrack(fps=10, width=100, height=100, frames=[None] * 5)
+    assert empty.hand_points_at(0, 0.35) == ([], None)
+    assert empty.hand_points_at(400, 0.35) == ([], None)
+    assert locate_hands([], 0, 0.35).joint is None
+    assert locate_hands([(None, PoseTrack(10, 100, 100, []))], 0, 0.35).points == []
