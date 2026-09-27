@@ -39,6 +39,7 @@ from pharma.services.store import PharmacyStore, now_iso, session_key
 from pharma.services import live_capture, region_projection, render_jobs, timeline
 from pharma.services.render_jobs import RenderQueue
 from pharma.services.room import registration_for_view
+from pharma.services.privacy import skeleton_visible
 
 SCENARIO_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 DRAFTS_DIR, DRAFT_FILE = ".drafts", "draft.json"
@@ -535,6 +536,11 @@ class ReplayController:
 
     # ------------------------------------------------------------------ simulation renders
 
+    def presentation_video(self, path: Path) -> Optional[Path]:
+        """An explicitly authored illustration, kept separate from evidence-based renders."""
+        video = path / 'presentation.mp4'
+        return video if scenario_meta(path).get('presentation_only') and video.is_file() else None
+
     def timeline_inputs(self, path: Path) -> Dict[str, Any]:
         """timeline.collect for a recording, with a readable message when it can't be re-enacted."""
         layout_id = scenario_meta(path).get("layout_id") or self.default_layout_id
@@ -550,6 +556,10 @@ class ReplayController:
         `stale` means a finished render exists but its inputs (decisions, room or
         registration) have changed since.
         """
+        if self.presentation_video(path):
+            return {'state': 'done', 'can_render': False, 'presentation_only': True,
+                    'reason': 'Authored Unity illustration from video review; not calibrated motion capture or inventory evidence.',
+                    'files': ['sim.mp4'], 'rendered_at': None}
         job = self.renders.status(path.name)
         try:
             collected = collected or self.timeline_inputs(path)
@@ -586,6 +596,9 @@ class ReplayController:
     def sim_video(self, name: str, filename: str = render_jobs.SIM_VIDEO) -> Optional[Path]:
         """The newest finished render's file for a recording (current or stale)."""
         path = self.scenario_dir(name)
+        presentation = self.presentation_video(path)
+        if presentation and filename == render_jobs.SIM_VIDEO:
+            return presentation
         last = render_jobs.latest(path)
         if not last or filename not in last.get("files", {}):
             return None
@@ -1098,6 +1111,8 @@ class ReplayController:
                 "name": rec.name,
                 "label": rec.label,
                 "source": rec.meta.get("source", "fixture"),
+                "privacy_windows": bool(rec.meta.get('privacy_windows')),
+                "presentation_only": bool(rec.meta.get('presentation_only')),
                 "uploaded_at": rec.meta.get("uploaded_at"),
                 "events_total": len(rec.events),
                 "events_applied": sum(1 for e in rec.events if e["event_id"] in applied),
@@ -1241,7 +1256,11 @@ class ReplayController:
 
         fill = frame.copy()
         polys = []
-        for r in self.layout.regions:
+        drawn_regions = self.layout.regions
+        if not drawn_regions and rec and rec.meta.get('presentation_regions'):
+            # These drawings never enter the inventory engine's region set.
+            drawn_regions = [Region.model_validate(r) for r in rec.meta['presentation_regions']]
+        for r in drawn_regions:
             pts = np.array([[int(x * width), int(y * height)] for x, y in r.polygon], dtype=np.int32)
             polys.append((r, pts))
             cv2.fillPoly(fill, [pts], REGION_COLORS[r.region_type])
@@ -1264,7 +1283,7 @@ class ReplayController:
             cv2.putText(frame, label, (x0 + pad, y0 + pad + th), font, size, (255, 255, 255), thick, cv2.LINE_AA)
 
         hands: List[Tuple[int, int]] = []
-        if rec and rec.poses:
+        if rec and rec.poses and (not rec.meta.get('privacy_windows') or skeleton_visible(media_time_ms, rec.events)):
             kps = (rec.camera_group.camera_at(media_time_ms).keypoints_at(media_time_ms) if rec.camera_group
                    else rec.poses.keypoints_at(media_time_ms))
             if kps:
@@ -1277,7 +1296,7 @@ class ReplayController:
                     if c >= MIN_KEYPOINT_CONF and i not in (9, 10):
                         cv2.circle(frame, (x, y), max(2, round(2 * scale)), (255, 255, 255), -1, cv2.LINE_AA)
                 hands = [(x, y) for i, (x, y, c) in enumerate(px) if i in (9, 10) and c >= MIN_KEYPOINT_CONF]
-        elif rec:
+        elif rec and not rec.poses:
             hx, hy, _ = synthetic_hand(media_time_ms)
             hands = [(int(hx * width), int(hy * height))]
         for x, y in hands:

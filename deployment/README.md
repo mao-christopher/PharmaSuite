@@ -21,10 +21,26 @@ For the September 27 scan/video setup, place the supplied original files under
 `persistent/incoming/`, copy `provision_demo.py` into the API container, and run it
 there after the API is ready. It converts the video, imports the scan, and uses
 six visually reviewed annotations; it does not infer events for arbitrary videos.
-Open `/demo` to inspect timestamps and draw the regions. Keep the original files.
+Open the original dashboard at `/`; the supplied recording is auto-loaded. Use the Room page to inspect or adjust its shelf boxes. Keep the original files.
 
 The Linux Unity editor and licensed-user environment must be installed and
 activated separately. Set `UNITY_PATH` only after testing its graphics-enabled
 batch execution in the actual API environment. Never copy another machine's
 license or credentials into the image. Existing simulation videos play without
 the editor. Calibration and shelf setup are still needed for new re-enactments.
+
+
+For the IMG_3537-only fixture, `single_demo.py` archives unrelated recordings,
+rooms and views outside the served workspace, installs four medication fixtures,
+and preserves the original dashboard. The currently deployed pharmacy ID is
+`img-3537-demo`; earlier inventory documents remain in MongoDB.
+
+`restore_ui.py` is a one-off migration from Demo A-D labels to named medications.
+It preserves geometry, quantities, event IDs and audit history, backs up the
+prior files and state, and connects the authored `presentation.mp4` to the normal
+player. Stop the API while running fixture migrations to avoid concurrent writes.
+
+The Unity presentation is generated on a licensed machine and copied to
+`persistent/workspace/demo/simulation.mp4` and the recording's `presentation.mp4`.
+It is explicitly illustrative, separate from registered-camera evidence. Camera
+rectangles in recording metadata only draw overlays and cannot mutate stock.

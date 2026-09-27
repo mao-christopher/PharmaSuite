@@ -1,6 +1,7 @@
 """Main FastAPI Application Entrypoint for Pharma Inventory Platform."""
 
 import asyncio
+import json
 import re
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -23,9 +24,11 @@ async def lifespan(app: FastAPI):
     scenarios_dir.mkdir(parents=True, exist_ok=True)
 
     # Live inventory is persisted under data/state and carries across recordings.
-    controller = ReplayController(scenarios_dir=scenarios_dir)
+    setup_path = cfg.data_dir / 'demo' / 'setup.json'
+    setup = json.loads(setup_path.read_text()) if setup_path.exists() else {}
+    controller = ReplayController(scenarios_dir=scenarios_dir, layout_id=setup.get('camera_layout_id', 'default'))
     routes.controller = controller
-    controller.restore_player(fallback="demo_scenario_01")
+    controller.restore_player(fallback=setup.get('recording', 'demo_scenario_01'))
 
     clock = asyncio.create_task(controller.run_clock())
     try:

@@ -88,7 +88,7 @@ export default function RenderButton({ name, initial, refreshKey, onDone, size =
     || 'Re-enact this recording in Unity from its floor track and decisions';
   return (
     <span className="render-status">
-      {state === 'done' && <Badge tone="green" title={title}>Simulation ready</Badge>}
+      {state === 'done' && <Badge tone="green" title={title}>{render.presentation_only ? 'Illustrative simulation ready' : 'Simulation ready'}</Badge>}
       {state === 'stale' && <Badge tone="amber" title={title}>Simulation out of date</Badge>}
       {state === 'failed' && <Badge tone="red" title={render.error || undefined}>Render failed</Badge>}
       {state !== 'done' && (

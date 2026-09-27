@@ -1204,3 +1204,41 @@ Implemented on `feature/shipment-stocking`; see [backend/SHIPMENTS.md](backend/S
 - Validation: 266 backend/simulation tests pass with real local MongoDB, including
   22 shipment-specific cases; dashboard production build passes. All eight imported
   shipments were inspected in an isolated browser preview. No new Unity run needed.
+
+## IMG_3537-only presentation — 2026-09-27
+
+The deployment now has one recording and one camera named Pharmacy security camera.
+Other room/view/recording fixtures are archived outside the served workspace. The
+setup selects its camera at startup while preserving the original dashboard and navigation.
+A separate pharmacy ID preserves the earlier demo's inventory history.
+
+The supplied scan remains the room reference. Four illustrative shelf boxes (two
+levels, two positions per level), four named medications with fictional demo stock, and a
+counter are prepared. Camera polygons are presentation-only: the scan has not been
+registered to the footage and no stock mutations are inferred from these drawings.
+
+The new Unity presentation reuses Rocketbox and bottle assets and follows the six
+visually reviewed actions at 14.60, 16.75, 28.70, 31.65, 37.30 and 40.35 seconds.
+Body motion is authored from video review, not calibrated motion capture. It is
+separate from the evidence-driven timeline and emits no inventory events.
+
+Privacy presentation supersedes the earlier always-visible skeleton request for
+this demo: actual CV skeletons and the separately labeled simulation rig appear
+only in the one second preceding each contact. Raw footage and analysis are still
+retained; this is display minimization, not anonymization or data deletion.
+
+Validation: 35 targeted backend tests pass (one integration check skipped); dashboard production build passes.
+Unity 6000.6.3f1 rendered 667 frames at 960x540 / 15 FPS. All six actions completed,
+with zero downgraded reaches and zero collision guard holds; four labels/bottles.
+The licensed Windows editor produced the render, then it was deployed as MP4.
+Server-side fresh rendering still requires Linux Unity activation.
+
+
+The user clarified that removing other demos must not remove the original interface.
+Restored App.jsx from the original repository commit a14f5f2. IMG_3537 is the only
+recording, auto-loaded into the original player, including Real / Simulation /
+Side by side. The authored render is explicitly flagged presentation-only and
+never masquerades as a render derived from confirmed inventory decisions. Named
+medications are Metformin 500 mg, Atorvastatin 20 mg, Ibuprofen 200 mg, and
+Amoxicillin 500 mg, with fictional opening stock. Existing quantities and audit
+history are preserved during the medication rename. Privacy windows remain.

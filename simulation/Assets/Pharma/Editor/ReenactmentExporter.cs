@@ -33,6 +33,8 @@ namespace Pharma.Simulation.Editor
             string only = Argument("-pharmaFrames");
             var wanted = only == null ? null : new HashSet<int>(only.Split(',').Select(int.Parse));
             var built = ReenactmentScene.Build(plan);
+            Directory.CreateDirectory(Path.Combine(output, "evaluator_only"));
+            using var rig = new StreamWriter(Path.Combine(output, "evaluator_only", "privacy_rig.jsonl"));
             var sim = built.sim; var camera = sim.roomCamera;
             int width = plan.width, height = plan.height;
             var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
@@ -64,6 +66,13 @@ namespace Pharma.Simulation.Editor
                 for (int i = 0; i < plan.frame_count; i++)
                 {
                     sim.Evaluate(i / plan.fps);
+                    if (plan.privacy_lead_s > 0 && plan.actions.Any(a =>
+                        i <= a.contact_frame && i >= a.contact_frame - plan.privacy_lead_s * plan.fps))
+                    {
+                        var sample = SimulationSkeleton.Capture(sim, i, width, height);
+                        sample.media_time_ms = i * 1000.0 / plan.fps;
+                        rig.WriteLine(JsonUtility.ToJson(sample));
+                    }
                     if (!sim.TechnicianVisible) report.technician_hidden_frames++;
                     if (wanted != null && !wanted.Contains(i)) continue;
                     foreach (var r in visuals) r.enabled = sim.TechnicianVisible;
