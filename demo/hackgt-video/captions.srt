@@ -121,4 +121,3 @@ Through this process, PharmaSuite can make pharmaceutical handling safer and mor
 31
 00:02:36,755 --> 00:02:41,855
 trustworthy than ever before for patients while also preserving the privacy of workers.
-
