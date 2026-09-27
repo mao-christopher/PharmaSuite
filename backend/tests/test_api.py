@@ -104,6 +104,47 @@ def test_short_live_buffer_requires_confirmation(client, monkeypatch):
                for a in client.get("/api/inventory").json()["alerts"].values())
 
 
+def test_band_event_without_camera_frames_is_saved_as_uncertain(client):
+    metadata = {"event_id": str(uuid.uuid4()), "capture_id": str(uuid.uuid4()),
+                "code": "P", "band_id": "01", "wrist": "right", "layout_id": "default",
+                "calibration_version": 1, "notification_ms": 5000,
+                "notification_epoch_ms": 1_800_000_000_000, "frame_times_ms": []}
+    before = client.get("/api/inventory").json()["inventory"]["AMOXICILLIN_500MG"]
+    response = client.post("/api/live/events", data={"metadata": json.dumps(metadata)})
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "needs_confirmation"
+    assert response.json()["clip_url"] is None
+    assert response.json()["evidence"]["reason"] == "no_camera_frames"
+    state = client.get("/api/inventory").json()
+    assert state["inventory"]["AMOXICILLIN_500MG"]["shelf_counts"] == before["shelf_counts"]
+    assert state["live_activity"][0]["event_id"] == metadata["event_id"]
+
+
+def test_second_visible_person_prevents_automatic_stock_change(client, monkeypatch):
+    import pharma.pose
+
+    joints = [[0, 0, 0] for _ in range(17)]
+    joints[10] = [.25, .25, .9]
+
+    def two_people(path, count, **kwargs):
+        kwargs["person_counts"].extend([2] * count)
+        return [joints for _ in range(count)]
+
+    monkeypatch.setattr(pharma.pose, "extract_video_keypoints", two_people)
+    ok, jpg = cv2.imencode(".jpg", np.zeros((90, 160, 3), dtype=np.uint8))
+    assert ok
+    metadata = {"event_id": str(uuid.uuid4()), "capture_id": str(uuid.uuid4()),
+                "code": "P", "band_id": "01", "wrist": "right", "layout_id": "default",
+                "calibration_version": 1, "notification_ms": 5000,
+                "notification_epoch_ms": 1_800_000_000_000,
+                "frame_times_ms": list(range(0, 5000, 100))}
+    files = [("frames", (f"{i}.jpg", io.BytesIO(jpg.tobytes()), "image/jpeg")) for i in range(50)]
+    response = client.post("/api/live/events", data={"metadata": json.dumps(metadata)}, files=files)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "needs_confirmation"
+    assert response.json()["evidence"]["reason"] == "multiple_people"
+
+
 def make_controller(tmp_path):
     """Controller over a private copy of the data directory (layouts, recordings, state)."""
     import shutil
