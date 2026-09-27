@@ -145,6 +145,39 @@ def test_second_visible_person_prevents_automatic_stock_change(client, monkeypat
     assert response.json()["evidence"]["reason"] == "multiple_people"
 
 
+def test_queued_band_event_after_calibration_change_is_preserved(client, monkeypatch):
+    import pharma.pose
+
+    monkeypatch.setattr(pharma.pose, "extract_video_keypoints",
+                        lambda *args, **kwargs: pytest.fail("stale calibration must not run pose"))
+    old_layout = client.get("/api/layouts/default").json()
+    updated = client.put("/api/layouts/default", json=old_layout)
+    assert updated.status_code == 200, updated.text
+    current_version = updated.json()["layout"]["calibration_version"]
+    ok, jpg = cv2.imencode(".jpg", np.zeros((90, 160, 3), dtype=np.uint8))
+    assert ok
+    metadata = {"event_id": str(uuid.uuid4()), "capture_id": str(uuid.uuid4()),
+                "code": "P", "band_id": "01", "wrist": "right", "layout_id": "default",
+                "calibration_version": old_layout["calibration_version"], "notification_ms": 5000,
+                "notification_epoch_ms": 1_800_000_000_000,
+                "frame_times_ms": list(range(0, 5000, 100))}
+    files = [("frames", (f"{i}.jpg", io.BytesIO(jpg.tobytes()), "image/jpeg")) for i in range(50)]
+    before = client.get("/api/inventory").json()["inventory"]["AMOXICILLIN_500MG"]
+    response = client.post("/api/live/events", data={"metadata": json.dumps(metadata)}, files=files)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "needs_confirmation"
+    evidence = response.json()["evidence"]
+    assert evidence["reason"] == "calibration_changed"
+    assert evidence["event_calibration_version"] == old_layout["calibration_version"]
+    assert evidence["current_calibration_version"] == current_version
+    assert client.get(response.json()["clip_url"]).status_code == 200
+    state = client.get("/api/inventory").json()
+    assert state["inventory"]["AMOXICILLIN_500MG"]["shelf_counts"] == before["shelf_counts"]
+    assert state["live_activity"][0]["event_id"] == metadata["event_id"]
+    retry_files = [("frames", (f"{i}.jpg", io.BytesIO(jpg.tobytes()), "image/jpeg")) for i in range(50)]
+    assert client.post("/api/live/events", data={"metadata": json.dumps(metadata)}, files=retry_files).json()["status"] == "duplicate"
+
+
 def make_controller(tmp_path):
     """Controller over a private copy of the data directory (layouts, recordings, state)."""
     import shutil
