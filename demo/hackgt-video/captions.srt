@@ -1,0 +1,123 @@
+1
+00:00:00,000 --> 00:00:04,460
+Every year, thousands of Americans die due to pharmaceutical drug mishandling.
+
+2
+00:00:04,900 --> 00:00:09,340
+Dr. Marv Shepard, the former chairman of the pharmacy administration at the University
+
+3
+00:00:09,340 --> 00:00:14,640
+of Texas, claims that the typical pharmacy makes two to four mistakes a day, which is
+
+4
+00:00:14,640 --> 00:00:17,060
+an alarming rate for such a high-stakes action.
+
+5
+00:00:17,620 --> 00:00:22,340
+By developing and training our own edge-compute model and integrating other machine learning
+
+6
+00:00:22,340 --> 00:00:27,240
+features, we were confident we could create an automated system to reduce error and increase
+
+7
+00:00:27,240 --> 00:00:29,300
+public confidence in pharmacists.
+
+8
+00:00:29,880 --> 00:00:34,280
+With tools like PharmaSuite, we hope to build a new tomorrow where everyone can trust health
+
+9
+00:00:34,280 --> 00:00:35,060
+care professionals.
+
+10
+00:00:35,755 --> 00:00:42,555
+PharmaSuite minimizes drug handling errors by monitoring all activities relating to prescription drug handling within a pharmacy.
+
+11
+00:00:43,655 --> 00:00:52,275
+From the moment an item is shipped to the pharmacy, PharmaSuite keeps track of the quantities, expiration dates, and locations of every drug and pill bottle.
+
+12
+00:00:53,095 --> 00:01:02,895
+When a pharmacy technician makes a transaction, throws away expired pills, or picks up a new product, PharmaSuite's MongoDB database is automatically updated.
+
+13
+00:01:03,935 --> 00:01:12,755
+If a pharmacist attempts to place a pill bottle on the wrong shelf, or sell an expired product, they are alerted and the transaction is blocked.
+
+14
+00:01:13,835 --> 00:01:18,095
+Replay data is collected for each transaction to maximize transparency.
+
+15
+00:01:19,255 --> 00:01:24,495
+Whenever a pharmacy is low on stock, PharmaSuite will automatically ask providers for new shipment.
+
+16
+00:01:25,535 --> 00:01:30,755
+Through the full stack, almost all possible sources of error in a pharmacy would be automated.
+
+17
+00:01:31,733 --> 00:01:34,553
+AI was integrated into our project on every level.
+
+18
+00:01:35,173 --> 00:01:39,793
+The shipment data was converted into stock information by the meta API ecosystem, which
+
+19
+00:01:39,793 --> 00:01:43,553
+then used the information to create bounding boxes for where the drugs should be placed
+
+20
+00:01:43,553 --> 00:01:46,133
+in a way that minimizes the chance of mix-ups.
+
+21
+00:01:48,575 --> 00:01:51,455
+To prevent the model from invading the privacy of pharmacy technicians,
+
+22
+00:01:52,035 --> 00:01:55,415
+PharmaSuite only begins tracking the pharmacists when they're making a transaction.
+
+23
+00:01:56,235 --> 00:02:00,895
+For the next part of our project, we train a custom edge compute model using data from a wearable
+
+24
+00:02:00,895 --> 00:02:05,855
+inertial measurement unit on the pharmacist's wrist to identify when the pill bottles are picked up or placed.
+
+25
+00:02:06,655 --> 00:02:11,255
+By collecting 5,000 data points manually, we ensured the neural network could distinguish between idle,
+
+26
+00:02:11,955 --> 00:02:15,915
+random, putting down, and picking up actions with 98.21% accuracy.
+
+27
+00:02:16,635 --> 00:02:21,635
+Using YOLO, a computer vision model, we correlate the position of the pharmacist's arm to bounding
+
+28
+00:02:21,635 --> 00:02:26,735
+boxes to track the movements of pills. After the transaction, it automatically registers changes
+
+29
+00:02:26,735 --> 00:02:30,695
+in the database, ensuring that the pharmacist returns the pills into the right location.
+
+30
+00:02:31,875 --> 00:02:36,755
+Through this process, PharmaSuite can make pharmaceutical handling safer and more
+
+31
+00:02:36,755 --> 00:02:41,855
+trustworthy than ever before for patients while also preserving the privacy of workers.
