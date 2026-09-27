@@ -51,6 +51,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!wristband/lib/
+!wristband/lib/**
 !backend/dashboard/src/lib/
 lib64/
 parts/
@@ -142,6 +144,7 @@ data/processed/
 data/external/
 data/interim/
 *.csv
+!demo/synthetic_shipments/**/*.csv
 *.tsv
 *.parquet
 *.feather
