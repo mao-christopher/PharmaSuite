@@ -7,6 +7,7 @@ import { request } from '../lib/api';
 import { ALERT_TYPES, NONE, appliedState, formatDateTime, formatMs, medLabel, plural } from '../lib/format';
 import { SignalTable, useResolver } from '../components/ActivityLog';
 import { Badge, Card, ConfirmDialog, Empty, EmptyState, PageHeader } from '../components/ui';
+import RenderButton from '../components/RenderButton';
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -364,6 +365,7 @@ export default function Recordings() {
                           )}
                         </td>
                         <td className="actions">
+                          {ready && r.has_video && r.render && <RenderButton name={r.name} initial={r.render} onDone={load} />}
                           {ready && remaining > 0 && (
                             <button type="button" className="btn btn-sm" disabled={busy === r.name} onClick={() => startApply(r)}>
                               {busy === r.name ? 'Applying…' : 'Apply'}

@@ -57,10 +57,14 @@ def test_multi_camera_upload_switches_to_the_camera_that_sees_the_arm(client, tm
     assert c.get(f"/api/recordings/{name}/frame", params={"camera": "camera-2"}).content[:2] == b"\xff\xd8"
     regions = c.get("/api/layouts/default").json()["regions"]
     res = c.post(f"/api/recordings/{name}/view", json={
-        "action": "new", "camera_id": "camera-2", "name": "Side angle", "regions": regions,
+        "action": "new", "camera_id": "camera-2", "name": "Side angle",
     })
     assert res.status_code == 200, res.text
-    side_view = res.json()["layout"]["layout_id"]
+    side = res.json()["layout"]
+    side_view = side["layout_id"]
+    # A new view has no regions until its camera is registered in a room; give it the
+    # same (hand-drawn) ones directly so the arm lands on a shelf.
+    assert c.put(f"/api/layouts/{side_view}", json={**side, "regions": regions}).status_code == 200
     summary = next(r for r in c.get("/api/recordings").json()["recordings"] if r["name"] == name)
     cams = {cam["camera_id"]: cam for cam in summary["cameras"]}
     assert cams["camera-2"]["layout_id"] == side_view and cams["camera-2"]["view_confirmed"]

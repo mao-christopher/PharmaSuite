@@ -1471,7 +1471,7 @@ select.input {
   white-space: nowrap;
 }
 
-/* ---------- Setup ---------- */
+/* ---------- Two-column editors (Room page) ---------- */
 
 .setup {
   display: grid;
@@ -2346,4 +2346,483 @@ input[type='range'] {
 
 .reorder-field {
   margin-top: 12px;
+}
+
+/* ---------------------------------------------------------------- room scan */
+
+.room-viewer {
+  position: relative;
+  height: min(68vh, 640px);
+  min-height: 360px;
+  background: var(--surface-2);
+}
+
+.room-viewer-compact {
+  height: auto;
+  min-height: 320px;
+}
+
+.room-host {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.room-host:active {
+  cursor: grabbing;
+}
+
+.room-viewer.is-picking .room-host {
+  cursor: crosshair;
+}
+
+.room-host canvas,
+.scan-overlay canvas,
+.room-labels {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.room-labels {
+  pointer-events: none;
+}
+
+.room-label {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--label-color, var(--ink));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.room-label.strong {
+  outline: 2px solid #fff;
+}
+
+.room-label-marker {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 9px;
+  text-align: center;
+  font-family: var(--mono);
+}
+
+.room-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.room-reset {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--surface);
+}
+
+.room-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  align-items: stretch;
+  background: var(--hairline);
+}
+
+.room-split > * {
+  background: var(--surface-2);
+}
+
+.photo-pairs {
+  width: 100%;
+  align-self: center;
+}
+
+.scan-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.solve-grid polyline {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.solve-region polyline {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-mark text {
+  fill: #fff;
+  font-family: var(--mono);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.pair-mark circle:not(.pair-proj) {
+  stroke: #fff;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-mark.selected circle:not(.pair-proj) {
+  fill: var(--ink);
+}
+
+.pair-error {
+  stroke: var(--disposal);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-proj {
+  fill: var(--disposal);
+}
+
+.pair-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.pair-list li > button:first-child {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  white-space: nowrap;
+}
+
+.pair-list .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pair-num {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 11px/20px var(--mono);
+  text-align: center;
+}
+
+.region-group + .region-group {
+  margin-top: 12px;
+}
+
+.input-unit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.input-unit .input {
+  min-width: 0;
+}
+
+.input-unit .unit {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.kv-grid dt {
+  color: var(--muted);
+}
+
+.kv-grid dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.solve-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+
+.scan-upload {
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.scan-upload.compact {
+  gap: 8px;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu > summary {
+  list-style: none;
+}
+
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  gap: 12px;
+  width: 320px;
+  padding: 14px;
+  box-shadow: var(--shadow-float);
+}
+
+/* ---------------------------------------------------------------- floor map */
+
+.floor-map {
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.floor-map svg {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+}
+
+.map-region {
+  fill: color-mix(in srgb, var(--region-color) 22%, transparent);
+  stroke: var(--region-color);
+  stroke-width: 0.025;
+}
+
+.map-fov {
+  fill: rgba(10, 106, 224, 0.08);
+  stroke: rgba(10, 106, 224, 0.35);
+  stroke-width: 0.015;
+}
+
+.map-camera {
+  fill: var(--ink);
+  stroke: var(--surface);
+  stroke-width: 0.03;
+}
+
+.map-trail {
+  fill: none;
+  stroke: var(--accent);
+  stroke-opacity: 0.45;
+  stroke-width: 0.05;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-body {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 0.035;
+}
+
+.map-facing {
+  fill: var(--accent);
+}
+
+.map-tech.bridged .map-body,
+.map-tech.bridged .map-facing {
+  opacity: 0.6;
+}
+
+.map-tech.held .map-body,
+.map-tech.held .map-facing {
+  fill: var(--faint);
+}
+
+.floor-map-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.floor-map-stats dt {
+  color: var(--muted);
+}
+
+.floor-map-stats dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.floor-map-note {
+  margin: 8px 0 0;
+}
+
+.floor-map-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.floor-map-empty p {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .room-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------- read-only regions */
+
+.preview-region polygon {
+  fill: color-mix(in srgb, var(--region) 22%, transparent);
+  stroke: var(--region);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.preview-region text {
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 3px;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- medications & opening stock */
+
+.stock-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.stock-editor .add-med {
+  max-width: 720px;
+}
+
+.med-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+#opening-stock {
+  scroll-margin-top: 76px;
+}
+
+.room-stack {
+  display: grid;
+  gap: 1px;
+  background: var(--hairline);
+}
+
+.room-stack > * {
+  background: var(--surface-2);
+}
+
+.view-manager {
+  display: grid;
+  gap: 8px;
+}
+
+.view-manager .button-row,
+.view-manager .inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-manager .inline-form .input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.view-manager .push {
+  margin-left: auto;
+}
+
+.setup-side .banner {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.setup-side .banner .push {
+  margin-left: 0;
+}
+
+.room-mode {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 64px);
+  pointer-events: none;
+}
+
+.room-mode > * {
+  pointer-events: auto;
+}
+
+.room-mode .segmented {
+  background: var(--surface);
+}
+
+.room-mode-note {
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Simulation render status (Recordings rows and the player header) */
+.render-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  vertical-align: middle;
+}
+.card-actions .render-status .hint {
+  max-width: 320px;
+  font-size: 12px;
 }

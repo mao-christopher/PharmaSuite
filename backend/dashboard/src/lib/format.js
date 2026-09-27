@@ -189,3 +189,13 @@ export function uniqueSessions(sessions) {
   Object.values(sessions || {}).forEach((s) => byId.set(s.session_id, s));
   return [...byId.values()];
 }
+
+export function nextId(prefix, existing) {
+  const taken = new Set(existing);
+  let n = 1;
+  while (taken.has(`${prefix}_${String(n).padStart(2, '0')}`)) n += 1;
+  return `${prefix}_${String(n).padStart(2, '0')}`;
+}
+
+/** Shelves are named after their medication, so every view counts the same shelf. */
+export const shelfIdFor = (medKey) => `shelf_${medKey.toLowerCase()}`;

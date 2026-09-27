@@ -243,6 +243,63 @@ by 1.5× for more deliberate movements, while the aisle walkthrough remains 40 s
 All motion is deterministic procedural animation, not motion capture or full grasp
 physics. Collision guards now also check leg segments and foot sweeps.
 
+## Scene geometry and dashboard re-enactment
+
+Every export also writes `scene_geometry.json`, listed in the manifest. It holds the
+room camera (position, rotation, vertical field of view, pixel size), each configured
+region as a world-space box with its open face, and every solid collider envelope.
+Like `calibration.json` it is static setup, not an answer: no bottles, rig, states
+or outcomes. `validate_recording.py` checks that its regions project onto the
+calibration rectangles.
+
+To use a render in the dashboard the same way as real footage, import its room and
+exact camera, then upload `camera.mp4` with `imu_events.jsonl` on that camera view:
+
+```sh
+backend/.venv/bin/python backend/scripts/import_sim_room.py simulation/Exports/demo-001 \
+  --api http://127.0.0.1:8000
+```
+
+The dashboard's **Render simulation** button re-enacts a recording from its
+`timeline.json`. That file carries the floor track, the pickup and put-down decisions,
+the starting bottle counts, the rebuilt room and the registered camera. The button
+runs:
+
+```sh
+python simulation/tools/render.py --unity "$UNITY_PATH" \
+  --timeline path/to/timeline.json --output path/to/new-dir
+```
+
+It works like this:
+
+- **Scene:** Unity builds the room from the rebuilt boxes, never from the scan mesh.
+  It reuses the demo's character, lights and bottle model, and places the registered
+  camera.
+- **Body:** the technician follows the track and turns with its facing. Out of view
+  it holds its last pose. On reappearing it blends if it moved under 1 m, otherwise
+  it cuts. Positions inside furniture are pushed out.
+- **Reaches:** each reach starts 0.6 s before the signal. The body steps at most
+  0.3 m toward the contact. If the contact is still out of reach, the region is only
+  highlighted and no reach is animated. The bottle still ends up where the dashboard
+  has it, so the scene never contradicts inventory.
+- **Bottles:** each bottle keeps its medication. A misplaced bottle is red, a
+  counter placement amber, a disposed bottle gray (it drops into the bin), and a
+  pending decision translucent with a "?". Signals the inventory never applied show
+  nothing.
+- **Output:** `camera.mp4` at the timeline's fps, frame size and frame count, plus
+  `render_report.json`. The report holds the alignment of region corners through the
+  Unity camera against the registration, and counts of out-of-view frames, cuts,
+  blends, push-outs, and shown, highlight-only and pending actions. `PROGRESS`
+  lines go to stdout for the dashboard's job indicator.
+- **Previews:** `--frames N` renders the first N frames. `--at-ms 43000,50500`
+  adds frames around those media times, where reaches and colours show. The whole
+  timeline is still simulated; only the listed frames are captured.
+
+The re-enactment uses dashboard evidence only. It never reads `evaluator_only/`,
+the simulator's scripted outcomes or Unity truth, and it emits no sensor events. It
+is presentation, not camera footage; the dashboard labels every rendered frame that
+way.
+
 ## Extending the scene
 
 - `PharmacySceneBuilder.cs`: room geometry, materials, camera, labeled regions,
@@ -250,8 +307,21 @@ physics. Collision guards now also check leg segments and foot sweeps.
 - `FootPlantGait.cs`: planted stance, predictive swing-foot steps and landing targets.
 - `SimulationSkeleton.cs`: labeled live X-ray and evaluator-only rig export.
 - `CollisionWorld.cs`: Unity navigation mesh, complete paths, capsule/swept collision guards.
-- `PharmacySimulation.cs`: guarded task/bottle states, skeletal reach/step motion,
-  bottle locations, and playback controls. `Evaluate(t)` is independent of history.
+- `PharmacySimulation.cs`: fixed-tick playback, guarded skeletal pose, IK, and controls.
+  It composes the three parts below. `Evaluate(t)` is independent of history.
+- `RoomDescription.cs`: plain room data (regions, counter/disposal contacts, bottle
+  placements, navigation boxes), currently captured from the built scene.
+- `MotionSource.cs`: `IMotionSource`, where the body stands and faces over time.
+  `PlannedWalk` is the aisle survey plus collision-aware routes between stand points.
+- `ActionSchedule.cs`: the pickup/release cues, bottle ownership states, commit
+  preconditions, and accepted mock-sensor events.
+- `SceneGeometry.cs`: writes `scene_geometry.json` (camera, region volumes, solid
+  collider boxes) with every export.
+- Re-enactment: `tools/reenact_plan.py` (timeline to Unity plan, pure Python),
+  `ReenactmentPlan.cs`, `ReenactmentPlayer.cs` (the floor-track `IMotionSource`),
+  `ReenactmentActions.cs` (reaches, bottles, highlights),
+  `PharmacySimulation.Reenactment.cs`, and the editor-side `ReenactmentScene.cs` /
+  `ReenactmentExporter.cs`.
 - `SimulationExporter.cs`: fixed-clock frame sampling, abstract sensor events,
   calibration, and separated truth export.
 - `tools/`: pinned asset retrieval, batch rendering, video packaging, validation,

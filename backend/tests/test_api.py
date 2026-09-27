@@ -1,5 +1,7 @@
 """Pytest suite for FastAPI REST API endpoints using TestClient."""
 
+import cv2
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from pharma.api.main import app
@@ -436,22 +438,26 @@ def test_upload_suggests_a_view_and_saves_edits_as_new_or_replacement(isolated_c
     frame = c.get(f"/api/recordings/{name}/frame")
     assert frame.status_code == 200 and frame.content[:2] == b"\xff\xd8"
 
-    regions = [dict(r, polygon=[[x * 0.9, y * 0.9] for x, y in r["polygon"]]) for r in view["regions"]]
-    res = c.post(f"/api/recordings/{name}/view", json={"action": "new", "name": "Side angle", "regions": regions})
+    res = c.post(f"/api/recordings/{name}/view", json={"action": "new", "name": "Side angle"})
     assert res.status_code == 200, res.text
     new = res.json()["layout"]
     assert new["layout_id"] == "side-angle" and (new["frame_width"], new["frame_height"]) == (320, 180)
     assert new["background_image"] and len(new["medications"]) == len(view["medications"])
+    # Regions come from the room once this camera is registered; a new view starts with none.
+    assert new["regions"] == [] and new["regions_source"] is None
     listing = {r["name"]: r for r in c.get("/api/recordings").json()["recordings"]}
     assert listing[name]["layout_id"] == "side-angle" and listing[name]["view_confirmed"] is True
     views = {v["layout_id"]: v for v in c.get("/api/layouts").json()["layouts"]}
     assert set(views) == {"default", "side-angle"} and views["side-angle"]["recordings"][0]["name"] == name
 
     before = c.get("/api/layouts/default").json()["calibration_version"]
-    res = c.post(f"/api/recordings/{name}/view", json={"action": "replace", "layout_id": "default", "regions": regions})
-    assert res.status_code == 200 and res.json()["layout"]["calibration_version"] == before + 1
+    old_regions = c.get("/api/layouts/default").json()["regions"]
+    res = c.post(f"/api/recordings/{name}/view", json={"action": "replace", "layout_id": "default"})
+    replaced = res.json()["layout"]
+    assert res.status_code == 200 and replaced["calibration_version"] == before + 1
+    assert replaced["regions"] == old_regions and replaced["background_image"] != bg["background_image"]
     assert c.post(f"/api/recordings/{name}/view", json={"action": "use", "layout_id": "side-angle"}).status_code == 200
-    assert c.post(f"/api/recordings/{name}/view", json={"action": "new"}).status_code == 422
+    assert c.post(f"/api/recordings/{name}/view", json={"action": "sideways"}).status_code == 422
 
     # Signals from a recording apply with its own view's regions.
     assert wait_ready(c, name)["status"] == "ready"
@@ -566,3 +572,36 @@ def test_built_dashboard_serves_assets_and_page_routes(client):
         assert 'id="root"' in response.text
     for asset in re.findall(r'(?:src|href)="(/assets/[^"]+)"', response.text):
         assert client.get(asset).status_code == 200
+
+
+def test_camera_views_are_created_renamed_and_deleted(client, tmp_path):
+    c = client
+    made = c.post("/api/layouts", json={"name": "Back room"}).json()["layout"]
+    assert made["layout_id"] == "back-room" and made["regions"] == [] and made["background_image"] is None
+    ok, png = cv2.imencode(".png", np.zeros((90, 160, 3), np.uint8))
+    bg = c.post("/api/layouts/back-room/background", files={"image": ("p.png", png.tobytes(), "image/png")}).json()
+    photo = c.patch("/api/layouts/back-room", json={"background_image": bg["background_image"]}).json()["layout"]
+    assert (photo["frame_width"], photo["frame_height"]) == (160, 90)
+    assert photo["calibration_version"] == made["calibration_version"] + 1
+    renamed = c.patch("/api/layouts/back-room", json={"name": "Stock room"}).json()["layout"]
+    assert renamed["name"] == "Stock room" and renamed["calibration_version"] == photo["calibration_version"]
+    assert c.patch("/api/layouts/back-room", json={"background_image": "background-000000000000.jpg"}).status_code == 400
+    assert c.delete("/api/layouts/default").status_code == 409
+    assert c.delete("/api/layouts/back-room").status_code == 200
+    assert "back-room" not in {v["layout_id"] for v in c.get("/api/layouts").json()["layouts"]}
+    assert c.delete("/api/layouts/back-room").status_code == 404
+
+
+def test_catalog_is_saved_on_its_own(client):
+    c = client
+    catalog = c.get("/api/catalog").json()
+    assert {m["medication_key"] for m in catalog["medications"]} == {"AMOXICILLIN_500MG", "IBUPROFEN_200MG"}
+    extra = {"medication_key": "ASPIRIN_81MG", "name": "Aspirin", "strength": "81mg"}
+    res = c.put("/api/catalog", json={**catalog, "medications": catalog["medications"] + [extra]})
+    assert res.status_code == 200, res.text
+    assert "ASPIRIN_81MG" in c.get("/api/inventory").json()["inventory"]
+    # The fixture view still has a hand-drawn amoxicillin shelf, so amoxicillin can't go.
+    without = [m for m in catalog["medications"] if m["medication_key"] != "AMOXICILLIN_500MG"]
+    receipts = [r for r in catalog["receipts"] if r["medication_key"] != "AMOXICILLIN_500MG"]
+    blocked = c.put("/api/catalog", json={"medications": without, "receipts": receipts})
+    assert blocked.status_code == 422 and "Reassign these shelves" in blocked.json()["detail"]

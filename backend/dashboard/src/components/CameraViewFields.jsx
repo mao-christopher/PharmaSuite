@@ -1,5 +1,6 @@
 import React from 'react';
-import RegionEditor from './RegionEditor';
+import { Link } from 'react-router-dom';
+import RegionPreview from './RegionPreview';
 import { Badge } from './ui';
 
 const pct = (score) => `${Math.round(score * 100)}% match`;
@@ -9,42 +10,64 @@ export function pickView(suggestions, taken = new Set()) {
   return (suggestions.find((s) => s.has_photo && !taken.has(s.layout_id)) || suggestions[0])?.layout_id;
 }
 
-export const isEdited = (base, regions) => Boolean(base && regions && JSON.stringify(regions) !== JSON.stringify(base.regions));
+export const VIEW_ACTIONS = [
+  ['use', 'Use as is'],
+  ['replace', 'Update its photo'],
+  ['new', 'New camera view'],
+];
 
-export const hasUnassignedShelf = (regions) =>
-  Boolean(regions?.some((r) => r.region_type === 'designated_shelf' && !r.medication_key));
+/** Where a view's regions come from, in one sentence for the employee. */
+export function regionStatus(base, action) {
+  if (action === 'new') {
+    return {
+      tone: 'amber',
+      text: 'A new view starts without shelf regions. Register its camera on the Room page so its signals can be placed; until then each one asks for confirmation.',
+    };
+  }
+  if (!base) return null;
+  if (base.regions_source) {
+    return { tone: 'muted', text: `Regions come from the 3D tags in room ${base.regions_source.room_id}.` };
+  }
+  if (base.regions.length) {
+    return {
+      tone: 'amber',
+      text: 'These regions were drawn by hand in an older version. Register this camera on the Room page to use the 3D tags instead.',
+    };
+  }
+  return { tone: 'amber', text: 'This view has no shelf regions yet. Register its camera on the Room page, or its signals ask for confirmation.' };
+}
 
 /**
- * Pick a saved camera view for one camera and adjust its regions on that camera's own
- * frame. `info` is the view-suggestion response (suggestions, width, height). `decision`
- * sits above the editor (what happens to edits); `children` below it.
+ * Pick a saved camera view for one camera and decide what the upload does with it. The
+ * view's regions are shown read-only over this camera's frame: regions are made from the
+ * room's 3D tags on the Room page, never drawn here. `info` is the view-suggestion
+ * response (suggestions, width, height).
  */
 export default function CameraViewFields({
   info,
   baseId,
   onBaseId,
   base,
-  regions,
-  onRegions,
-  editor,
+  action,
+  onAction,
   imageUrl,
   multi,
   sharedWith = [],
   newName,
   onNewName,
   fitHeight,
-  decision,
   children,
 }) {
   const suggestion = info.suggestions.find((s) => s.layout_id === baseId);
   const baseName = base?.name || baseId;
-  const draft = base && regions && { ...base, regions, frame_width: info.width, frame_height: info.height };
+  const status = regionStatus(base, action);
+  const source = multi ? "camera's" : "video's";
 
   return (
     <div className="form">
       <div className="review-head">
         <label className="field">
-          <span className="label">Start from</span>
+          <span className="label">Camera view</span>
           <select className="input" name="base-view" value={baseId || ''} onChange={(e) => onBaseId(e.target.value)}>
             {info.suggestions.map((s, i) => (
               <option key={s.layout_id} value={s.layout_id}>
@@ -53,43 +76,65 @@ export default function CameraViewFields({
             ))}
           </select>
         </label>
-        {onNewName && (
+        <div className="field">
+          <span className="label">This {multi ? 'camera' : 'video'}</span>
+          <div className="segmented" role="group" aria-label="What to do with the camera view">
+            {VIEW_ACTIONS.map(([id, label]) => (
+              <button key={id} type="button" className={action === id ? 'active' : ''} aria-pressed={action === id} onClick={() => onAction(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {action === 'new' && (
           <label className="field">
             <span className="label">New view name</span>
             <input className="input" name="new-view-name" autoComplete="off" value={newName} onChange={(e) => onNewName(e.target.value)} />
           </label>
         )}
       </div>
-      {suggestion && (
+      {suggestion && action !== 'new' && (
         <p className="hint">
           {suggestion.has_photo ? (
             <>
               <Badge tone={suggestion.score >= 0.7 ? 'green' : suggestion.score >= 0.4 ? 'amber' : 'red'}>{pct(suggestion.score)}</Badge>{' '}
-              Its regions are drawn on this {multi ? "camera's" : "video's"} first frame ({info.width}×{info.height}).
+              {baseName}'s regions are drawn on this {source} first frame ({info.width}×{info.height}).
             </>
           ) : (
             'This view has no photo to compare with, so the match is unknown.'
           )}
           {!suggestion.same_aspect &&
-            ` The view was annotated at ${suggestion.frame_width}×${suggestion.frame_height}, a different shape, so check every region lines up.`}
+            ` The view was set up at ${suggestion.frame_width}×${suggestion.frame_height}, a different shape, so the regions won't line up.`}
         </p>
       )}
-      {decision}
-      {sharedWith.length > 0 && (
+      {action === 'replace' && (
         <p className="hint text-amber">
-          {sharedWith.join(', ')} already uses {baseName}. Each camera sees the room from its own angle, so save this one as a
-          new view.
+          {baseName} gets this {source} frame as its photo, for every recording that uses it. Its regions and camera registration stay; if
+          the camera moved, register it again on the <Link to={`/room?tab=cameras&view=${encodeURIComponent(baseId)}`}>Room page</Link>.
         </p>
       )}
-      {draft ? (
+      {sharedWith.length > 0 && action !== 'new' && (
+        <p className="hint text-amber">
+          {sharedWith.join(', ')} already uses {baseName}. Each camera sees the room from its own angle, so make this one a new camera view.
+        </p>
+      )}
+      {base || action === 'new' ? (
         <div className="card">
-          <RegionEditor draft={draft} onRegions={onRegions} imageUrl={imageUrl} editor={editor} inlinePanel fitHeight={fitHeight} />
+          <RegionPreview
+            imageUrl={imageUrl}
+            width={info.width}
+            height={info.height}
+            layout={action === 'new' ? null : base}
+            regions={action === 'new' ? [] : base.regions}
+            fitHeight={fitHeight}
+            alt={`First frame of this ${multi ? 'camera' : 'video'}`}
+          />
         </div>
       ) : (
         <p className="hint">Loading {baseId}…</p>
       )}
+      {status && <p className={`hint ${status.tone === 'amber' ? 'text-amber' : ''}`}>{status.text}</p>}
       {children}
-      {hasUnassignedShelf(regions) && <p className="form-error">Assign a medication to every shelf before saving.</p>}
     </div>
   );
 }

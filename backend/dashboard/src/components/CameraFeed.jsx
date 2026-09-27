@@ -7,6 +7,14 @@ import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
 import { appliedState, formatMs, plural } from '../lib/format';
 import { Badge, Card, EmptyState } from './ui';
+import RenderButton from './RenderButton';
+import { request } from '../lib/api';
+
+const SOURCES = [
+  ['real', 'Real'],
+  ['sim', 'Simulation'],
+  ['side', 'Side by side'],
+];
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const SNAP = 0.015; // snap to a signal marker within 1.5% of the timeline
@@ -163,9 +171,20 @@ export default function CameraFeed() {
     }
   };
 
+  const source = state.player_source || 'real';
+  const setSource = async (next) => {
+    setError(null);
+    try {
+      await request('/api/player/source', { method: 'POST', body: { source: next } });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  // Side by side shows the real frame and the render (same size) next to each other.
+  const aw = source === 'side' ? fw * 2 : fw;
   const feedStyle = fullscreen
     ? { width: '100%', height: '100%' }
-    : { aspectRatio: `${fw} / ${fh}`, width: `min(100%, calc((100dvh - 330px) * ${fw / fh}))` };
+    : { aspectRatio: `${aw} / ${fh}`, width: `min(100%, calc((100dvh - 330px) * ${aw / fh}))` };
 
   return (
     <Card
@@ -184,6 +203,20 @@ export default function CameraFeed() {
       }
       className="area-player"
       flush
+      actions={
+        <>
+          {state.sim_render && (
+            <div className="segmented" role="group" aria-label="What the player shows">
+              {SOURCES.map(([id, label]) => (
+                <button key={id} type="button" className={source === id ? 'active' : ''} aria-pressed={source === id} onClick={() => setSource(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {state.has_video && <RenderButton name={rec.name} refreshKey={`${state.store?.history_count}:${rec.events_applied}`} showReason />}
+        </>
+      }
     >
       <div
         ref={playerRef}
@@ -197,8 +230,12 @@ export default function CameraFeed() {
             <img
               key={state.scenario}
               src={`/api/video/feed?s=${encodeURIComponent(state.scenario || '')}`}
-              alt={`Camera view of ${rec.label} with regions${state.has_video ? ' and the pose skeleton' : ''} drawn on it`}
-              width={fw}
+              alt={
+                source === 'sim'
+                  ? `Unity re-enactment of ${rec.label}`
+                  : `Camera view of ${rec.label} with regions${state.has_video ? ' and the pose skeleton' : ''} drawn on it${source === 'side' ? ', beside its Unity re-enactment' : ''}`
+              }
+              width={aw}
               height={fh}
               draggable={false}
             />

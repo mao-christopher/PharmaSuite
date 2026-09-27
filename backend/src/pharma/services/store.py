@@ -250,6 +250,12 @@ class PharmacyStore:
             return None
         entry["applied_event_ids"].append(event["event_id"])
         entry.setdefault("first_applied_at", now_iso())
+        # Where the bottles stood before this recording's first signal (for the re-enactment).
+        entry.setdefault("start_inventory", {
+            key: {"shelf_counts": dict(inv.shelf_counts), "held_bottles": inv.held_bottles,
+                  "counter_bottles": inv.counter_bottles, "total_bottles": inv.total_bottles}
+            for key, inv in self.engine.inventory.items()
+        })
         entry["last_applied_at"] = now_iso()
         if event["event_type"] not in ("pickup", "release"):
             return None

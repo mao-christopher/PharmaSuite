@@ -159,6 +159,12 @@ backend/data/scenarios/*/poses.json
 backend/data/layouts/*/background-*
 backend/data/scenarios/*/thumb.jpg
 backend/data/state/
+# Room scans (large, and they picture a real space) and tracks derived from them
+backend/data/rooms/
+backend/data/scenarios/*/floor_track.json
+# Re-enactment timelines and Unity renders are regenerated from the recording
+backend/data/scenarios/*/timeline.json
+backend/data/scenarios/*/renders/
 
 # Keep directory structure
 !data/.gitkeep

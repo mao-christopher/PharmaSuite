@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 from fastapi import WebSocket
 
-from pharma.db.models import Catalog, Layout, Region
+from pharma.db.models import Catalog, Layout, Region, RegionsSource
 from pharma.services.fixture_loader import load_json, load_jsonl
 from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, Hand
 from pharma.services.layout import (
@@ -35,6 +35,9 @@ from pharma.services.recordings import (
 )
 from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarge
 from pharma.services.store import PharmacyStore, now_iso, session_key
+from pharma.services import region_projection, render_jobs, timeline
+from pharma.services.render_jobs import RenderQueue
+from pharma.services.room import registration_for_view
 
 SCENARIO_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 DRAFTS_DIR, DRAFT_FILE = ".drafts", "draft.json"
@@ -42,6 +45,11 @@ DRAFT_ID_PATTERN = re.compile(r"^draft-[0-9a-f]{12}$")
 SYNTHETIC_DURATION_MS = 10000
 SYNTHETIC_FPS = 30
 STREAM_MAX_WIDTH = 1280
+PLAYER_SOURCES = ("real", "sim", "side")
+TIMELINE_REASONS = {
+    "unregistered": "Register camera view {view} on the Room page first.",
+    "no_skeletons": "Extract this recording's skeletons first.",
+}
 THUMB_FILE = "thumb.jpg"
 THUMB_WIDTH = 480
 CLOCK_TICK_S = 1 / 60
@@ -149,6 +157,50 @@ class Recording:
         return self.camera_group.camera_at(media_time_ms).poses if self.camera_group else self.poses
 
 
+class _FrameReader:
+    """Sequential video reads at a media time, seeking only when time jumps."""
+
+    def __init__(self):
+        self.cap = None
+        self.key = None
+        self.index = -1
+        self.last = None
+        self.fps = None
+
+    def frame_at(self, path: Optional[Path], generation: int, media_time_ms: float, fps: Optional[float]):
+        if (generation, path) != self.key:
+            self.release()
+            self.key = (generation, path)
+            self.cap = cv2.VideoCapture(str(path)) if path else None
+            self.fps = (self.cap.get(cv2.CAP_PROP_FPS) or SYNTHETIC_FPS) if self.cap is not None else None
+        if self.cap is None:
+            return None
+        index = int(media_time_ms * (fps or self.fps) / 1000.0)
+        if index != self.index or self.last is None:
+            if index != self.index + 1:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, index)
+            ok, frame = self.cap.read()
+            if ok:
+                self.last, self.index = frame, index
+        return self.last
+
+    def release(self):
+        if self.cap is not None:
+            self.cap.release()
+        self.cap, self.index, self.last = None, -1, None
+
+
+def _label(frame: np.ndarray, text: str) -> np.ndarray:
+    """A banner so a rendered frame is never mistaken for camera footage."""
+    width = frame.shape[1]
+    scale = max(0.6, width / 1600)
+    bar = int(40 * scale)
+    cv2.rectangle(frame, (0, frame.shape[0] - bar), (width, frame.shape[0]), (40, 30, 90), -1)
+    cv2.putText(frame, text, (int(12 * scale), frame.shape[0] - int(12 * scale)), cv2.FONT_HERSHEY_SIMPLEX,
+                0.7 * scale, (255, 255, 255), max(1, round(1.5 * scale)), cv2.LINE_AA)
+    return frame
+
+
 class ReplayController:
     def __init__(
         self,
@@ -162,6 +214,7 @@ class ReplayController:
         self.storage_error = None
         self.scenarios_dir = scenarios_dir
         self.layouts_dir = layouts_dir or scenarios_dir.parent / "layouts"
+        self.rooms_dir = scenarios_dir.parent / "rooms"  # scanned rooms (setup only; see services/room.py)
         self.default_layout_id = layout_id
         self._views: Dict[str, Layout] = {}
         self.catalog: Catalog = load_catalog(self.layouts_dir)
@@ -177,6 +230,8 @@ class ReplayController:
         self.generation = 0  # bumps whenever the player source or overlay changes
         self.processing: Dict[str, Dict[str, Any]] = {}
         self._last_tick: Optional[float] = None
+        self.renders = RenderQueue()  # Unity re-enactment renders (UNITY_PATH), one at a time
+        self.player_source = "real"  # real video, simulation render, or both side by side
 
     # ------------------------------------------------------------------ views
 
@@ -435,7 +490,80 @@ class ReplayController:
             "alerts_total": len(alerts),
             "alerts_open": sum(1 for a in alerts if a.status == "open"),
             "in_player": self.current is not None and self.current.name == path.name,
+            "render": self.render_summary(path),
         }
+
+    # ------------------------------------------------------------------ simulation renders
+
+    def timeline_inputs(self, path: Path) -> Dict[str, Any]:
+        """timeline.collect for a recording, with a readable message when it can't be re-enacted."""
+        layout_id = scenario_meta(path).get("layout_id") or self.default_layout_id
+        collected = timeline.collect(path, path.name, self.store, self.rooms_dir, layout_id, self.catalog)
+        if "reason" in collected:
+            collected["message"] = TIMELINE_REASONS[collected["reason"]].format(
+                view=self._view_name(layout_id) or layout_id)
+        return collected
+
+    def render_summary(self, path: Path, collected: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """none | queued | running | done | stale | failed | cancelled, and whether a render can start.
+
+        `stale` means a finished render exists but its inputs (decisions, room or
+        registration) have changed since.
+        """
+        job = self.renders.status(path.name)
+        try:
+            collected = collected or self.timeline_inputs(path)
+        except (OSError, ValueError) as e:
+            collected = {"reason": "error", "message": str(e)}
+        key = collected.get("key")
+        current = render_jobs.finished(path, key) if key else None
+        last = current or render_jobs.latest(path)
+        if job and job["state"] in ("queued", "running"):
+            state = job["state"]
+        elif current:
+            state = "done"
+        elif last:
+            state = "stale"
+        elif job:
+            state = job["state"]
+        else:
+            state = "none"
+        blocked = self.renders.unavailable_reason() or collected.get("message")
+        return {
+            "state": state,
+            "can_render": blocked is None,
+            "reason": blocked,
+            "progress": job.get("progress") if job else None,
+            "step": job.get("step") if job else None,
+            "queue_position": job.get("queue_position") if job else None,
+            "error": job.get("error") if job and state == "failed" else None,
+            "inputs_key": key,
+            "rendered_key": last.get("inputs_key") if last else None,
+            "rendered_at": last.get("rendered_at") if last else None,
+            "files": sorted(last["files"]) if last else [],
+        }
+
+    def sim_video(self, name: str, filename: str = render_jobs.SIM_VIDEO) -> Optional[Path]:
+        """The newest finished render's file for a recording (current or stale)."""
+        path = self.scenario_dir(name)
+        last = render_jobs.latest(path)
+        if not last or filename not in last.get("files", {}):
+            return None
+        return render_jobs.render_dir(path, last["inputs_key"]) / filename
+
+    def effective_player_source(self) -> str:
+        """The chosen source, or the real video when this recording has no render."""
+        if self.player_source == "real" or not self.current:
+            return "real"
+        return self.player_source if self.sim_video(self.current.name) else "real"
+
+    def set_player_source(self, source: str) -> None:
+        if source not in PLAYER_SOURCES:
+            raise ValueError(f"Choose one of {', '.join(PLAYER_SOURCES)}.")
+        if source != "real" and not (self.current and self.sim_video(self.current.name)):
+            raise ValueError("This recording has no simulation render yet.")
+        self.player_source = source
+        self.generation += 1
 
     def _view_name(self, layout_id: Optional[str]) -> Optional[str]:
         try:
@@ -586,33 +714,33 @@ class ReplayController:
 
     def assign_view(
         self, name: str, action: str, layout_id: Optional[str] = None,
-        view_name: Optional[str] = None, regions: Optional[List[Region]] = None,
-        camera_id: Optional[str] = None,
+        view_name: Optional[str] = None, camera_id: Optional[str] = None,
     ) -> Layout:
         """Settle which camera view an uploaded recording (or one of its cameras) uses.
 
-        use: keep an existing view unchanged. replace: overwrite an existing view's regions
-        and photo with this recording's frame. new: save the frame and regions as a new view.
-        Saving from the recording's own frame keeps boxes aligned with its video.
+        use: keep an existing view unchanged. replace: keep the view, with this recording's
+        frame as its photo. new: save a new view with the frame as its photo. Regions are
+        never drawn here: they come from the room's 3D boxes once the view's camera is
+        registered on the Room page (a new view has none until then).
         """
         path = self.scenario_dir(name)
         cam = self.camera_spec(name, camera_id)
         if action == "use":
             view = self.view(layout_id or self.default_layout_id)
         elif action in ("replace", "new"):
-            if regions is None:
-                raise ValueError("Send the regions to save.")
             frame = self.video_frame(name, camera_id)
             h, w = frame.shape[:2]
             if action == "replace":
                 base = self.view(layout_id or self.default_layout_id)
                 target_id, label = base.layout_id, view_name or base.name
+                regions, source = base.regions, base.regions_source
             else:
-                source = scenario_meta(path).get("label") or name
+                source_label = scenario_meta(path).get("label") or name
                 if cam:
-                    source = f"{source}, {cam.get('label') or cam['camera_id']}"
-                label = (view_name or "").strip() or f"View from {source}"
+                    source_label = f"{source_label}, {cam.get('label') or cam['camera_id']}"
+                label = (view_name or "").strip() or f"View from {source_label}"
                 target_id = new_layout_id(self.layouts_dir, label)
+                regions, source = [], None
             folder = self.layouts_dir / target_id
             background = save_frame_background(folder, frame)
             draft = Layout.model_validate({
@@ -622,6 +750,7 @@ class ReplayController:
                 "frame_height": h,
                 "background_image": background,
                 "regions": [r.model_dump() for r in regions],
+                "regions_source": source.model_dump() if source else None,
                 "medications": [m.model_dump() for m in self.catalog.medications],
                 "receipts": [r.model_dump() for r in self.catalog.receipts],
             })
@@ -630,7 +759,7 @@ class ReplayController:
             save_layout(self.layouts_dir, draft)
             self._views.pop(target_id, None)
             view = self.view(target_id)
-            verb = "Replaced" if action == "replace" else "Saved new"
+            verb = "Updated the photo of" if action == "replace" else "Saved new"
             self.store.record("layout", f"{verb} camera view {label} from recording {name}.", layout_id=target_id)
         else:
             raise ValueError(f"Unknown action {action!r}; use use, replace or new.")
@@ -674,6 +803,19 @@ class ReplayController:
         self.is_playing = False
         self.current_media_time_ms = 0
 
+    def apply_catalog(self, catalog: Catalog, reset_inventory: bool = False) -> List[str]:
+        """Adopt saved medications and opening stock. Live inventory is kept unless reset."""
+        self.catalog = catalog
+        self._views.clear()
+        self._set_player_view(self.current.layout_id if self.current else self.default_layout_id)
+        if reset_inventory:
+            self.reset_inventory()
+            return []
+        notes = self.store.sync_catalog(self.catalog, note="Saved medications and opening stock.")
+        self.engine.trigger_expiry_alerts(pharmacy_today())
+        self.store.save()
+        return notes
+
     def apply_layout(self, layout: Layout, reset_inventory: bool = False, catalog: Optional[Catalog] = None) -> List[str]:
         """Adopt a saved view (and catalog). Live inventory is kept unless reset."""
         if catalog is not None:
@@ -691,6 +833,52 @@ class ReplayController:
         )
         self.engine.trigger_expiry_alerts(pharmacy_today())
         self.store.save()
+        return notes
+
+    def sync_view_regions(self, layout_id: str, adopt: bool = False) -> Optional[str]:
+        """Regenerate a view's regions from its room's 3D boxes; returns a note if they changed.
+
+        A view whose regions already come from a room follows it: new boxes or a new
+        registration regenerate its polygons, and losing its registration leaves it with
+        none (its signals then ask for confirmation). A view with older hand-drawn
+        polygons keeps them until `adopt` switches it over. The calibration version
+        goes up only when the polygons themselves change.
+        """
+        try:
+            stored = load_layout(self.layouts_dir, layout_id)
+        except (FileNotFoundError, ValueError):
+            return None
+        found = registration_for_view(self.rooms_dir, layout_id)
+        if found and (adopt or stored.regions_source is not None):
+            room, reg = found
+            regions, _report = region_projection.generate_regions(room, reg)
+            source: Optional[RegionsSource] = RegionsSource(
+                room_id=room.room_id, room_version=room.room_version,
+                registration_revision=reg.revision, algorithm=region_projection.ALGORITHM)
+            note = f"{len(regions)} regions from room {room.name or room.room_id}"
+        elif not found and stored.regions_source is not None:
+            regions, source, note = [], None, "no regions: the camera is no longer registered in a room"
+        else:
+            return None
+        same_regions = [r.model_dump() for r in regions] == [r.model_dump() for r in stored.regions]
+        if same_regions and source == stored.regions_source:
+            return None
+        merged = merge_view(stored.model_copy(update={"regions": regions, "regions_source": source}), self.catalog)
+        saved = save_layout(self.layouts_dir, merged, bump=not same_regions)
+        self._views.pop(layout_id, None)
+        label = saved.name or layout_id
+        if not same_regions:
+            self.store.record("layout", f"Camera view {label} now has {note} (calibration v{saved.calibration_version}).",
+                              layout_id=layout_id, calibration_version=saved.calibration_version)
+        self.apply_layout(saved)
+        return note if not same_regions else None
+
+    def sync_room_views(self, layout_ids) -> List[str]:
+        notes = []
+        for layout_id in sorted(set(layout_ids)):
+            note = self.sync_view_regions(layout_id)
+            if note:
+                notes.append(f"{self._view_name(layout_id) or layout_id}: {note}")
         return notes
 
     # ------------------------------------------------------------------ clock & events
@@ -853,6 +1041,8 @@ class ReplayController:
             "is_playing": self.is_playing,
             "has_video": self.video_path is not None,
             "camera_selection": self.camera_selection(),
+            "player_source": self.effective_player_source(),
+            "sim_render": bool(rec and self.sim_video(rec.name)),
             "frame_size": list(self.frame_size()),
             "events": [{**e, "processed": e["event_id"] in applied} for e in (rec.events if rec else [])],
             "activity": self.activity,
@@ -996,48 +1186,52 @@ class ReplayController:
         return frame
 
     def mjpeg_generator(self):
-        """Render frames at the shared media clock; viewers never advance time themselves."""
-        cap = None
-        cap_generation = -1
-        last_index = -1
-        last_frame = None
-        cap_path = None
+        """Render frames at the shared media clock; viewers never advance time themselves.
+
+        With a simulation render the player can show it instead of, or beside, the real
+        video; both follow the same clock, so switching never moves time.
+        """
+        real = _FrameReader()
+        sim = _FrameReader()
+        sim_source: Optional[Tuple[int, str]] = None
+        sim_path: Optional[Path] = None
         try:
             while True:
                 t = self.current_media_time_ms
                 rec = self.current
                 camera = rec.camera_group.camera_at(t) if rec and rec.camera_group else None
                 video_path = camera.video_path if camera else (rec.video_path if rec else None)
-                if cap_generation != self.generation or cap_path != video_path:
-                    if cap is not None:
-                        cap.release()
-                    cap = cv2.VideoCapture(str(video_path)) if video_path else None
-                    cap_generation, last_index, last_frame = self.generation, -1, None
-                    cap_path = video_path
+                fps = camera.poses.fps if camera else (rec.fps if rec else SYNTHETIC_FPS)
+                frame = real.frame_at(video_path, self.generation, t, fps)
+                frame = self.annotate(frame.copy() if frame is not None else self.base_frame(), t, rec)
 
-                if cap is not None:
-                    index = int(t * (camera.poses.fps if camera else rec.fps) / 1000.0)
-                    if index != last_index or last_frame is None:
-                        if index != last_index + 1:
-                            cap.set(cv2.CAP_PROP_POS_FRAMES, index)
-                        ok, frame = cap.read()
-                        if ok:
-                            last_frame, last_index = frame, index
-                    frame = last_frame.copy() if last_frame is not None else self.base_frame()
-                else:
-                    frame = self.base_frame()
+                source = self.player_source if rec else "real"
+                shown = "real"
+                if source != "real":
+                    if sim_source != (self.generation, rec.name):
+                        sim_source, sim_path = (self.generation, rec.name), self.sim_video(rec.name)
+                    sim_frame = sim.frame_at(sim_path, self.generation, t, None) if sim_path else None
+                    if sim_frame is not None:
+                        sim_frame = _label(sim_frame.copy(), "Simulation re-enactment (not camera footage)")
+                        shown = source
+                        if source == "sim":
+                            frame = sim_frame
+                        else:
+                            h = frame.shape[0]
+                            scaled = cv2.resize(sim_frame, (max(1, round(sim_frame.shape[1] * h / sim_frame.shape[0])), h))
+                            frame = np.hstack([frame, scaled])
 
-                frame = self.annotate(frame, t, rec)
-                if frame.shape[1] > STREAM_MAX_WIDTH:
-                    h = int(frame.shape[0] * STREAM_MAX_WIDTH / frame.shape[1])
-                    frame = cv2.resize(frame, (STREAM_MAX_WIDTH, h), interpolation=cv2.INTER_AREA)
+                if frame.shape[1] > STREAM_MAX_WIDTH * (2 if shown == "side" else 1):
+                    width = STREAM_MAX_WIDTH * (2 if shown == "side" else 1)
+                    h = int(frame.shape[0] * width / frame.shape[1])
+                    frame = cv2.resize(frame, (width, h), interpolation=cv2.INTER_AREA)
                 ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n"
                 time.sleep(1.0 / min(self.fps, 30) if self.is_playing else 0.2)
         finally:
-            if cap is not None:
-                cap.release()
+            real.release()
+            sim.release()
 
     def still_jpeg(self) -> bytes:
         """Annotation background: imported photo, else the player's first frame, else placeholder."""

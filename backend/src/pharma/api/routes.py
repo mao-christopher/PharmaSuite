@@ -19,8 +19,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 from pharma.api.replay_stream import DRAFT_FILE, ReplayController, ScenarioNotReady, pharmacy_today
-from pharma.db.models import BACKGROUND_PATTERN, Layout, Region, medication_key_for
-from pharma.services.layout import layout_path, load_layout, save_background, save_catalog, save_layout, split_view
+from pharma.db.models import BACKGROUND_PATTERN, Catalog, Layout, Region, medication_key_for
+from pharma.services.layout import (
+    DEFAULT_LAYOUT_ID, layout_path, list_layout_ids, load_layout, merge_view, new_layout_id, save_background,
+    save_catalog, save_layout, split_view,
+)
+from pharma.services.room import list_rooms, save_room
 from pharma.services.multicamera import MEDIA_CLOCK, write_spec
 from pharma.services.recordings import EVENTS_FILE, POSES_FILE, VIDEO_EXTENSIONS, parse_events_file, probe_video, write_events
 
@@ -60,11 +64,19 @@ class ConfirmationRequest(BaseModel):
 
 
 class AssignViewRequest(BaseModel):
-    action: str  # use | replace | new
+    action: str  # use | replace (this frame becomes the view's photo) | new
     layout_id: Optional[str] = None
     name: Optional[str] = Field(default=None, max_length=80)
-    regions: Optional[List[Region]] = None
     camera_id: Optional[str] = None  # which camera of a multi-camera recording
+
+
+class NewViewRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+
+class ViewPatch(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    background_image: Optional[str] = Field(default=None, pattern=BACKGROUND_PATTERN)
 
 
 class BackgroundFromRecordingRequest(BaseModel):
@@ -192,10 +204,9 @@ class UploadViewChoice(BaseModel):
     """The employee's decision for one camera, made before the upload finishes."""
 
     camera_id: str
-    action: str  # use | replace | new
+    action: str  # use | replace | new (see AssignViewRequest)
     layout_id: Optional[str] = None
     name: Optional[str] = Field(default=None, max_length=80)
-    regions: Optional[List[Region]] = None
 
 
 DRAFT_MAX_AGE_S = 24 * 3600
@@ -294,8 +305,6 @@ def _finish_upload(
             raise HTTPException(status_code=400, detail=f"Unknown camera '{choice.camera_id}'.")
         if choice.action not in ("use", "replace", "new"):
             raise HTTPException(status_code=400, detail=f"Unknown action {choice.action!r}; use use, replace or new.")
-        if choice.action != "use" and choice.regions is None:
-            raise HTTPException(status_code=400, detail="Send the regions to save.")
         if choice.action != "new":
             try:
                 ctrl.view(choice.layout_id or ctrl.default_layout_id)
@@ -371,8 +380,7 @@ def _finish_upload(
     (path / "scenario.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     for camera_id, choice in chosen.items():
         try:
-            ctrl.assign_view(folder, choice.action, choice.layout_id, choice.name, choice.regions,
-                             camera_id if multi else None)
+            ctrl.assign_view(folder, choice.action, choice.layout_id, choice.name, camera_id if multi else None)
         except (ValueError, FileNotFoundError) as e:
             warnings.append(f"{by_camera[camera_id]['label']}: the view wasn't saved ({e}). Check it on Recordings.")
     ctrl.start_processing(folder)
@@ -520,8 +528,7 @@ def recording_view_suggestions(name: str, camera: Optional[str] = None, ctrl: Re
 async def assign_recording_view(name: str, req: AssignViewRequest, ctrl: ReplayController = Depends(get_controller)):
     """Use a view as is, replace it with edits on this recording's frame, or save a new view."""
     try:
-        view = _recording_errors(lambda: ctrl.assign_view(name, req.action, req.layout_id, req.name, req.regions,
-                                                          req.camera_id))
+        view = _recording_errors(lambda: ctrl.assign_view(name, req.action, req.layout_id, req.name, req.camera_id))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     await ctrl.broadcast_state_snapshot()
@@ -556,6 +563,7 @@ def list_layouts(ctrl: ReplayController = Depends(get_controller)):
                 "frame_height": v.frame_height,
                 "background_image": v.background_image,
                 "regions": len(v.regions),
+                "regions_source": v.regions_source.model_dump() if v.regions_source else None,
                 "recordings": usage.get(v.layout_id, []),
             }
             for v in ctrl.views()
@@ -572,6 +580,111 @@ def get_layout(layout_id: str, ctrl: ReplayController = Depends(get_controller))
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.post("/layouts")
+async def create_layout(req: NewViewRequest, ctrl: ReplayController = Depends(get_controller)):
+    """A new, empty camera view. Give it a photo, then register its camera on the Room page."""
+    layout_id = new_layout_id(ctrl.layouts_dir, req.name)
+    view = merge_view(Layout(layout_id=layout_id, name=req.name.strip()), ctrl.catalog)
+    saved = save_layout(ctrl.layouts_dir, view)
+    ctrl.store.record("layout", f"Added camera view {saved.name}.", layout_id=layout_id)
+    ctrl.store.save()
+    ctrl._views.pop(layout_id, None)
+    await ctrl.broadcast_state_snapshot()
+    return {"layout": ctrl.view(layout_id).model_dump(mode="json")}
+
+
+@router.patch("/layouts/{layout_id}")
+async def patch_layout(layout_id: str, req: ViewPatch, ctrl: ReplayController = Depends(get_controller)):
+    """Rename a view, or give it a new photo (uploaded or taken from a recording beforehand).
+
+    A new photo keeps the view's regions and registration. The Room page then checks the
+    registration against the new photo; if the camera moved, register it again.
+    """
+    try:
+        stored = load_layout(ctrl.layouts_dir, layout_id)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    update: Dict[str, Any] = {}
+    if req.name is not None:
+        update["name"] = req.name.strip()
+    if req.background_image is not None and req.background_image != stored.background_image:
+        image = cv2.imread(str(ctrl.layouts_dir / layout_id / req.background_image))
+        if image is None:
+            raise HTTPException(status_code=400, detail="Background image was not uploaded")
+        update.update(background_image=req.background_image, frame_width=image.shape[1], frame_height=image.shape[0])
+    if not update:
+        return {"layout": ctrl.view(layout_id).model_dump(mode="json")}
+    photo = "background_image" in update
+    saved = save_layout(ctrl.layouts_dir, merge_view(stored.model_copy(update=update), ctrl.catalog), bump=photo)
+    ctrl.store.record("layout", f"{'New photo for' if photo else 'Renamed'} camera view {saved.name or layout_id}.",
+                      layout_id=layout_id, calibration_version=saved.calibration_version)
+    ctrl.apply_layout(saved)
+    await ctrl.broadcast_state_snapshot()
+    return {"layout": ctrl.view(layout_id).model_dump(mode="json")}
+
+
+@router.delete("/layouts/{layout_id}")
+async def delete_layout(layout_id: str, ctrl: ReplayController = Depends(get_controller)):
+    """Remove a camera view no recording uses (and its registration in any room)."""
+    try:
+        view = ctrl.view(layout_id)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    if layout_id in (ctrl.default_layout_id, DEFAULT_LAYOUT_ID):
+        raise HTTPException(status_code=409, detail="The main camera view can't be deleted.")
+    users = [r["label"] for r in ctrl.list_recordings()
+             if r["layout_id"] == layout_id or any(c["layout_id"] == layout_id for c in r["cameras"])]
+    if users:
+        raise HTTPException(status_code=409, detail=f"Recordings use this view: {', '.join(users[:5])}"
+                                                    f"{'…' if len(users) > 5 else ''}. Delete them or move them to another view first.")
+    for room in list_rooms(ctrl.rooms_dir):
+        if any(c.layout_id == layout_id for c in room.cameras):
+            save_room(ctrl.rooms_dir, room.model_copy(update={"cameras": [c for c in room.cameras if c.layout_id != layout_id]}))
+    shutil.rmtree(layout_path(ctrl.layouts_dir, layout_id).parent)
+    ctrl._views.pop(layout_id, None)
+    ctrl.store.record("layout", f"Deleted camera view {view.name or layout_id}.", layout_id=layout_id)
+    ctrl.store.save()
+    await ctrl.broadcast_state_snapshot()
+    return {"deleted": layout_id}
+
+
+# ---------------------------------------------------------------- catalog
+
+
+@router.get("/catalog")
+def get_catalog(ctrl: ReplayController = Depends(get_controller)):
+    """Medications and opening stock, shared by every camera view."""
+    return ctrl.catalog.model_dump(mode="json")
+
+
+@router.put("/catalog")
+async def put_catalog(
+    catalog: Catalog,
+    reset_inventory: bool = Query(False, description="Also restore live inventory to the opening stock"),
+    ctrl: ReplayController = Depends(get_controller),
+):
+    """Save medications and opening stock. Live inventory is kept unless reset.
+
+    A medication can't be removed while a 3D shelf (or an older hand-drawn shelf) still
+    holds it: remove or reassign that shelf on the Room page first.
+    """
+    keys = {m.medication_key for m in catalog.medications}
+    problems = [f"{room.name or room.room_id}: shelf {r.region_id} holds {r.medication_key}"
+                for room in list_rooms(ctrl.rooms_dir) for r in room.regions
+                if r.region_type == "designated_shelf" and r.medication_key not in keys]
+    for layout_id in list_layout_ids(ctrl.layouts_dir):
+        try:
+            merge_view(load_layout(ctrl.layouts_dir, layout_id), catalog)
+        except ValueError as e:
+            problems.append(f"Camera view {layout_id}: {e}")
+    if problems:
+        raise HTTPException(status_code=422, detail="Reassign these shelves first. " + "; ".join(problems))
+    saved = save_catalog(ctrl.layouts_dir, catalog)
+    notes = ctrl.apply_catalog(saved, reset_inventory=reset_inventory)
+    await ctrl.broadcast_state_snapshot()
+    return {"catalog": saved.model_dump(mode="json"), "inventory_reset": reset_inventory, "notes": notes}
+
+
 @router.put("/layouts/{layout_id}")
 async def put_layout(
     layout_id: str,
@@ -585,6 +698,16 @@ async def put_layout(
     """
     if layout.layout_id != layout_id:
         raise HTTPException(status_code=400, detail="layout_id in body does not match URL")
+    try:
+        stored = load_layout(ctrl.layouts_dir, layout_id)
+    except FileNotFoundError:
+        stored = None
+    if stored and stored.regions_source is not None:
+        # Generated regions follow the room; hand edits would be overwritten on the next change.
+        if [r.model_dump() for r in layout.regions] != [r.model_dump() for r in stored.regions]:
+            raise HTTPException(status_code=422, detail=f"This view's regions come from room "
+                                f"{stored.regions_source.room_id}. Edit its 3D boxes on the Room page.")
+        layout = layout.model_copy(update={"regions_source": stored.regions_source})
     if layout.background_image and not (ctrl.layouts_dir / layout_id / layout.background_image).exists():
         raise HTTPException(status_code=400, detail="Background image was not uploaded")
     view, catalog = split_view(layout)

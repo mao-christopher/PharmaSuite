@@ -28,7 +28,7 @@ export default function StockSummary() {
       flush
     >
       {meds.length === 0 ? (
-        <Empty>No medications configured. Add them on the Setup page.</Empty>
+        <Empty>No medications configured. Add them on the <Link to="/inventory?section=stock">Inventory page</Link>.</Empty>
       ) : (
         <div className="table-wrap">
           <table className="table">

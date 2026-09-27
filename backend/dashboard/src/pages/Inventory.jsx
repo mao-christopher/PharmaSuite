@@ -18,6 +18,7 @@ import {
   stockStatus,
 } from '../lib/format';
 import { Badge, Card, ConfirmDialog, Empty, Metric, Metrics, PageHeader } from '../components/ui';
+import StockEditor from '../components/StockEditor';
 
 const HISTORY_KINDS = {
   signal: 'Signal',
@@ -182,6 +183,12 @@ export default function Inventory() {
       document.getElementById(`receipt-${highlight}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
     );
   }, [highlight]);
+
+  // /inventory?section=stock opens on the medications and opening stock.
+  useEffect(() => {
+    if (params.get('section') === 'stock')
+      requestAnimationFrame(() => document.getElementById('opening-stock')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [params.get('section')]);
 
   const layout = state.layout;
   const meds = layout?.medications || [];
@@ -409,6 +416,8 @@ export default function Inventory() {
         </Card>
       </div>
 
+      <StockEditor id="opening-stock" />
+
       <History />
 
       {resetting && (
@@ -422,7 +431,7 @@ export default function Inventory() {
           onConfirm={doReset}
           onClose={() => setResetting(false)}
         >
-          Live counts, received shipments, alerts and disposals are replaced with the opening stock from Setup. Every
+          Live counts, received shipments, alerts and disposals are replaced with the opening stock below. Every
           recording goes back to not applied, so its signals will count again the next time it plays. The history keeps a
           record of the reset.
         </ConfirmDialog>

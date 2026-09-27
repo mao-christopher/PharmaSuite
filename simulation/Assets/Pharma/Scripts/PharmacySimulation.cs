@@ -5,23 +5,9 @@ using UnityEngine;
 
 namespace Pharma.Simulation
 {
-    [Serializable] public class ActionCue
-    {
-        public float time;
-        public string type, region, bottle, scenario;
-        public Vector3 contact;
-        public ActionCue(float t, string action, string location, string id, Vector3 p, string label)
-        { time=t; type=action; region=location; bottle=id; contact=p; scenario=label; }
-    }
-
-    [Serializable] public class ShelfRegion
-    {
-        public string id, kind, medication;
-        public Vector3 center, size;
-    }
-
-    /// <summary>Deterministic scene animation. Scene knowledge is exporter/evaluator-only.</summary>
-    public class PharmacySimulation : MonoBehaviour
+    /// <summary>Deterministic scene animation. Scene knowledge is exporter/evaluator-only.
+    /// Composes the room description, a motion source for the body, and the action schedule.</summary>
+    public partial class PharmacySimulation : MonoBehaviour
     {
         public Camera roomCamera;
         public Transform technician;
@@ -37,7 +23,6 @@ namespace Pharma.Simulation
         public const int SimulationFps = 30;
         public float MediaTime { get; private set; }
         public bool Playing { get; private set; }
-        public List<ActionCue> Cues { get; private set; }
         public Transform RightWrist { get; private set; }
         public Transform LeftWrist { get; private set; }
         Dictionary<Transform, Quaternion> bindRotations;
@@ -52,34 +37,44 @@ namespace Pharma.Simulation
         public Transform LeftFoot => leftFoot;
         public bool showSimulationSkeleton = true;
         Dictionary<string, Transform> bones;
-        Vector3 originOne, originTwo;
+        Dictionary<string, Transform> bottleObjects;
         Transform rightUpper, rightLower, leftUpper, leftLower;
         Transform rightThigh, rightCalf, rightFoot, leftThigh, leftCalf, leftFoot;
-        float rootY;
         public enum TaskState { Idle, Retracting, Walking, Carrying, ReachingToPickUp, ReachingToPlace, AtCounter, PickingUp, Placing, Disposing, Complete, Blocked }
         public enum BottleState { OnShelf, Held, AtCounter, Misplaced, Disposed }
         [Serializable] public class SensorAction { public float time; public string type; }
         public TaskState State { get; private set; }
         public string BlockedReason { get; private set; }
-        public string HeldBottle { get; private set; }
-        public int CompletedActions { get; private set; }
+        public RoomDescription Room { get; private set; }
+        public IMotionSource Motion { get; private set; }
+        public ActionSchedule Actions { get; private set; }
+        public List<ActionCue> Cues => Actions?.Cues;
+        public string HeldBottle => reenactment != null ? reenactment.HeldBottle : Actions?.HeldBottle;
+        public int CompletedActions => Actions == null ? 0 : Actions.CompletedActions;
+        public List<SensorAction> SensorEvents => Actions?.SensorEvents;
         public CollisionWorld World { get; private set; }
-        public List<SensorAction> SensorEvents { get; private set; } = new List<SensorAction>();
-        readonly Dictionary<string, BottleState> bottleStates = new Dictionary<string, BottleState>();
-        readonly Dictionary<string, Vector3> bottlePositions = new Dictionary<string, Vector3>();
-        readonly List<Vector3[]> routes = new List<Vector3[]>();
-        readonly List<Vector3> stands = new List<Vector3>();
-        Vector3[] surveyRoute;
         int currentFrame = -1;
-        bool movementEmitted;
-        float disposalOne = -1, disposalTwo = -1;
-        public BottleState GetBottleState(string id) => bottleStates[id];
+        public BottleState GetBottleState(string id) => Actions.GetBottleState(id);
 
         public void Initialize()
         {
             if (bindRotations != null) return;
             if (!technician || !roomCamera || !bottleOne || !bottleTwo)
                 throw new InvalidOperationException("Scene has not been built. Use Pharma > Build pharmacy scene.");
+            InitializeRig();
+            Room = RoomDescription.FromScene(regions, technician, bottleOne, bottleTwo);
+            bottleObjects = new Dictionary<string, Transform> { ["bottle-a1"] = bottleOne, ["bottle-a2"] = bottleTwo };
+            Actions = new ActionSchedule(Room, ActionSchedule.Demo(Room), WorkflowOffset);
+            World = GetComponent<CollisionWorld>();
+            if (!World) World = gameObject.AddComponent<CollisionWorld>();
+            World.Build(Room);
+            Motion = new PlannedWalk(World, Actions, Room.floorY);
+            ResetState();
+        }
+
+        /// <summary>Binds the Rocketbox skeleton; shared by the demo and the re-enactment.</summary>
+        void InitializeRig()
+        {
             var animator = technician.GetComponent<Animator>();
             if (animator) animator.enabled = false;
             bones = new Dictionary<string, Transform>();
@@ -91,52 +86,6 @@ namespace Pharma.Simulation
             leftUpper = Bone("L UpperArm"); leftLower = Bone("L Forearm"); LeftWrist = Bone("L Hand");
             rightThigh = Bone("R Thigh"); rightCalf = Bone("R Calf"); rightFoot = Bone("R Foot");
             leftThigh = Bone("L Thigh"); leftCalf = Bone("L Calf"); leftFoot = Bone("L Foot");
-            rootY = technician.position.y;
-            originOne = bottleOne.position; originTwo = bottleTwo.position;
-            Vector3 a = originOne + Vector3.up * .065f;
-            Vector3 a2 = originTwo + Vector3.up * .065f;
-            Vector3 counter = new Vector3(-2.45f, 1.177f, -1.08f);
-            Vector3 wrong = new Vector3(0f, a.y, a.z);
-            Vector3 trash = new Vector3(2.5f, 1.02f, -.75f);
-            Cues = new List<ActionCue> {
-                new ActionCue(2,"pickup","shelf-a","bottle-a1",a,"dispense"),
-                new ActionCue(7,"release","counter","bottle-a1",counter,"counter rest"),
-                new ActionCue(9,"pickup","counter","bottle-a1",counter,"resume"),
-                new ActionCue(14,"release","shelf-b","bottle-a1",wrong,"wrong return"),
-                new ActionCue(16,"pickup","shelf-b","bottle-a1",wrong,"correct misplacement"),
-                new ActionCue(20,"release","shelf-a","bottle-a1",a,"correct return"),
-                new ActionCue(23,"pickup","shelf-a","bottle-a1",a,"expired bottle"),
-                new ActionCue(29,"release","disposal","bottle-a1",trash,"dispose expired bottle"),
-                new ActionCue(35,"pickup","shelf-a","bottle-a2",a2,"last bottle"),
-                new ActionCue(41,"release","disposal","bottle-a2",trash,"dispose last bottle")
-            };
-            foreach(var cue in Cues) cue.time = WorkflowOffset+cue.time*WorkflowTimeScale;
-            World = GetComponent<CollisionWorld>();
-            if (!World) World = gameObject.AddComponent<CollisionWorld>();
-            World.Build();
-            foreach (var cue in Cues)
-            {
-                float zOffset = cue.region == "counter" ? .63f : cue.region == "disposal" ? .54f : .49f;
-                stands.Add(new Vector3(cue.contact.x - .32f, rootY, cue.contact.z - zOffset));
-            }
-            for (int i=0; i<Cues.Count; i++)
-            {
-                var route = World.Route(i==0 ? stands[0] : stands[i-1], stands[i]);
-                float seconds = Cues[i].time - (i==0 ? WorkflowOffset : Cues[i-1].time) - 1.4f;
-                if (CollisionWorld.Length(route) * 1.5f / seconds > 1.8f)
-                    throw new InvalidOperationException("Schedule requires unsafe walking speed: " + Cues[i].scenario);
-                routes.Add(World.RoundRoute(route));
-            }
-            var surveyPoints = new[]{
-                new Vector3(3.25f,rootY,.5f), new Vector3(3.25f,rootY,2.65f),
-                new Vector3(-3.25f,rootY,2.65f), new Vector3(-3.25f,rootY,5.2f),
-                new Vector3(3.25f,rootY,5.2f), new Vector3(3.25f,rootY,.5f), stands[0]};
-            var survey = new List<Vector3>();
-            for(int i=1;i<surveyPoints.Length;i++) survey.AddRange(World.Route(surveyPoints[i-1],surveyPoints[i]));
-            surveyRoute=World.RoundRoute(survey.ToArray());
-            if(CollisionWorld.Length(surveyRoute)/(WorkflowOffset-2)>1.8f)
-                throw new InvalidOperationException("Survey route exceeds walking speed");
-            ResetState();
         }
 
         Transform Bone(string name)
@@ -149,21 +98,20 @@ namespace Pharma.Simulation
         void Update()
         {
             if (!Playing) return;
-            Evaluate(Mathf.Min(MediaTime + Time.deltaTime * playbackSpeed, Duration));
-            if (MediaTime >= Duration || State==TaskState.Blocked) Playing=false;
+            Evaluate(Mathf.Min(MediaTime + Time.deltaTime * playbackSpeed, EndTime));
+            if (MediaTime >= EndTime || State==TaskState.Blocked) Playing=false;
         }
 
         void ResetState()
         {
-            currentFrame = -1; CompletedActions = 0; HeldBottle = null;
+            if (reenactment != null) { ResetReenactment(); return; }
+            currentFrame = -1; Actions.Reset();
             footGait=null; animationTime=0; traveledDistance=0; animationVelocity=Vector3.zero;
-            State = TaskState.Idle; BlockedReason = ""; movementEmitted = false;
-            SensorEvents.Clear(); disposalOne = disposalTwo = -1;
-            bottleStates["bottle-a1"] = bottleStates["bottle-a2"] = BottleState.OnShelf;
-            bottlePositions["bottle-a1"] = originOne; bottlePositions["bottle-a2"] = originTwo;
-            technician.position = surveyRoute[0]; technician.rotation = Quaternion.identity;
-            bottleOne.gameObject.SetActive(true); bottleTwo.gameObject.SetActive(true);
-            Pose(surveyRoute[0], Quaternion.identity, null, 0);
+            State = TaskState.Idle; BlockedReason = "";
+            var start = Motion.Start;
+            technician.position = start.position; technician.rotation = start.facing;
+            foreach (var bottle in bottleObjects.Values) bottle.gameObject.SetActive(true);
+            Pose(start.position, start.facing, null, 0);
             PositionBottles(0);
         }
 
@@ -176,130 +124,88 @@ namespace Pharma.Simulation
         public void Evaluate(float time)
         {
             Initialize();
-            int targetFrame = Mathf.FloorToInt(Mathf.Clamp(time, 0, Duration) * SimulationFps + .0001f);
+            int targetFrame = Mathf.FloorToInt(Mathf.Clamp(time, 0, EndTime) * TickRate + .0001f);
             if (targetFrame < currentFrame) ResetState();
             // Replay fixed simulation ticks even after a large seek or slow UI frame.
             // Every tick checks collision and action preconditions before accepting events.
             for (int frame=currentFrame+1; frame<=targetFrame; frame++)
             {
                 if (State == TaskState.Blocked) break;
-                float t = (float)frame / SimulationFps;
+                float t = (float)frame / TickRate;
                 Step(t); currentFrame = frame;
             }
-            MediaTime = (float)Mathf.Max(0,currentFrame) / SimulationFps;
+            MediaTime = (float)Mathf.Max(0,currentFrame) / TickRate;
         }
 
         void Step(float t)
         {
+            if (reenactment != null) { StepReenactment(t); return; }
             animationTime=t;
-            if(t < WorkflowOffset)
-            {
-                if(occluder) occluder.gameObject.SetActive(false);
-                Physics.SyncTransforms();
-                float u=TravelFraction(t-1,WorkflowOffset-2,.8f);
-                Vector3 position=CollisionWorld.Sample(surveyRoute,u,out var direction);
-                State=t<1 || t>WorkflowOffset-1 ? TaskState.Idle : TaskState.Walking;
-                Quaternion facing=Quaternion.LookRotation(direction);
-                if(t>WorkflowOffset-1) facing=Quaternion.Slerp(facing,Quaternion.identity,t-(WorkflowOffset-1));
-                float surveyGait=State==TaskState.Walking?Mathf.Sin(CollisionWorld.Length(surveyRoute)*u*14)*.09f:0;
-                ApplyGuardedPose(position,facing,null,surveyGait);
-                return;
-            }
-            bool screenActive = ambiguousReturn && t>=WorkflowOffset+18.5f*WorkflowTimeScale && t<=WorkflowOffset+21.5f*WorkflowTimeScale;
+            var leg = Actions.Leg(t);
+            // The optional panel hides the correct return; it is never shown during the walkthrough.
+            bool screenActive = leg.started && ambiguousReturn && t>=WorkflowOffset+18.5f*WorkflowTimeScale && t<=WorkflowOffset+21.5f*WorkflowTimeScale;
             if (occluder) occluder.gameObject.SetActive(screenActive);
             Physics.SyncTransforms();
-            int index = CompletedActions;
-            var previous = index == 0 ? null : Cues[index-1];
-            var next = index < Cues.Count ? Cues[index] : null;
-            Vector3 body = technician.position;
-            Quaternion rotation = Quaternion.identity;
-            Vector3? target = null;
-            float gait = 0;
-            float previousTime = previous == null ? WorkflowOffset : previous.time;
-            Vector3 rest = RestHand();
-            if (previous != null && t < previous.time + .5f)
+            var body = Motion.Sample(t, leg);
+            if (!leg.started)
             {
-                State = TaskState.Retracting;
-                body = stands[index-1];
-                target = Vector3.Lerp(previous.contact, body + rest,
-                    Ease((t-previous.time)/.5f));
+                State = body.walking ? TaskState.Walking : TaskState.Idle;
+                ApplyGuardedPose(body.position,body.facing,null,body.gait);
+                return;
             }
-            else if (next == null)
-            { State = TaskState.Complete; body = stands[stands.Count-1]; }
-            else
-            {
-                float walkStart = previousTime + .5f;
-                float walkEnd = next.time - .9f;
-                float length = CollisionWorld.Length(routes[index]);
-                if (length > .01f && t < walkEnd)
-                {
-                    State = HeldBottle == null ? TaskState.Walking : TaskState.Carrying;
-                    float u = Mathf.Clamp01((t-walkStart)/(walkEnd-walkStart));
-                    float eased = Mathf.SmoothStep(0,1,u);
-                    body = CollisionWorld.Sample(routes[index],eased,out var direction);
-                    float turn = Mathf.SmoothStep(0,1,Mathf.Min(u/.18f,(1-u)/.18f));
-                    rotation = Quaternion.Slerp(Quaternion.identity,Quaternion.LookRotation(direction),turn);
-                    gait = Mathf.Sin(length * eased * 14) * .11f * Mathf.Sin(u*Mathf.PI);
-                }
-                else if (t < walkEnd)
-                {
-                    State = previous != null && previous.region == "counter" ? TaskState.AtCounter : TaskState.Idle;
-                    body = stands[index];
-                }
-                else
-                {
-                    State = next.type == "pickup" ? TaskState.ReachingToPickUp : TaskState.ReachingToPlace;
-                    body = stands[index];
-                    float reach=Ease((t-walkEnd)/.9f);
-                    target = Vector3.Lerp(body + rest,next.contact,reach)+Vector3.up*(.045f*Mathf.Sin(Mathf.PI*reach));
-                }
-            }
+            State = Actions.Hand(t, leg, body, RestHand(), out var target);
             Vector3 oldWrist = RightWrist.position;
-            if(!ApplyGuardedPose(body,rotation,target,gait)) return;
-            if (HeldBottle != null && !movementEmitted && Vector3.Distance(oldWrist,RightWrist.position)>.002f)
-            { SensorEvents.Add(new SensorAction{time=t,type="movement"}); movementEmitted=true; }
-            if (next != null && t + .0001f >= next.time)
+            if(!ApplyGuardedPose(body.position,body.facing,target,body.gait)) return;
+            Actions.NoteWristMotion(t, oldWrist, RightWrist.position);
+            var due = Actions.Due(t, leg);
+            if (due != null)
             {
-                if (!TryCommit(next,t,out string reason)) { Block(reason); return; }
+                if (!Actions.TryCommit(due,t,technician.position,RightWrist.position,out var committed,out string reason)) { Block(reason); return; }
+                State = committed;
             }
             PositionBottles(t);
         }
 
         bool ApplyGuardedPose(Vector3 body,Quaternion rotation,Vector3? target,float gait)
         {
-            if (!World.CanMove(technician.position,body,out string obstacle))
-            { Block("Body route blocked by " + obstacle); return false; }
+            if (TryPose(body,rotation,target,gait,false,out string obstacle)) return true;
+            Block(obstacle); return false;
+        }
+
+        /// <summary>Poses the rig if the body, limbs and carried bottle stay clear; otherwise
+        /// restores the previous pose. A cut places the body without sweeping from the last pose.</summary>
+        bool TryPose(Vector3 body,Quaternion rotation,Vector3? target,float gait,bool cut,out string obstacle)
+        {
+            if (cut ? !World.CanStand(body,out obstacle) : !World.CanMove(technician.position,body,out obstacle))
+            { obstacle = "Body route blocked by " + obstacle; return false; }
             Vector3 oldPosition = technician.position;
             var oldRotations = bindRotations.Keys.ToDictionary(b=>b,b=>b.localRotation);
             var oldPositions = bindPositions.Keys.ToDictionary(b=>b,b=>b.localPosition);
             Vector3 oldWrist = RightWrist.position;
             var armJoints = new[]{rightLower,RightWrist,leftLower,LeftWrist,rightFoot,leftFoot};
             var oldJointPositions = armJoints.Select(j=>j.position).ToArray();
-            rotation=Quaternion.RotateTowards(technician.rotation,rotation,180f/SimulationFps);
-            animationVelocity=(body-oldPosition)*SimulationFps;
-            traveledDistance+=Vector3.Distance(body,oldPosition);
+            if (cut) { footGait=null; animationVelocity=Vector3.zero; }
+            else
+            {
+                rotation=Quaternion.RotateTowards(technician.rotation,rotation,reenactment==null ? 180f/SimulationFps : 180f/TickRate);
+                animationVelocity=(body-oldPosition)*TickRate;
+                traveledDistance+=Vector3.Distance(body,oldPosition);
+            }
             Pose(body,rotation,target,gait);
-            bool clear = ValidatePose(oldWrist,out obstacle);
-            for(int joint=0; clear && joint<armJoints.Length; joint++)
+            bool clear = ValidatePose(cut ? RightWrist.position : oldWrist,out obstacle);
+            for(int joint=0; clear && !cut && joint<armJoints.Length; joint++)
                 clear = World.ClearSegment(oldJointPositions[joint],armJoints[joint].position,.035f,out obstacle);
             if (!clear)
             {
                 technician.position = oldPosition;
                 foreach (var entry in oldRotations) entry.Key.localRotation = entry.Value;
                 foreach (var entry in oldPositions) entry.Key.localPosition = entry.Value;
-                Block(obstacle); return false;
+                return false;
             }
             return true;
         }
 
         Vector3 RestHand() => HeldBottle==null ? new Vector3(.20f,.94f,.08f) : new Vector3(.20f,1.17f,.16f);
-        static float TravelFraction(float time,float duration,float ramp)
-        {
-            float t=Mathf.Clamp(time,0,duration);
-            float distance=t<ramp?.5f*t*t/ramp:t>duration-ramp?duration-ramp-.5f*(duration-t)*(duration-t)/ramp:t-.5f*ramp;
-            return distance/(duration-ramp);
-        }
-        static float Ease(float u) { u=Mathf.Clamp01(u); return u*u*u*(u*(u*6-15)+10); }
 
         void Pose(Vector3 body,Quaternion rotation,Vector3? target,float gait)
         {
@@ -312,7 +218,7 @@ namespace Pharma.Simulation
             Vector3 neutralRight=rightFoot.position, neutralLeft=leftFoot.position;
             Quaternion neutralRightRotation=rightFoot.rotation,neutralLeftRotation=leftFoot.rotation;
             if(footGait==null) footGait=new FootPlantGait(neutralRight,neutralLeft,neutralRightRotation,neutralLeftRotation);
-            footGait.Tick(neutralRight,neutralLeft,neutralRightRotation,neutralLeftRotation,animationVelocity,1f/SimulationFps);
+            footGait.Tick(neutralRight,neutralLeft,neutralRightRotation,neutralLeftRotation,animationVelocity,reenactment==null ? 1f/SimulationFps : 1f/TickRate);
             float armSwing=Mathf.Clamp(Vector3.Dot(footGait.Left-footGait.Right,technician.forward)*.35f,-.14f,.14f);
             var pelvis=Bone("Pelvis");
             pelvis.position+=technician.right*(.005f*Mathf.Sin(cycle)*walking);
@@ -331,7 +237,7 @@ namespace Pharma.Simulation
             var chest=Bone("Spine2");
             chest.rotation=Quaternion.AngleAxis(.45f*Mathf.Sin(animationTime*1.6f)*(1-reach),technician.right)*chest.rotation;
             var head=Bone("Head");
-            head.rotation=Quaternion.AngleAxis((animationTime<WorkflowOffset?9*Mathf.Sin(animationTime*.8f):0)*(1-reach),Vector3.up)*head.rotation;
+            head.rotation=Quaternion.AngleAxis((reenactment==null && animationTime<WorkflowOffset?9*Mathf.Sin(animationTime*.8f):0)*(1-reach),Vector3.up)*head.rotation;
             Solve(rightThigh,rightCalf,rightFoot,footGait.Right,technician.forward);
             Solve(leftThigh,leftCalf,leftFoot,footGait.Left,technician.forward);
             rightFoot.rotation=footGait.RightRotation; leftFoot.rotation=footGait.LeftRotation;
@@ -374,50 +280,13 @@ namespace Pharma.Simulation
             return true;
         }
 
-        bool TryCommit(ActionCue cue,float time,out string reason)
-        {
-            reason="";
-            if (Vector3.Distance(technician.position,stands[CompletedActions])>.025f ||
-                Vector3.Distance(RightWrist.position,cue.contact)>.08f)
-            { reason="Cannot execute action before arrival and reachable contact: "+cue.scenario; return false; }
-            if (cue.type=="pickup")
-            {
-                if (HeldBottle!=null || bottleStates[cue.bottle]==BottleState.Disposed ||
-                    Vector3.Distance(bottlePositions[cue.bottle]+Vector3.up*.065f,cue.contact)>.025f)
-                { reason="Pickup violates bottle ownership/location state"; return false; }
-                HeldBottle=cue.bottle; bottleStates[cue.bottle]=BottleState.Held;
-                movementEmitted=false; State=TaskState.PickingUp;
-            }
-            else
-            {
-                if (HeldBottle!=cue.bottle) { reason="Cannot release a bottle that is not held"; return false; }
-                Vector3 center=cue.contact-Vector3.up*.065f;
-                if(cue.region!="disposal" && (!Physics.Raycast(center,Vector3.down,out var support,.13f,CollisionWorld.SolidMask) || support.distance<.085f))
-                { reason="Placement has no valid supporting surface"; return false; }
-                bottlePositions[cue.bottle]=center;
-                bottleStates[cue.bottle]=cue.region=="disposal"?BottleState.Disposed:cue.region=="counter"?BottleState.AtCounter:cue.region=="shelf-a"?BottleState.OnShelf:BottleState.Misplaced;
-                if(cue.region=="disposal") { if(cue.bottle=="bottle-a1") disposalOne=time; else disposalTwo=time; }
-                HeldBottle=null; State=cue.region=="disposal"?TaskState.Disposing:TaskState.Placing;
-            }
-            SensorEvents.Add(new SensorAction{time=time,type=cue.type}); CompletedActions++;
-            return true;
-        }
-
         void PositionBottles(float time)
         {
-            foreach(var id in new[]{"bottle-a1","bottle-a2"})
+            foreach(var placement in Room.bottles)
             {
-                var bottle=id=="bottle-a1"?bottleOne:bottleTwo;
+                var bottle=bottleObjects[placement.id];
                 bottle.rotation=Quaternion.identity;
-                Vector3 position=bottleStates[id]==BottleState.Held?RightWrist.position-Vector3.up*.065f:bottlePositions[id];
-                if(bottleStates[id]==BottleState.Disposed)
-                {
-                    float elapsed=time-(id=="bottle-a1"?disposalOne:disposalTwo);
-                    // Gravity inside a genuinely hollow bin, stopping on its bottom.
-                    position.y=Mathf.Max(.21f,position.y-4.905f*elapsed*elapsed);
-                    position.x+=id=="bottle-a1"?-.065f:.065f;
-                }
-                bottle.position=position;
+                bottle.position=Actions.BottlePosition(placement,time,RightWrist.position);
             }
         }
 
@@ -443,7 +312,7 @@ namespace Pharma.Simulation
             if(showSimulationSkeleton && bindRotations!=null) SimulationSkeleton.Draw(this);
             GUILayout.BeginArea(new Rect(16,16,570,155),GUI.skin.box);
             GUILayout.Label("PHARMA / ROOM CAMERA — synthetic footage");
-            GUILayout.Label($"{MediaTime:0.00}s / {Duration:0}s | {State} | holding: {HeldBottle ?? "nothing"}");
+            GUILayout.Label($"{MediaTime:0.00}s / {EndTime:0}s | {State} | holding: {HeldBottle ?? "nothing"}");
             if(State==TaskState.Blocked) GUILayout.Label(BlockedReason);
             GUILayout.BeginHorizontal();
             if(GUILayout.Button(Playing?"Pause":"Play")) Playing=!Playing;
@@ -451,7 +320,7 @@ namespace Pharma.Simulation
             ambiguousReturn=GUILayout.Toggle(ambiguousReturn,"Occluded return");
             GUILayout.EndHorizontal();
             showSimulationSkeleton=GUILayout.Toggle(showSimulationSkeleton,"Simulation X-ray skeleton (Unity rig, not CV)");
-            float seek=GUILayout.HorizontalSlider(MediaTime,0,Duration);
+            float seek=GUILayout.HorizontalSlider(MediaTime,0,EndTime);
             if(Mathf.Abs(seek-MediaTime)>.02f) { Playing=false; Evaluate(seek); }
             GUILayout.EndArea();
         }

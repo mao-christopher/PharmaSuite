@@ -33,10 +33,9 @@ def test_staged_upload_saves_each_cameras_view_and_starts_processing(client, tmp
     views = c.get(f"/api/uploads/{draft_id}/views", params={"camera": "camera-2"}).json()
     assert views["width"] == 320 and any(s["layout_id"] == "default" for s in views["suggestions"])
 
-    regions = c.get("/api/layouts/default").json()["regions"]
     choices = [
         {"camera_id": "camera-1", "action": "use", "layout_id": "default"},
-        {"camera_id": "camera-2", "action": "new", "name": "Side angle", "regions": regions},
+        {"camera_id": "camera-2", "action": "new", "name": "Side angle"},
     ]
     res = c.post(f"/api/uploads/{draft_id}/finish", files={"events": ("times.csv", TIMES, "text/csv")},
                  data={"name": "Morning restock", "views": json.dumps(choices)})
@@ -46,7 +45,7 @@ def test_staged_upload_saves_each_cameras_view_and_starts_processing(client, tmp
     cams = {cam["camera_id"]: cam for cam in body["cameras"]}
     assert cams["camera-1"]["layout_id"] == "default"
     side = c.get(f"/api/layouts/{cams['camera-2']['layout_id']}").json()
-    assert side["name"] == "Side angle" and side["frame_width"] == 320
+    assert side["name"] == "Side angle" and side["frame_width"] == 320 and side["regions"] == []
     assert not routes.controller.drafts_dir.exists()  # moved into the recording
     assert wait_ready(c, body["name"])["status"] == "ready"
     summary = next(r for r in c.get("/api/recordings").json()["recordings"] if r["name"] == body["name"])

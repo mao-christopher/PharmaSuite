@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 SENSOR_FIELDS = {"schema_version", "event_id", "session_id", "event_type", "sensor_id", "media_time_ms"}
@@ -9,6 +10,71 @@ SENSOR_FIELDS = {"schema_version", "event_id", "session_id", "event_type", "sens
 
 def read_jsonl(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+SCENE_KEYS = {"schema", "coordinates", "floor_y", "camera", "regions", "solids"}
+REGION_KEYS = {"region_id", "kind", "medication_id", "center", "size", "yaw_deg", "front"}
+SOLID_KEYS = {"name", "note", "center", "size", "yaw_deg"}
+
+
+def _rotate(q, v):
+    """Rotate v by the unit quaternion q = (x, y, z, w)."""
+    x, y, z, w = q
+    tx, ty, tz = 2 * (y * v[2] - z * v[1]), 2 * (z * v[0] - x * v[2]), 2 * (x * v[1] - y * v[0])
+    return (v[0] + w * tx + y * tz - z * ty, v[1] + w * ty + z * tx - x * tz, v[2] + w * tz + x * ty - y * tx)
+
+
+def project_unity(camera, point):
+    """A Unity world point as normalized top-left image coordinates, plus its depth."""
+    x, y, z, w = camera["rotation_xyzw"]
+    local = _rotate((-x, -y, -z, w), [p - c for p, c in zip(point, camera["position"])])
+    tan = math.tan(math.radians(camera["vertical_fov_deg"]) / 2)
+    aspect = camera["width"] / camera["height"]
+    u = (local[0] / local[2] / (tan * aspect) + 1) / 2
+    v = 1 - (local[1] / local[2] / tan + 1) / 2
+    return u, v, local[2]
+
+
+def box_corners(box):
+    a = math.radians(box.get("yaw_deg", 0.0))
+    c, s = math.cos(a), math.sin(a)
+    out = []
+    for i in range(8):
+        hx, hy, hz = [(1 if i >> k & 1 else -1) * box["size"][k] / 2 for k in range(3)]
+        out.append((box["center"][0] + c * hx + s * hz, box["center"][1] + hy, box["center"][2] - s * hx + c * hz))
+    return out
+
+
+def check_scene_geometry(scene, calibration):
+    """Static setup only; each region box must project onto its calibration rectangle.
+    Returns the largest rectangle-edge difference in pixels."""
+    if scene.get("schema") != "scene-geometry/1" or set(scene) != SCENE_KEYS:
+        raise ValueError("Unexpected scene geometry schema or fields")
+    for region in scene["regions"]:
+        if not set(region) <= REGION_KEYS:
+            raise ValueError("Unexpected region fields: potential ground-truth leakage")
+    for solid in scene["solids"]:
+        if not set(solid) <= SOLID_KEYS or "bottle" in solid["name"].lower():
+            raise ValueError("Scene geometry solids must be static furniture envelopes")
+    camera = scene["camera"]
+    if (camera["width"], camera["height"]) != (calibration["width"], calibration["height"]):
+        raise ValueError("Scene geometry and calibration dimensions disagree")
+    rects = {r["region_id"]: r for r in calibration["regions"]}
+    if {r["region_id"] for r in scene["regions"]} != set(rects):
+        raise ValueError("Scene geometry and calibration regions disagree")
+    worst = 0.0
+    for region in scene["regions"]:
+        pts = [project_unity(camera, p) for p in box_corners(region)]
+        if min(p[2] for p in pts) <= 0:
+            raise ValueError("Region behind camera")
+        rect = rects[region["region_id"]]
+        us, vs = [p[0] for p in pts], [p[1] for p in pts]
+        for mine, theirs, size in ((min(us), rect["x_min"], camera["width"]), (max(us), rect["x_max"], camera["width"]),
+                                   (min(vs), rect["y_min"], camera["height"]), (max(vs), rect["y_max"], camera["height"])):
+            worst = max(worst, abs(mine - theirs) * size)
+    if worst > 1.0:
+        raise ValueError(f"Scene geometry regions miss their calibration rectangles by {worst:.2f} px")
+    return worst
 
 
 def validate(root):
@@ -66,6 +132,12 @@ def validate(root):
         region_ids.add(region["region_id"])
         if not (0 <= region["x_min"] < region["x_max"] <= 1 and 0 <= region["y_min"] < region["y_max"] <= 1):
             raise ValueError("Region falls outside camera view")
+    scene_px = None
+    if "scene_geometry" in manifest:
+        path = Path(manifest["scene_geometry"])
+        if path.is_absolute() or ".." in path.parts or "evaluator_only" in path.parts:
+            raise ValueError("Runtime manifest must not reference ground truth or external paths")
+        scene_px = check_scene_geometry(json.loads((root / path).read_text()), calibration)
     inventory = json.loads((root / manifest["initial_inventory"]).read_text())
     for med in inventory["medications"]:
         receipts = [r for r in inventory["receipts"] if r["medication_id"] == med["medication_id"]]
@@ -75,7 +147,8 @@ def validate(root):
             raise ValueError("Receiving and tablet stock disagree")
         if med["designated_region"] not in region_ids:
             raise ValueError("Medication has no shelf region")
-    print(f"Valid replay: {count} frames, {len(events)} sensor events, {len(region_ids)} regions")
+    scene_note = "" if scene_px is None else f", scene geometry within {scene_px:.3f} px of calibration"
+    print(f"Valid replay: {count} frames, {len(events)} sensor events, {len(region_ids)} regions{scene_note}")
     return manifest
 
 

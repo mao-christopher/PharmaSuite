@@ -3,8 +3,7 @@ import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CrosshairIcon, PlusIcon, Tras
 import { useJobs } from '../lib/jobs';
 import { errorMessage, request } from '../lib/api';
 import { formatMs, plural } from '../lib/format';
-import { useRegionEditor } from './RegionEditor';
-import CameraViewFields, { hasUnassignedShelf, isEdited, pickView } from './CameraViewFields';
+import CameraViewFields, { pickView } from './CameraViewFields';
 import { Badge, Dialog } from './ui';
 
 const EXAMPLE = 'time_s,event\n2.4,pickup\n7.9,release';
@@ -322,52 +321,37 @@ function useStagedUpload(videos, keepRef) {
   return draft;
 }
 
-/** What to do with each camera's view: unchanged cameras use it as is. */
+/** What to do with each camera's view: use it, update its photo, or add a new one. */
 function viewChoices(cameras, views) {
   return cameras
     .map(({ camera_id }) => {
       const v = views[camera_id];
       if (!v?.base) return null;
-      if (!isEdited(v.base, v.regions)) return { camera_id, action: 'use', layout_id: v.baseId };
-      return {
-        camera_id,
-        action: v.saveAs,
-        layout_id: v.baseId,
-        name: v.saveAs === 'new' ? v.newName.trim() || undefined : undefined,
-        regions: v.regions,
-      };
+      if (v.action === 'new') return { camera_id, action: 'new', name: v.newName.trim() || undefined };
+      return { camera_id, action: v.action, layout_id: v.baseId };
     })
     .filter(Boolean);
 }
 
 function CameraViewsStep({ draft, views, setViews, cameraId, setCameraId, visited, error, errorRef }) {
-  const editor = useRegionEditor();
   const cameras = draft.cameras;
   const multi = cameras.length > 1;
   const camera = cameras.find((c) => c.camera_id === cameraId) || cameras[0];
   const view = views[camera.camera_id];
   const update = (change) => setViews((vs) => ({ ...vs, [camera.camera_id]: { ...vs[camera.camera_id], ...change } }));
-  const onRegions = useCallback(
-    (fn) => setViews((vs) => ({ ...vs, [camera.camera_id]: { ...vs[camera.camera_id], regions: fn(vs[camera.camera_id].regions) } })),
-    [camera.camera_id, setViews],
-  );
   const chooseBase = (layoutId) => {
-    update({ baseId: layoutId, base: null, regions: null });
+    update({ baseId: layoutId, base: null });
     request(`/api/layouts/${encodeURIComponent(layoutId)}`)
-      .then((layout) => update({ base: layout, regions: layout.regions }))
+      .then((layout) => update({ base: layout }))
       .catch((e) => update({ error: e.message }));
-    editor.setSelectedId(null);
   };
-  useEffect(() => editor.setSelectedId(null), [camera.camera_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const edited = view && isEdited(view.base, view.regions);
-  const keepsView = (v) => v?.base && !(isEdited(v.base, v.regions) && v.saveAs === 'new');
-  // Another camera uses the same view unchanged; one view can't fit two angles.
+  const keepsView = (v) => v?.base && v.action !== 'new';
+  // Another camera uses the same view; one view can't fit two angles.
   const sharedWith =
-    multi && view && keepsView(view)
+    multi && keepsView(view)
       ? cameras.filter((c) => c.camera_id !== camera.camera_id && views[c.camera_id]?.baseId === view.baseId && keepsView(views[c.camera_id])).map((c) => c.label)
       : [];
-  const baseName = view?.base?.name || view?.baseId;
 
   return (
     <>
@@ -396,44 +380,15 @@ function CameraViewsStep({ draft, views, setViews, cameraId, setCameraId, visite
           baseId={view.baseId}
           onBaseId={chooseBase}
           base={view.base}
-          regions={view.regions}
-          onRegions={onRegions}
-          editor={editor}
+          action={view.action}
+          onAction={(action) => update({ action })}
           imageUrl={`/api/uploads/${draft.draft_id}/frame?camera=${encodeURIComponent(camera.camera_id)}`}
           multi={multi}
           sharedWith={sharedWith}
           newName={view.newName}
-          onNewName={edited && view.saveAs === 'new' ? (newName) => update({ newName }) : null}
+          onNewName={(newName) => update({ newName })}
           fitHeight={multi ? '(100dvh - 600px)' : '(100dvh - 550px)'}
-          decision={
-            edited ? (
-              <div className="field-head">
-                <span className="label">Save your edits as</span>
-                <div className="segmented" role="group" aria-label="Save edits as">
-                  {[
-                    ['new', 'A new view'],
-                    ['replace', `An update to ${baseName}`],
-                  ].map(([id, label]) => (
-                    <button key={id} type="button" className={view.saveAs === id ? 'active' : ''} aria-pressed={view.saveAs === id} onClick={() => update({ saveAs: id })}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <button type="button" className="link-btn" onClick={() => update({ regions: view.base.regions })}>
-                  Discard edits
-                </button>
-              </div>
-            ) : (
-              <p className="hint">
-                No edits, so this {multi ? 'camera' : 'video'} uses {baseName} as is. Drag or draw boxes if they don't line up.
-              </p>
-            )
-          }
-        >
-          {edited && view.saveAs === 'replace' && (
-            <p className="hint text-amber">This changes {baseName} for every recording that uses it.</p>
-          )}
-        </CameraViewFields>
+        />
       )}
       {error && (
         <p ref={errorRef} className="form-error" role="alert">
@@ -444,7 +399,7 @@ function CameraViewsStep({ draft, views, setViews, cameraId, setCameraId, visite
   );
 }
 
-const STEPS = ['Video and times', 'Shelf boxes'];
+const STEPS = ['Video and times', 'Camera views'];
 
 export default function UploadRecordingDialog({ onClose, onUploaded }) {
   const { track } = useJobs();
@@ -526,7 +481,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
           taken.add(baseId);
           const base = await request(`/api/layouts/${encodeURIComponent(baseId)}`);
           const newName = `View from ${label}${draftData.cameras.length > 1 ? `, ${cam.label}` : ''}`;
-          set({ info, baseId, base, regions: base.regions, newName, saveAs: 'new' });
+          set({ info, baseId, base, newName, action: 'use' });
         } catch (e) {
           set({ error: e.message });
         }
@@ -569,14 +524,10 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
 
   const cameras = draftData?.cameras || [];
   const loading = cameras.some((c) => !views[c.camera_id]?.base && !views[c.camera_id]?.error);
-  const unassigned = cameras.some((c) => {
-    const v = views[c.camera_id];
-    return v?.base && isEdited(v.base, v.regions) && hasUnassignedShelf(v.regions);
-  });
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!draftData || loading || unassigned) return;
+    if (!draftData || loading) return;
     setSubmitting(true);
     setError(null);
     const body = new FormData();
@@ -612,7 +563,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
               Cancel
             </button>
             <button className="btn btn-primary" type="submit" form="upload-form">
-              Next: shelf boxes <ArrowRightIcon size={14} aria-hidden="true" />
+              Next: camera views <ArrowRightIcon size={14} aria-hidden="true" />
             </button>
           </>
         ) : (
@@ -625,7 +576,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
                 ? `${plural(cameras.length - visited.size, 'camera')} not checked will use the suggested view.`
                 : 'Skeleton extraction starts when you upload.'}
             </span>
-            <button className="btn btn-primary" type="submit" form="upload-views-form" disabled={submitting || waiting || unassigned}>
+            <button className="btn btn-primary" type="submit" form="upload-views-form" disabled={submitting || waiting}>
               <UploadSimpleIcon size={14} aria-hidden="true" />
               {submitting ? 'Uploading…' : waiting ? 'Preparing…' : 'Upload'}
             </button>
@@ -701,7 +652,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
             />
             <span className="hint">Defaults to the video's file name.</span>
           </label>
-          <p className="hint">Next you'll check the shelf boxes on each camera's frame, then upload. Pose estimation runs in the background.</p>
+          <p className="hint">Next you'll pick the camera view for each video, then upload. Pose estimation runs in the background.</p>
           {error && (
             <p ref={errorRef} className="form-error" role="alert">
               {error}

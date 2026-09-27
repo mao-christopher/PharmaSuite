@@ -79,7 +79,7 @@ export default function CropDialog({ file, target, onCancel, onDone }) {
         <p className="lead">
           Recordings in this view are {target.width}×{target.height}
           {target.label ? ` (${target.label})` : ''}. Frame the part of the photo the video shows, so regions stay in place
-          between Setup and playback.
+          between the photo and playback.
         </p>
         <div className="crop-frame" ref={frameRef}>
           <img src={url} alt="Photo to crop" onLoad={(e) => setImg(e.currentTarget)} draggable={false} />

@@ -62,7 +62,7 @@ export default function ReceiveStockDialog({ medicationKey, onClose }) {
     >
       <form id="receive-form" className="form" onSubmit={submit}>
         {meds.length === 0 ? (
-          <p className="lead">Add medications on the Setup page first.</p>
+          <p className="lead">Add medications on the Inventory page first, under Medications &amp; opening stock.</p>
         ) : (
           <>
             <label className="field">
@@ -98,7 +98,7 @@ export default function ReceiveStockDialog({ medicationKey, onClose }) {
                 ? `Adds ${plural(bottleN, 'bottle')} (${formatNumber(bottleN * perN)} ${unit}) straight onto the shelf. Live counts are kept.`
                 : 'Enter at least 1 bottle and a quantity per bottle.'}
             </p>
-            {!hasShelf && <p className="form-error">This medication has no shelf. Draw one on the Setup page.</p>}
+            {!hasShelf && <p className="form-error">This medication has no shelf. Tag one on the Room page.</p>}
           </>
         )}
         {error && (
