@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useLive } from '../lib/live';
 import { request, errorMessage } from '../lib/api';
 import { Badge, Card, Dialog, Empty, PageHeader } from '../components/ui';
+import ShelfLayoutCard from '../components/ShelfLayoutCard';
 
 export default function Shipments() {
   const { state, refresh } = useLive();
@@ -53,6 +54,7 @@ export default function Shipments() {
           <tbody>{s.lines.map((r) => <tr key={r.line_id}><td>{r.name} {r.strength}</td><td>{r.lot}</td><td>{r.expiry}</td><td>{r.ordered}</td><td>{r.shipped}</td><td>{r.damaged}</td><td>{r.accepted}</td></tr>)}</tbody></table></div>
       </div>)}
     </Card>
+    <ShelfLayoutCard busy={busy} stocking={!!active} onApplied={refresh} />
     <Card title="Stocking workflow">
       <ol>
         <li>Configure the shipment’s medications and shelf regions in <Link to="/room">Room</Link>. Load a processed stocking video from <Link to="/recordings">Recordings</Link>.</li>

@@ -62,6 +62,42 @@ Session selection, movements, receipts, exceptions, and applied event IDs surviv
 restart in the same atomic MongoDB document. No custom Atlas deployment is required;
 use the application's configured MongoDB URI.
 
+## Shelf layout from shipments
+
+The **Shelf layout from shipments** card on the Shipments page proposes a slot for
+every medication shelved in a scanned room and every accepted line of a shipment that
+has not been stocked yet. It fills the shelving already tagged on the Room page: each
+unit's rows are split into slots at least 25 cm wide.
+
+Mix-up risks come first. Name rules flag the same drug in another strength or release
+form, pairs from published confused-name lists (a subset of lists such as ISMP's),
+sound-alike and look-alike names, and class siblings that share a name stem (two
+-sartans, two -statins). With `META_API_KEY` set in `backend/.env`, Meta's Llama API
+also lists pairs the rules miss and proposes the placement. Every risk pair must land on
+**different shelves** (another row or unit) and never in touching slots, including
+directly above or below. Other units are preferred. After that, shelved medications
+stay where they are, and the busiest stock goes at waist or eye height near the counter.
+
+The model's answer is untrusted. It is used only if it names every medication once, uses
+listed slots, and separates the risk pairs at least as well as the deterministic built-in
+planner. Otherwise the built-in plan is shown with the reason, and it still separates any
+pairs the model flagged. The same planner runs when no token is configured. The name
+thresholds are unvalidated heuristics that deliberately cast a wide net. They are not a
+clinical look-alike/sound-alike review.
+
+A plan changes nothing until an employee applies it. The plan shows every risk pair and
+where it landed. If the shelving can't separate a pair, applying needs an explicit
+acknowledgement. Applying is blocked during stocking and while a bottle is held, at the
+counter, misplaced or awaiting confirmation. It adds new medications to the catalog
+with no opening stock, replaces the room's shelf boxes with one slot box per medication,
+regenerates every registered camera's regions, and records a `shelf_layout` history
+entry. Stock counts never change. The full-width rows are saved in
+`rooms/<id>/shelving.json`, so empty slots remain available for the next plan.
+
+`demo/synthetic_shipments/mixups/lookalike_delivery.json` is a synthetic delivery with
+four risk pairs (hydroxyzine/hydralazine, metformin/metronidazole, tramadol/trazodone,
+and two atorvastatin strengths) for trying the planner.
+
 ## API
 
 - `POST /api/shipments/import?preview=true`: multipart `file`, validated preview.
@@ -71,6 +107,11 @@ use the application's configured MongoDB URI.
 - `POST /api/shipments/{id}/select`: `{line_id, event_id}` for next pickup.
 - `POST /api/shipments/{id}/shortage`: `{line_id, quantity, reason, operation_id}`.
 - `POST /api/shipments/{id}/finish`: reconcile/freeze completion.
+- `GET /api/shelf-layout/status`: whether a Meta API token is configured, and the rooms.
+- `POST /api/shelf-layout/plan`: `{room_id, use_meta}`, a proposed layout with risk pairs.
+  It runs outside the inventory lock, so a slow Llama call doesn't block other requests.
+- `POST /api/shelf-layout/apply`: `{room_id, room_version, assignments, source,
+  mixup_pairs, acknowledge_mixups}`; 409 if the room changed, or if pairs would stay together unacknowledged.
 
 The inventory snapshot now includes `shipments` and per-medication
 `staged_bottles`. Old MongoDB documents load with empty shipments and zero staging.
@@ -84,8 +125,8 @@ wrong shelves, employee confirmation, counter continuity, disposal, shortages,
 restart, and Mongo write rollback. They do not establish pose or wearable accuracy.
 The unmerged live-browser/wristband PR is separate: this implementation connects to
 the merged prerecorded CV pipeline. Live stocking needs to route its events through
-these stocking checks when that adapter is integrated. Shelf assignment remains
-employee-configured; automatic shelf optimization is separate work.
+these stocking checks when that adapter is integrated. Proposed shelf layouts are
+reviewed and applied by an employee; they are never applied automatically.
 
 Verified on 2026-09-27: 266 backend/simulation tests passed using a real local
 MongoDB instance (22 shipment tests); the dashboard production build passed with

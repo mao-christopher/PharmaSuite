@@ -1188,3 +1188,26 @@ Implemented on `feature/shipment-stocking`; see [backend/SHIPMENTS.md](backend/S
 - Validation: 266 backend/simulation tests pass with real local MongoDB, including
   22 shipment-specific cases; dashboard production build passes. All eight imported
   shipments were inspected in an isolated browser preview. No new Unity run needed.
+
+## Shelf layout from shipments — 2026-09-27
+
+See [backend/SHIPMENTS.md](backend/SHIPMENTS.md#shelf-layout-from-shipments).
+
+- Proposes one slot per medication (shelved in the room, or on an accepted line of an
+  unstocked shipment) within the tagged shelving; an employee reviews and applies it.
+  Applying never changes stock. Setup-lock rules apply: blocked during stocking and
+  while a bottle is held, at the counter, misplaced, or awaiting confirmation.
+- Mix-up pairs (same drug in another strength or form, published confused-name pairs,
+  sound-alike, look-alike, shared class stem) must land on different shelf rows or units
+  and never in touching slots. If the shelving can't do that, the plan says so and
+  applying requires acknowledgement.
+- Meta's Llama API (optional, `META_API_KEY`) adds model-found pairs and proposes the
+  placement. Its answer is validated and used only if it separates pairs at least as well
+  as the deterministic built-in planner; otherwise the built-in plan is used.
+- Assumptions, not validated: slot width ≥ 25 cm; name-similarity thresholds (spelling
+  0.6, phonetic 0.75, 4-letter shared prefix); the confused-name list is a small subset.
+  No measurement of picking-error reduction has been made.
+- Checks: 25 shelf-layout tests (rule detection, separation, fallback on bad/HTTP-error
+  model answers via a mocked HTTP transport, apply gates, lookalike delivery end to end);
+  full backend suite 286 passed, 1 skipped; dashboard build passes. No live Llama API call
+  was made in the tests.

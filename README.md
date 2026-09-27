@@ -166,4 +166,7 @@ synchronization between computers.
 
 Shipment files can be reviewed and imported from the dashboard **Shipments** page.
 See [shipment intake and stocking sessions](backend/SHIPMENTS.md) for supported
-formats, staged inventory, CV placements, and reconciliation.
+formats, staged inventory, CV placements, and reconciliation. The same page can propose a
+shelf layout for incoming stock, optionally planned with Meta's Llama API (`META_API_KEY`).
+Look-alike and sound-alike names, other strengths of one drug, and known mix-ups go on
+different shelves.
