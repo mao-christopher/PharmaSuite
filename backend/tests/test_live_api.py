@@ -269,3 +269,40 @@ def test_live_clip_can_be_deleted_and_its_stock_change_stays(client, wrist):
 def test_live_page_direct_navigation(client):
     response = client.get("/live")
     assert response.status_code == 200
+
+
+def open_movement_alerts(snapshot):
+    """Open alerts about bottle movement (the fixture's expiry alert is unrelated)."""
+    return [a["alert_type"] for a in snapshot["alerts"].values() if a["status"] == "open" and a["alert_type"] != "expiry"]
+
+
+def test_pickup_from_shelf_with_misplaced_bottle_asks_which_bottle(client, wrist, tmp_path):
+    ibu_shelf = "shelf_ibuprofen_200mg"
+    first = send(client, "P").json()["movement_id"]
+    wrist.update(x=.25, y=.65)
+    send(client, "D")
+    assert open_movement_alerts(state(client)) == ["misplacement"]
+
+    # The Ibuprofen shelf holds its own bottles and the misplaced Amoxicillin: ask, don't guess.
+    picked = send(client, "P").json()
+    assert picked["status"] == "needs_confirmation" and picked["region_id"] == ibu_shelf
+    wrist.update(x=.25, y=.25)
+    send(client, "D")  # waits for the answer
+    alert = next(a for a in state(client)["alerts"].values() if a["status"] == "open" and a["alert_type"] == "uncertainty")
+    assert alert["metadata"]["reason"] == "which_bottle"
+    options = {o["bottle"]: o["medication_key"] for o in alert["metadata"]["bottle_options"]}
+    assert options == {f"live:{first}": AMOX, "shelf": "IBUPROFEN_200MG"}
+
+    missing = client.post(f"/api/inventory/confirmations/{alert['alert_id']}", json={"resolved_region_id": ibu_shelf})
+    assert missing.status_code == 400
+    ok = client.post(f"/api/inventory/confirmations/{alert['alert_id']}",
+                     json={"resolved_region_id": ibu_shelf, "bottle": f"live:{first}"})
+    assert ok.status_code == 200
+    after = state(client)
+    assert open_movement_alerts(after) == []
+    assert after["inventory"][AMOX]["shelf_counts"].get(ibu_shelf, 0) == 0
+    latest = after["live"]["movements"][0]
+    assert latest["medication_key"] == AMOX and latest["state"] == "ON_DESIGNATED_SHELF"
+    history = client.get("/api/history?limit=5").json()
+    entries = history.get("history", history) if isinstance(history, dict) else history
+    assert any("the misplaced AMOXICILLIN_500MG" in e.get("summary", "") for e in entries)

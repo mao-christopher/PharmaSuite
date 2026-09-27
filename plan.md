@@ -1136,3 +1136,30 @@ Deferred:
   scans the whole 10 s clip, so a sustained wrist in a second eligible region (for
   example the counter soon after a shelf pickup) makes the event uncertain rather than
   wrong. Narrowing it needs a measured band latency.
+
+## Pickup from a shelf holding more than one kind of bottle — 2026-09-27
+
+Previously, a pickup from a shelf that held a misplaced bottle was always assumed to be
+that bottle (the correction). That guessed wrong when the technician took the shelf's own
+stock. For example, a leftover misplaced Amoxicillin on the Ibuprofen shelf turned an
+Ibuprofen pickup into Amoxicillin, and the later wrong return and its correction were then
+reported backwards.
+
+Rule now (user decision): when a shelf holds more than one kind of bottle (its own stock
+plus a misplaced bottle, or several misplaced bottles), the pickup raises an uncertainty
+alert with reason `which_bottle` and the candidate bottles. Stock doesn't change, and a
+put-down that follows waits, until an employee chooses the bottle ("Which bottle?" in
+Notifications). A shelf holding only a misplaced bottle is still picked up without
+asking. The answer is recorded in the confirmation history. Live events report
+`needs_confirmation` in this case even though the camera decided the region.
+
+Checked: engine tests cover the recorded IMG_3537 sequence:
+
+1. Ibuprofen → counter → Amoxicillin shelf raises a misplacement.
+2. Picking up from the Amoxicillin shelf then asks which bottle.
+3. Answering "the misplaced Ibuprofen" and returning it home resolves the alert.
+
+They also cover choosing the shelf's own bottle, a lone misplaced bottle, invalid answers,
+and a live API round trip. Full suite: 267 passed. After resetting the working inventory
+and re-applying IMG_3537, the dashboard showed the misplacement and the bottle question.
+The answer was left to the user.

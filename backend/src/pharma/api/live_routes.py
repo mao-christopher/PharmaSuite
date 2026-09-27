@@ -360,7 +360,9 @@ async def ingest_live_event(
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
-    return {"status": "applied" if result["region_id"] else "needs_confirmation",
+    # A decided region can still need an employee: e.g. which bottle came off a mixed shelf.
+    waiting = not result["region_id"] or (activity or {}).get("state") == "NEEDS_CONFIRMATION"
+    return {"status": "needs_confirmation" if waiting else "applied",
             "event_id": event.event_id, "movement_id": movement_id, "region_id": result["region_id"],
             "recording": event.name if result["clip"] else None,
             "activity": activity, "evidence": result["evidence"]}

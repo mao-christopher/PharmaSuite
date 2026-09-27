@@ -21,6 +21,10 @@ function describe(alert, layout, receipts) {
       return `Batch ${m.receipt_id}${r?.lot_number ? ` (lot ${r.lot_number})` : ''} expired ${formatDate(m.expiry_date)}. Find these bottles and dispose of them.`;
     }
     case 'uncertainty':
+      if (m.reason === 'which_bottle') {
+        const kinds = [...new Set((m.bottle_options || []).map((o) => medLabel(layout?.medications, o.medication_key)))];
+        return `Picked up from the ${regionLabel(layout, m.region_id)}, which holds ${kinds.join(' and ')}. Confirm which bottle was taken.`;
+      }
       return m.live_reason && LIVE_REASONS[m.live_reason]
         ? `${LIVE_REASONS[m.live_reason]}. Watch the clip and confirm where it happened.`
         : alert.description;
@@ -34,7 +38,7 @@ function AlertAction({ alert, onResolve, onConfirm, onReceive, onDispose }) {
     case 'uncertainty':
       return (
         <button type="button" className="btn btn-sm btn-primary" onClick={onConfirm}>
-          Confirm location
+          {alert.metadata?.reason === 'which_bottle' ? 'Confirm bottle' : 'Confirm location'}
         </button>
       );
     case 'expiry':
@@ -211,8 +215,12 @@ export default function Notifications() {
                   <Icon />
                 </span>
                 <div className="notice-content">
-                  <div className="notice-title">{ALERT_TYPES[a.alert_type] || a.alert_type}</div>
-                  <div className="notice-med">{medLabel(meds, a.medication_key)}</div>
+                  <div className="notice-title">{a.metadata?.reason === 'which_bottle' ? 'Which bottle?' : ALERT_TYPES[a.alert_type] || a.alert_type}</div>
+                  <div className="notice-med">
+                    {a.metadata?.reason === 'which_bottle'
+                      ? [...new Set(a.metadata.bottle_options.map((o) => medLabel(meds, o.medication_key)))].join(' or ')
+                      : medLabel(meds, a.medication_key)}
+                  </div>
                   <p className="notice-text">{describe(a, state.layout, state.receipts)}</p>
                   {a.alert_type === 'uncertainty' && a.metadata?.live_reason !== undefined && a.metadata?.recording && (
                     <button type="button" className="notice-thumb" onClick={() => openConfirm(a.alert_id)} aria-label="Open the clip and confirm the location">

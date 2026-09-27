@@ -327,7 +327,13 @@ def open_alerts(engine, alert_type):
     return [a for a in engine.alerts.values() if a.alert_type == alert_type and a.status == "open"]
 
 
-def test_misplaced_bottle_is_corrected_by_moving_it_home(base_setup):
+def which_bottle_alert(engine):
+    alerts = [a for a in open_alerts(engine, "uncertainty") if a.metadata.get("reason") == "which_bottle"]
+    assert len(alerts) == 1
+    return alerts[0]
+
+
+def test_misplaced_bottle_is_corrected_once_employee_names_it(base_setup):
     engine = base_setup
     amx, ibu = engine.inventory["AMOXICILLIN_500MG"], engine.inventory["IBUPROFEN_200MG"]
 
@@ -336,17 +342,86 @@ def test_misplaced_bottle_is_corrected_by_moving_it_home(base_setup):
     assert len(open_alerts(engine, "misplacement")) == 1
     assert amx.shelf_counts == {"shelf_amoxicillin_500mg": 4, "shelf_ibuprofen_200mg": 1}
 
-    # Picking up from the shelf holding the misplaced bottle is assumed to be the correction.
+    # The Ibuprofen shelf now holds Ibuprofen and the misplaced Amoxicillin: the pickup alone
+    # doesn't say which was taken, so nothing moves until an employee answers.
     sess = engine.handle_pickup("s2", IBU_HAND, 0)
-    assert sess.medication_key == "AMOXICILLIN_500MG"
-    assert sess.original_shelf_id == "shelf_amoxicillin_500mg"
-    assert ibu.shelf_counts == {"shelf_ibuprofen_200mg": 2}  # Ibuprofen untouched
-    assert amx.shelf_counts["shelf_ibuprofen_200mg"] == 0
+    assert sess.state == "NEEDS_CONFIRMATION"
+    alert = which_bottle_alert(engine)
+    assert alert.metadata["region_id"] == "shelf_ibuprofen_200mg"
+    assert {o["bottle"]: o["medication_key"] for o in alert.metadata["bottle_options"]} == {
+        "s1": "AMOXICILLIN_500MG", "shelf": "IBUPROFEN_200MG"}
+    assert amx.shelf_counts["shelf_ibuprofen_200mg"] == 1 and ibu.shelf_counts == {"shelf_ibuprofen_200mg": 2}
 
+    # The put-down waits for the answer, then applies to the chosen bottle.
     engine.handle_release("s2", AMX_HAND, 0)
-    assert open_alerts(engine, "misplacement") == []
-    assert amx.shelf_counts["shelf_amoxicillin_500mg"] == 5 and amx.held_bottles == 0
+    with pytest.raises(ValueError, match="Choose which one"):
+        engine.confirm_location(alert.alert_id, "shelf_ibuprofen_200mg")
+    sess = engine.confirm_location(alert.alert_id, "shelf_ibuprofen_200mg", bottle="s1")
+    assert sess.medication_key == "AMOXICILLIN_500MG" and sess.state == "ON_DESIGNATED_SHELF"
+    assert open_alerts(engine, "misplacement") == [] and open_alerts(engine, "uncertainty") == []
+    assert amx.shelf_counts == {"shelf_amoxicillin_500mg": 5, "shelf_ibuprofen_200mg": 0} and amx.held_bottles == 0
     assert ibu.shelf_counts == {"shelf_ibuprofen_200mg": 2} and ibu.held_bottles == 0
+
+
+def test_choosing_the_shelfs_own_bottle_keeps_the_misplacement_open(base_setup):
+    engine = base_setup
+    ibu = engine.inventory["IBUPROFEN_200MG"]
+    engine.handle_pickup("s1", AMX_HAND, 0)
+    engine.handle_release("s1", IBU_HAND, 0)
+    engine.handle_pickup("s2", IBU_HAND, 0)
+
+    sess = engine.confirm_location(which_bottle_alert(engine).alert_id, "shelf_ibuprofen_200mg", bottle="shelf")
+    assert sess.medication_key == "IBUPROFEN_200MG" and sess.state == "HELD"
+    assert ibu.shelf_counts["shelf_ibuprofen_200mg"] == 1 and ibu.held_bottles == 1
+    assert engine.sessions["s1"].state == "MISPLACED"
+    assert len(open_alerts(engine, "misplacement")) == 1
+
+
+def test_misplaced_bottle_alone_on_a_shelf_is_picked_up_without_asking(base_setup):
+    engine = base_setup
+    amx, ibu = engine.inventory["AMOXICILLIN_500MG"], engine.inventory["IBUPROFEN_200MG"]
+    ibu.shelf_counts["shelf_ibuprofen_200mg"] = 0
+    engine.handle_pickup("s1", AMX_HAND, 0)
+    engine.handle_release("s1", IBU_HAND, 0)
+
+    sess = engine.handle_pickup("s2", IBU_HAND, 0)
+    assert sess.medication_key == "AMOXICILLIN_500MG" and sess.state == "HELD"
+    engine.handle_release("s2", AMX_HAND, 0)
+    assert open_alerts(engine, "misplacement") == [] and open_alerts(engine, "uncertainty") == []
+    assert amx.shelf_counts == {"shelf_amoxicillin_500mg": 5, "shelf_ibuprofen_200mg": 0}
+
+
+def test_ibuprofen_via_counter_to_wrong_shelf_then_back_home(base_setup):
+    """The recorded demo: Ibuprofen to the counter, onto the Amoxicillin shelf, then corrected."""
+    engine = base_setup
+    amx, ibu = engine.inventory["AMOXICILLIN_500MG"], engine.inventory["IBUPROFEN_200MG"]
+    engine.handle_pickup("s1", IBU_HAND, 0)
+    engine.handle_release("s1", COUNTER_HAND, 0)
+    engine.handle_pickup("s2", COUNTER_HAND, 0)
+    sess = engine.handle_release("s2", AMX_HAND, 0)
+    assert sess.medication_key == "IBUPROFEN_200MG" and sess.state == "MISPLACED"
+    alert = open_alerts(engine, "misplacement")[0]
+    assert alert.medication_key == "IBUPROFEN_200MG" and alert.metadata["placed_shelf"] == "shelf_amoxicillin_500mg"
+
+    engine.handle_pickup("s3", AMX_HAND, 0)
+    engine.handle_release("s3", IBU_HAND, 0)
+    assert len(open_alerts(engine, "misplacement")) == 1  # still waiting for the bottle answer
+    sess = engine.confirm_location(which_bottle_alert(engine).alert_id, "shelf_amoxicillin_500mg", bottle="s1")
+    assert sess.medication_key == "IBUPROFEN_200MG" and sess.state == "ON_DESIGNATED_SHELF"
+    assert open_alerts(engine, "misplacement") == []
+    assert ibu.shelf_counts == {"shelf_ibuprofen_200mg": 2, "shelf_amoxicillin_500mg": 0}
+    assert amx.shelf_counts == {"shelf_amoxicillin_500mg": 5}
+
+
+def test_bottle_answer_must_be_on_that_shelf(base_setup):
+    engine = base_setup
+    engine.handle_pickup("s1", AMX_HAND, 0)
+    engine.handle_release("s1", IBU_HAND, 0)
+    engine.handle_pickup("s2", IBU_HAND, 0)
+    alert = which_bottle_alert(engine)
+    with pytest.raises(ValueError, match="isn't on this shelf"):
+        engine.confirm_location(alert.alert_id, "shelf_ibuprofen_200mg", bottle="s9")
+    assert alert.status == "open"
 
 
 def test_misplaced_bottle_moved_to_another_wrong_shelf_replaces_alert(base_setup):
@@ -358,6 +433,7 @@ def test_misplaced_bottle_moved_to_another_wrong_shelf_replaces_alert(base_setup
     engine.handle_pickup("s1", AMX_HAND, 0)
     engine.handle_release("s1", IBU_HAND, 0)
     engine.handle_pickup("s2", IBU_HAND, 0)
+    engine.confirm_location(which_bottle_alert(engine).alert_id, "shelf_ibuprofen_200mg", bottle="s1")
     engine.handle_release("s2", [(0.6, 0.55, 0.9)], 0)
     alerts = open_alerts(engine, "misplacement")
     assert len(alerts) == 1 and alerts[0].metadata["placed_shelf"] == "shelf_extra"

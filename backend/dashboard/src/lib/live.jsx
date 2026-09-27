@@ -69,10 +69,11 @@ export function LiveProvider({ children }) {
       },
       resetInventory: () => post('/api/inventory/reset'),
       resolveAlert: (alertId) => post(`/api/inventory/confirmations/${id(alertId)}`),
-      confirmLocation: (alertId, regionId, releaseRegionId) =>
+      confirmLocation: (alertId, regionId, releaseRegionId, bottle) =>
         post(`/api/inventory/confirmations/${id(alertId)}`, {
           resolved_region_id: regionId,
           release_region_id: releaseRegionId || null,
+          bottle: bottle || null,
         }),
       receiveStock: (body) => post('/api/inventory/receipts', body),
       setTransactionStatus: (txId, status) => post(`/api/transactions/${id(txId)}/status`, { status }),

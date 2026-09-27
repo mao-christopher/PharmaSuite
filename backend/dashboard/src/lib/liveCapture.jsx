@@ -282,7 +282,10 @@ export function LiveCaptureProvider({ children }) {
       case 'applied':
         return [`${verb} at ${regionLabel(layout, result.region_id)}.`, 'green'];
       case 'needs_confirmation':
-        return [`${verb} saved. ${LIVE_REASONS[result.evidence?.reason] || 'Location uncertain'}; confirm where it happened.`, 'amber'];
+        // A known region can still wait on an employee (which bottle, or an earlier unconfirmed pickup).
+        return result.region_id
+          ? [`${verb} saved. Waiting for a confirmation in Notifications before stock changes.`, 'amber']
+          : [`${verb} saved. ${LIVE_REASONS[result.evidence?.reason] || 'Location uncertain'}; confirm where it happened.`, 'amber'];
       case 'ignored':
         return [`${verb} ignored: ${IGNORED[result.reason] || result.reason} (treated as a false detection).`, 'gray'];
       default:

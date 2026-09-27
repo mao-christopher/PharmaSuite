@@ -104,6 +104,26 @@ export const SESSION_STATES = {
 };
 
 /** Why a live clip's location needs confirmation (backend live_capture / live_routes reasons). */
+/**
+ * Bottles a pickup from this shelf could have taken: each bottle misplaced on it, and its own
+ * stock. Mirrors InventoryEngine.bottle_options; more than one means an employee must choose.
+ */
+export function bottleOptions(state, region) {
+  if (!region || region.region_type !== 'designated_shelf') return [];
+  const options = [];
+  const seen = new Set();
+  Object.values(state.sessions || {}).forEach((s) => {
+    if (s.state !== 'MISPLACED' || s.current_location_id !== region.region_id || seen.has(s.session_id)) return;
+    seen.add(s.session_id);
+    options.push({ bottle: s.session_id, medication_key: s.medication_key, original_shelf_id: s.original_shelf_id });
+  });
+  const own = state.inventory?.[region.medication_key];
+  if ((own?.shelf_counts?.[region.region_id] || 0) > 0) {
+    options.push({ bottle: 'shelf', medication_key: region.medication_key, original_shelf_id: region.region_id });
+  }
+  return options;
+}
+
 export const LIVE_REASONS = {
   no_stable_intersection: 'The wrist never settled inside one region',
   overlapping_regions: 'The wrist was inside overlapping regions',
