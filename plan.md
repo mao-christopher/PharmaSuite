@@ -762,14 +762,16 @@ matters.
   - Sim medication IDs are matched to catalog keys by letters and digits. Regions
     whose medication isn't in the catalog are skipped and reported.
   - The Unity exporter that writes `scene_geometry.json` is delegated with M7/M8.
-- **N3 tooling built, not run:** `simulation/tools/evaluate_floor_track.py`
+- **N3 evaluated on rendered footage:** `simulation/tools/evaluate_floor_track.py`
   (evaluator-only) scores a floor track against `simulation_states.jsonl` (body
   position) and the rig's shoulders and hips, unprojected with the exact camera. It
   reports cm/degree medians, p90 and max per source (ankles, hips, bridged), placed
   fraction, and facing flips over 90°. A synthetic test checks the axis conversion.
-  No real render has been scored yet, because that needs the exporter's
-  `scene_geometry.json`.
-- **N4 built:** `rebuild/1` (`services/room_rebuild.py`, `GET /api/rooms/{id}/rebuilt`,
+  A fresh local replay placed 83.21% of 3,180 frames. Position error was
+  4.75 cm median / 9.53 cm p90; facing error was 6.3 degrees median /
+  42.23 degrees p90, with 41 frames over 90 degrees. Facing remains a limitation.
+  See the scan-to-simulation validation section for provenance and limits.
+- **N4 built:** `rebuild/2` (`services/room_rebuild.py`, `GET /api/rooms/{id}/rebuilt`,
   and the Scan/Rebuilt toggle). Fixture measurements only: walls fall 0–11 mm from
   the scanned inner faces, the 0.9 m doorway is found, board heights are within 1 cm
   and the colours match within 12/255. Nothing has been measured on a real scan.
@@ -793,19 +795,29 @@ matters.
 - **M6 built:** `PharmacySimulation.cs` is split into `RoomDescription.cs` (room
   data), `MotionSource.cs` (`IMotionSource`; `PlannedWalk` is the existing route) and
   `ActionSchedule.cs` (cues, ownership, commits). Pose validation stays in the host.
-  - The demo re-rendered with byte-identical rig skeleton, per-frame states,
+  - Prior-session baseline: the demo re-rendered with byte-identical rig skeleton, per-frame states,
     calibration and fixtures. IMU events and ground truth are identical once the
     per-run IDs are removed. SimulationChecks passes with the same metrics.
   - Frames are not byte-identical, even between two renders of the unchanged code:
     font rasterization varies from run to run. The measured noise is a mean pixel
     difference of 0.0015 (about 120–150 of 2.07 M pixels per frame, on sign text).
-    The refactor stays within that noise.
-- **M7/M8 in progress (delegated):** the Unity exporter for `scene_geometry.json`,
-  the scene built from `rebuilt.json`, the re-enactment player, and
-  `render.py --timeline`.
-- **M9 backend and UI built; Unity side pending:**
+    The refactor stayed within that noise. A fresh local post-host-edit comparison
+    of all 3,180 raw frames measured 0.000802 mean pixel difference, with identical
+    states and sensor schedule; collision checks passed again.
+- **M7/M8 implemented and preview-verified:** static scene export/import, registered
+  camera, rebuilt-room scene, floor-track player, and `render.py --timeline`.
+  The 65-frame action preview shows 7 reaches, 2 counter highlight fallbacks and
+  1 state-follow fallback, with zero guard holds or refused reaches.
+  Cutaway walls retain colliders; thin shelf tags extend over furniture; bottle
+  selection preserves medication identity; tagged rows reuse nearby scanned boards.
+  The full 3,180-frame product render passed with the same results.
+  Full product-render results are recorded in `simulation/VALIDATION.md`.
+- **M9 backend, UI and Unity renderer implemented:**
   - Queue (`services/render_jobs.py`): one render at a time, queued and cancellable,
-    keyed on `inputs_key` so the same inputs reuse the finished render.
+    keyed on `inputs_key` so the same inputs reuse the finished render. Verified
+    through the live API and player; an edited region marks the result stale. Each queued
+    job owns an immutable timeline snapshot; later exports cannot change its inputs.
+    POSIX cancellation terminates the wrapper and its Unity/encoder process group.
   - Output per render: `sim.mp4`, `side_by_side.mp4` and `manifest.json` (input and
     output hashes, requested vs rendered fps/frames, the renderer's report).
   - Staleness: after a correction or new signals the render is marked stale and the

@@ -164,7 +164,8 @@ def render_timeline(args, base):
             frame.unlink()
         frames_dir.rmdir()
     progress(1.0)
-    print(f"Re-enactment ready: {output / 'camera.mp4'}", flush=True)
+    result = output / ("render_report.json" if preview is not None else "camera.mp4")
+    print(f"Re-enactment {'preview' if preview is not None else 'video'} ready: {result}", flush=True)
 
 
 def main():

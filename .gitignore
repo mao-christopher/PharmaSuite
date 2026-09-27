@@ -244,3 +244,6 @@ logs/
 tmp/
 temp/
 .temp/
+
+# Restored portable workspace (media/state stay in release assets)
+backend/restored-data/

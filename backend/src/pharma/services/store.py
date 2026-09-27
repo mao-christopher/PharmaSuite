@@ -39,6 +39,7 @@ class PharmacyStore:
         self.engine: Optional[InventoryEngine] = None
         self.created_at: Optional[str] = None
         self.current_recording: Optional[str] = None
+        self.player_state: Dict[str, Any] = {}
         self.recordings: Dict[str, Dict[str, Any]] = {}  # name -> applied event IDs + activity
         self.history: List[Dict[str, Any]] = []
         self.dismissed_suggestions: Dict[str, str] = {}  # suggestion ID -> when it was dismissed
@@ -92,6 +93,7 @@ class PharmacyStore:
         self.layout_id = data.get("layout_id")
         self.created_at = data.get("created_at")
         self.current_recording = data.get("current_recording")
+        self.player_state = data.get("player_state", {})
         self.recordings = data.get("recordings", {})
         self.history = data.get("history", [])
         self.dismissed_suggestions = data.get("dismissed_suggestions", {})
@@ -118,6 +120,7 @@ class PharmacyStore:
             "created_at": self.created_at,
             "saved_at": now_iso(),
             "current_recording": self.current_recording,
+            "player_state": self.player_state,
             "engine": self.engine.to_dict(),
             "recordings": self.recordings,
             "history": self.history,

@@ -148,3 +148,73 @@ both decoded all 3,180 frames at 30 FPS, 1920 × 1080. Metrics are in
 `validation/multicamera-handoff.json`, `multicamera-inventory.json`, and
 `multicamera-videos.json`. These measurements cover one synthetic technician/workflow;
 confidence is not proof of visibility and real-camera reliability is unmeasured.
+
+## Scene-to-simulation re-enactment — 2026-09-26
+
+Completed local verification on `feature/room-scan-floor-track`, using Unity
+6000.6.3f1, actual YOLO11n-pose inference at size 960, and isolated MongoDB 7.0.14.
+The other machine's scratch files were unavailable. A new scripted demo export was
+rendered once; an available original render from this Mac supplied the uploaded CV
+recording and regression baseline. All 3,180 raw baseline/candidate frames were
+compared; simulator states and sensor timing were identical. No simulator truth
+was supplied to inference, inventory, the floor track, or the re-enactment planner.
+Static scene geometry was imported as a synthetic box-mesh scan through the API.
+
+| Check | Result |
+| --- | --- |
+| Imported/generated regions | 8 / 8, none skipped |
+| Camera registration | RMS 0.00057 px; maximum 0.0010 px |
+| Hand-drawn vs generated region decisions | 10 unchanged; no new abstentions |
+| Shelf rebuild | `rebuild/2`; 3 boards/unit at 0.41, 0.87, 1.59 m |
+| Floor track placed | 2,646 / 3,180 frames (83.21%) |
+| Position error | median 4.75 cm; p90 9.53 cm; max 27.57 cm |
+| Facing error | median 6.3 degrees; p90 42.23 degrees; max 178.2 degrees |
+| Facing errors over 90 degrees | 41 frames |
+| Re-enactment camera alignment | 64 corners; maximum 0.0002 px |
+| Re-enactment actions | 7 shown; 2 highlight-only; 1 state-follow fallback |
+| Collision holds / refused reaches | 0 / 0 |
+| Out-of-view track / cuts / blends | 534 frames / 2 / 0 |
+| Initial bottles | 22; none missing a region or spawned |
+| Unity scripted collision checks | 6,362 frame samples passed |
+| Scripted states / sensor schedule | Identical to local baseline |
+| Raw image regression | mean absolute difference 0.000802 / 255; max 108 |
+| Raw pixels changed per frame | average 74 of 2,073,600 |
+| Python tests / dashboard build | 240 passed / passed |
+
+The sparse preview captured 65 frames (first 15 plus five around each action),
+while simulating the whole timeline. Visual inspection checked supported bottles,
+misplacement, return and disposal. `evt_006`, previously refused because a tagged
+board duplicated a scanned board, now reaches its contact. Re-enactment fixes also
+include camera-side wall cutaways with retained colliders, thin tags extended over
+the actual shelf depth, and medication-preserving bottle selection. Counter events
+`evt_002`/`evt_003` remain highlight fallbacks because the permitted 0.3 m step does
+not reach them; this is intentional, not an animated successful grasp.
+
+One full product render was then requested through `POST /api/recordings/{name}/render`.
+Both `sim.mp4` (1920x1080) and `side_by_side.mp4` (3840x1080) decoded all 3,180 frames
+at 30 FPS. The three player sources were checked through the MJPEG API, and the
+browser showed the labeled side-by-side view at the 70-second return. Repeating
+the render reused its manifest without another Unity run. Reapplying all signals
+applied zero new events and left inventory unchanged. A 1 cm test-region edit
+marked the render stale; restoring the region advanced the room version, as expected.
+The test did not rerender merely to clear this intentional stale state.
+
+Queue jobs now own immutable timeline snapshots, preventing a later export from
+changing a queued render's inputs. POSIX cancellation terminates the private wrapper,
+Unity and encoder process group. Two regression tests exercise snapshot isolation
+and cancellation of a real child process without starting Unity. Completed renders
+retain their timeline snapshot for reproducibility.
+
+Facing is not validated accuracy: bridged-frame median facing error was 120.7 degrees.
+The room was a synthetic box mesh, not a noisy real scan. Untagged rear furniture
+appears as coarse blocks, not detailed shelving. The 534 missing track frames retain
+last-position/cut behavior; they do not create invented inventory observations.
+Unresolved disposal forms and expiry alerts were deliberately left as employee work.
+No new full multi-camera or real/simulation transition demonstration was performed.
+
+Metrics and output hashes: [scan-to-simulation.json](validation/scan-to-simulation.json).
+The encoded baseline comparison had mean difference 0.09285 because encoding spreads
+small raster differences; the full raw-frame comparison is the regression authority.
+The current raw difference is within the earlier measured text-raster noise, rather
+than a claim of byte-identical video. Only the isolated 8011 test server/database
+were used; port 8000 and user inventory were not modified.

@@ -157,3 +157,84 @@ def test_player_switches_between_real_simulation_and_side_by_side(setup):
     assert sim.shape[:2] == (HEIGHT // 2, WIDTH // 2)
     assert sim[5, 5, 0] > 150 and sim[5, 5, 2] < 100  # the render's color (BGR), not the real video's
     assert client.post("/api/player/source", json={"source": "nope"}).status_code == 409
+
+
+def test_queued_render_uses_its_own_timeline_snapshot(tmp_path):
+    """A later timeline export cannot silently change a queued job's contents/key."""
+    first_started, unblock = threading.Event(), threading.Event()
+    seen = []
+    def runner(path, out, progress, cancel):
+        data = json.loads(path.read_text())
+        seen.append(data)
+        if len(seen) == 1:
+            first_started.set()
+            assert unblock.wait(5)
+        out.mkdir(parents=True)
+        _video(out / "camera.mp4")
+        return out / "camera.mp4"
+    queue = RenderQueue(runner=runner)
+    def submit(name):
+        folder = tmp_path / name
+        folder.mkdir()
+        timeline = dict(inputs_key=name*32, inputs_sha256=name, fps=30,
+                        frame_size=[WIDTH//4, HEIGHT//4], duration_ms=667, label=name)
+        (folder / "timeline.json").write_text(json.dumps(timeline))
+        queue.enqueue(name, name, folder, timeline, None)
+        return folder, timeline
+    submit("a")
+    assert first_started.wait(5)
+    folder, original = submit("b")
+    (folder / "timeline.json").write_text('{"label":"changed after queueing"}')
+    original["label"] = "caller mutated it too"
+    unblock.set()
+    assert queue.wait_idle()
+    assert [entry["label"] for entry in seen] == ["a", "b"]
+    from pharma.services.render_jobs import finished, render_dir
+    manifest = finished(folder, "b"*32)
+    assert manifest is not None
+    import hashlib
+    snapshot = render_dir(folder, "b"*32) / "timeline.json"
+    assert manifest["timeline_sha256"] == hashlib.sha256(snapshot.read_bytes()).hexdigest()
+
+
+@pytest.mark.skipif(__import__('os').name != 'posix', reason='POSIX process-group cancellation')
+def test_cancel_stops_renderer_child_processes(tmp_path):
+    """Exercise the real runner with a lightweight wrapper/child, without starting Unity."""
+    import os
+    import time
+    from pathlib import Path
+    from pharma.services.render_jobs import unity_runner
+    tools = tmp_path / 'simulation' / 'tools'
+    tools.mkdir(parents=True)
+    marker = tmp_path / 'child-ready'
+    completed = tmp_path / 'child-survived'
+    child = ("from pathlib import Path; import time; "
+             f"Path({str(marker)!r}).write_text('ready'); time.sleep(2); "
+             f"Path({str(completed)!r}).write_text('unexpected')")
+    (tools / 'render.py').write_text(
+        'import subprocess, sys, time\n'
+        f'subprocess.Popen([sys.executable, "-c", {child!r}])\n'
+        'time.sleep(30)\n')
+    cancel = threading.Event()
+    errors = []
+    def run():
+        try:
+            unity_runner('unused', tools.parent)(tmp_path/'timeline.json', tmp_path/'output', lambda p: None, cancel)
+        except RuntimeError as exc:
+            errors.append(str(exc))
+    worker = threading.Thread(target=run)
+    worker.start()
+    try:
+        deadline = time.monotonic()+5
+        while not marker.exists() and time.monotonic()<deadline:
+            time.sleep(.02)
+        assert marker.exists()
+        cancel.set()
+        worker.join(5)
+        assert not worker.is_alive()
+        time.sleep(2.1)
+        assert not completed.exists(), 'Cancel left a child renderer running'
+        assert errors
+    finally:
+        cancel.set()
+        worker.join(5)

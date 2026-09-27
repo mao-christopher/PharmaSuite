@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -91,12 +92,23 @@ def unity_runner(unity_path: str, simulation_dir: Path) -> Runner:
                "--timeline", str(timeline_path), "--output", str(out_dir)]
         log_path = out_dir.parent / f"{out_dir.name}.log"
         with log_path.open("w", encoding="utf-8") as log:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                                    start_new_session=(os.name == "posix"))
 
             def watch():
                 while proc.poll() is None:
                     if cancel.wait(0.5):
-                        proc.terminate()
+                        # The wrapper starts Unity and ffmpeg children. Cancel the whole
+                        # private group so an orphan editor cannot keep the project locked.
+                        try:
+                            if os.name == "posix": os.killpg(proc.pid, signal.SIGTERM)
+                            else: proc.terminate()
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            if os.name == "posix": os.killpg(proc.pid, signal.SIGKILL)
+                            else: proc.kill()
+                        except ProcessLookupError:
+                            pass
                         return
 
             threading.Thread(target=watch, daemon=True).start()
@@ -218,7 +230,7 @@ class RenderQueue:
             self.jobs[name] = {
                 "name": name, "label": label, "inputs_key": key, "state": "queued", "step": "Waiting",
                 "progress": 0.0, "error": None, "queued_at": _now(), "_dir": str(scenario_dir),
-                "_timeline": str(Path(scenario_dir) / "timeline.json"), "_real": str(real_video) if real_video else None,
+                "_timeline_data": json.dumps(timeline, sort_keys=True, separators=(",", ":")), "_real": str(real_video) if real_video else None,
                 "_meta": {k: timeline[k] for k in ("fps", "frame_size", "duration_ms", "inputs_sha256")},
             }
             self._cancel[name] = threading.Event()
@@ -287,7 +299,11 @@ class RenderQueue:
         def progress(p: float) -> None:
             job["progress"] = round(min(max(p, 0.0), 1.0) * 0.9, 3)
 
-        video = self.runner()(Path(job["_timeline"]), work / "unity", progress, cancel)
+        # A timeline GET or employee correction may rewrite scenario/timeline.json
+        # while this job waits. Render the exact snapshot associated with its cache key.
+        timeline_path = work / "timeline.json"
+        timeline_path.write_text(job["_timeline_data"] + "\n", encoding="utf-8")
+        video = self.runner()(timeline_path, work / "unity", progress, cancel)
         if cancel.is_set():
             raise RuntimeError("cancelled")
         job.update(step="Packaging", progress=0.9)
@@ -303,7 +319,7 @@ class RenderQueue:
             side_by_side(Path(job["_real"]), work / SIM_VIDEO, work / SIDE_VIDEO)
             files[SIDE_VIDEO] = _sha256(work / SIDE_VIDEO)
         shutil.rmtree(work / "unity", ignore_errors=True)
-        timeline_sha = _sha256(Path(job["_timeline"]))
+        timeline_sha = _sha256(timeline_path)
         manifest = {
             "schema": SCHEMA, "recording": job["name"], "inputs_key": key,
             "timeline_sha256": timeline_sha, "timeline_inputs_sha256": job["_meta"]["inputs_sha256"],

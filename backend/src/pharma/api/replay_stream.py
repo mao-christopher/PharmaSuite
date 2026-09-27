@@ -372,6 +372,7 @@ class ReplayController:
         self.store.merge_transactions(load_json(rec.path / "transactions.json"))
         self.current = rec
         self.store.current_recording = rec.name
+        self.store.player_state = {}
         self.store.save()
         self.current_media_time_ms = 0
         self.is_playing = False
@@ -390,11 +391,21 @@ class ReplayController:
 
     def restore_player(self, fallback: Optional[str] = None) -> None:
         """At startup, reopen whichever recording was in the player last."""
+        bookmark = dict(self.store.player_state)
         for name in (self.store.current_recording, fallback):
             if not name:
                 continue
             try:
                 self.load_scenario(name)
+                if bookmark.get("scenario") == name:
+                    # Restoring a view must not apply events or change saved inventory.
+                    self.current_media_time_ms = max(0, min(float(bookmark.get("media_time_ms") or 0), self.duration_ms))
+                    self._select_camera()
+                    source = bookmark.get("player_source", "real")
+                    if source in PLAYER_SOURCES and (source == "real" or self.sim_video(name)):
+                        self.player_source = source
+                    self.store.player_state = bookmark
+                    self.store.save()
                 return
             except (FileNotFoundError, ScenarioNotReady, ValueError, KeyError):
                 continue

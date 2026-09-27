@@ -1,3 +1,15 @@
+> **Continuation completed locally on 2026-09-26.** The original scratchpad was on
+> another machine. Fresh isolated validation completed all remaining steps: 65-frame
+> preview, one full product re-enactment, one scripted regression render, floor-track
+> evaluation, browser/player/reuse/stale checks, 240 tests and dashboard build.
+> The board fix passed with 7 shown actions, 2 highlight fallbacks, 1 state-follow
+> fallback, zero guard holds and zero refused reaches. See
+> `simulation/VALIDATION.md` and `simulation/validation/scan-to-simulation.json`.
+> Queue snapshot isolation and process-group cancellation were also fixed/tested.
+> Changes are uncommitted; original default layout and unrelated work were preserved.
+> Deliverables: `outputs/scan-to-simulation/` under this Codex workspace (outside repo).
+> The instructions below are the historical handoff, not outstanding work.
+
 # Scan-to-simulation handoff
 
 Handoff for the agent finishing the **room scan → dashboard → Unity re-enactment** work

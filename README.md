@@ -120,3 +120,11 @@ Store shared weights in a shared drive or object storage and reference the path 
 2. Keep `datasets/*.yaml` (not `datasets/*.yaml.example`) in git once they're stable.
 3. Log experiments with [Weights & Biases](https://wandb.ai) — set `WANDB_API_KEY` in `.env`.
 4. Run `pytest` inside `backend/` before opening a PR.
+
+## Restore the saved workspace on another computer
+
+The current recordings, photos, room scans, camera calibration and MongoDB state
+are packaged as a private GitHub release asset. Follow
+[the restore guide](backend/WORKSPACE_RESTORE.md) to reopen the same recording and
+player position without rerunning Unity or YOLO. This is a snapshot, not automatic
+synchronization between computers.

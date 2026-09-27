@@ -291,9 +291,17 @@ It works like this:
   Unity camera against the registration, and counts of out-of-view frames, cuts,
   blends, push-outs, and shown, highlight-only and pending actions. `PROGRESS`
   lines go to stdout for the dashboard's job indicator.
-- **Previews:** `--frames N` renders the first N frames. `--at-ms 43000,50500`
+- **Previews first:** use `--frames 15 --at-ms 43000,50500,53500,61000,64000,70000,74500,83500,92500,101500 --keep-frames`
+  to check the action sequence without encoding a full movie. Preview output is PNG
+  samples plus reports, not a continuous playable video. Do one full render only
+  after the preview passes. `--frames N` renders the first N frames. `--at-ms 43000,50500`
   adds frames around those media times, where reaches and colours show. The whole
   timeline is still simulated; only the listed frames are captured.
+
+The render queue snapshots the submitted timeline and reuses completed outputs for
+the same input key. A later correction or timeline export cannot rewrite a queued
+job. Cancelling on POSIX terminates its private process group, including Unity and
+encoder children, so they do not keep the project locked.
 
 The re-enactment uses dashboard evidence only. It never reads `evaluator_only/`,
 the simulator's scripted outcomes or Unity truth, and it emits no sensor events. It
