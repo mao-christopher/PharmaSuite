@@ -23,6 +23,7 @@ def extract_video_keypoints(
     conf: float = 0.25,
     progress: Optional[Callable[[int, int], None]] = None,
     settings: Settings = None,
+    require_single_person: bool = False,
 ) -> List[Optional[List[List[float]]]]:
     """Per-frame keypoints of the most confident person: 17 x [x_norm, y_norm, conf], or None."""
     cfg = settings or Settings()
@@ -30,7 +31,8 @@ def extract_video_keypoints(
     frames: List[Optional[List[List[float]]]] = []
     for result in model.predict(source=str(video_path), conf=conf, stream=True, verbose=False, device=cfg.device):
         kp = result.keypoints
-        if kp is None or result.boxes is None or len(result.boxes) == 0 or kp.xyn is None:
+        if (kp is None or result.boxes is None or len(result.boxes) == 0 or kp.xyn is None
+                or (require_single_person and len(result.boxes) != 1)):
             frames.append(None)
         else:
             best = int(result.boxes.conf.argmax())

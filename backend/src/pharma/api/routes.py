@@ -3,8 +3,10 @@
 import csv
 import io
 import json
+import math
 import re
 import shutil
+import uuid
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -18,6 +20,8 @@ from pharma.api.replay_stream import ReplayController, ScenarioNotReady, pharmac
 from pharma.db.models import BACKGROUND_PATTERN, Layout, Region, medication_key_for
 from pharma.services.layout import layout_path, load_layout, save_background, save_catalog, save_layout, split_view
 from pharma.services.recordings import EVENTS_FILE, VIDEO_EXTENSIONS, parse_events_file, probe_video, write_events
+from pharma.services.live_capture import associate_wrist, event_hand
+from pharma.services.inventory_engine import point_in_polygon
 
 router = APIRouter(prefix="/api")
 
@@ -26,12 +30,164 @@ controller: Optional[ReplayController] = None
 
 MAX_EVENTS_BYTES = 1_000_000
 MAX_IMAGE_BYTES = 20_000_000
+MAX_LIVE_FRAME_BYTES = 400_000
 
 
 def get_controller() -> ReplayController:
     if controller is None:
         raise HTTPException(status_code=500, detail="ReplayController not initialized")
     return controller
+
+
+class LiveLeaseRequest(BaseModel):
+    capture_id: uuid.UUID
+
+
+@router.post("/live/lease")
+async def renew_live_lease(req: LiveLeaseRequest, ctrl: ReplayController = Depends(get_controller)):
+    try:
+        ctrl.renew_live(str(req.capture_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await ctrl.broadcast_state_snapshot()
+    return {"status": "active"}
+
+
+@router.delete("/live/lease")
+async def stop_live_lease(req: LiveLeaseRequest, ctrl: ReplayController = Depends(get_controller)):
+    ctrl.stop_live(str(req.capture_id))
+    await ctrl.broadcast_state_snapshot()
+    return {"status": "stopped"}
+
+
+@router.post("/live/events")
+async def ingest_live_event(
+    metadata: str = Form(...),
+    frames: List[UploadFile] = File(...),
+    ctrl: ReplayController = Depends(get_controller),
+):
+    """Process one browser BLE notification with its preceding camera frames."""
+    try:
+        data = json.loads(metadata)
+        event_id = str(uuid.UUID(data["event_id"]))
+        capture_id = str(uuid.UUID(data["capture_id"]))
+        kind = {"P": "pickup", "D": "release"}[data["code"]]
+        band_id = str(data["band_id"])
+        wrist = data["wrist"]
+        layout_id = data["layout_id"]
+        calibration = int(data["calibration_version"])
+        times = [float(t) for t in data["frame_times_ms"]]
+        notification_ms = float(data["notification_ms"])
+        notification_epoch_ms = float(data["notification_epoch_ms"])
+        if not re.fullmatch(r"[0-9A-Za-z_-]{2,32}", band_id) or wrist not in {"left", "right"}:
+            raise ValueError("Invalid wristband identity or wrist")
+        if not 3 <= len(frames) <= 60 or len(times) != len(frames):
+            raise ValueError("Provide 3 to 60 timestamped camera frames")
+        if not all(math.isfinite(t) for t in times + [notification_ms, notification_epoch_ms]):
+            raise ValueError("Camera timestamps must be finite")
+        if any(b <= a for a, b in zip(times, times[1:])) or times[-1] > notification_ms + 200:
+            raise ValueError("Camera timestamps must precede the notification")
+        view = ctrl.view(layout_id)
+        if view.calibration_version != calibration:
+            raise ValueError("Camera calibration changed; review this event")
+    except (KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    recording = "live"
+    if ctrl.live_active() and ctrl.live_owner != capture_id:
+        raise HTTPException(status_code=409, detail="Another browser tab owns live camera capture")
+    if event_id in ctrl.store.applied_event_ids(recording):
+        return {"status": "duplicate", "event_id": event_id,
+                "clip_url": f"/api/live/clips/{capture_id}/{event_id}"}
+    if ctrl.is_playing:
+        ctrl.pause()
+    images = []
+    for upload in frames:
+        raw = await upload.read(MAX_LIVE_FRAME_BYTES + 1)
+        if len(raw) > MAX_LIVE_FRAME_BYTES:
+            raise HTTPException(status_code=400, detail="Camera frame exceeds 400 KB")
+        image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid camera frame")
+        images.append(image)
+    height, width = images[0].shape[:2]
+    if any(image.shape[:2] != (height, width) for image in images):
+        raise HTTPException(status_code=400, detail="Camera frame dimensions changed")
+    clip_dir = ctrl.scenarios_dir.parent / "live_clips" / capture_id
+    clip_dir.mkdir(parents=True, exist_ok=True)
+    clip_path = clip_dir / f"{event_id}.mp4"
+    fps = min(30.0, max(1.0, (len(images) - 1) * 1000 / max(times[-1] - times[0], 1)))
+    writer = cv2.VideoWriter(str(clip_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+    if not writer.isOpened():
+        raise HTTPException(status_code=503, detail="MP4 encoder unavailable")
+    try:
+        for image in images:
+            writer.write(image)
+    finally:
+        writer.release()
+    cv2.imwrite(str(clip_dir / f"{event_id}.jpg"), images[-1])
+
+    # Reuse the package's YOLO pose path. Any frame containing multiple detected
+    # people becomes uncertain instead of silently choosing another technician.
+    from pharma.pose import extract_video_keypoints
+    try:
+        poses = extract_video_keypoints(clip_path, len(images), require_single_person=True)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Pose extraction failed: {exc}") from exc
+    complete = (len(poses) == len(images) and times[0] <= notification_ms - 4800 and
+                notification_ms - times[-1] <= 300 and
+                all(b - a <= 300 for a, b in zip(times, times[1:])))
+    region_id, evidence = associate_wrist(poses, view.regions, wrist, kind)
+    if abs(width / height - view.frame_width / view.frame_height) > .02:
+        region_id, evidence["reason"] = None, "camera_aspect_mismatch"
+    if not complete:
+        region_id, evidence["reason"] = None, "incomplete_five_second_buffer"
+    region = next((r for r in view.regions if r.region_id == region_id), None)
+    selected_hand = []
+    if region:
+        for pose in reversed(poses):
+            hand = event_hand(pose, wrist)
+            if hand and hand[0][2] >= 0.35 and point_in_polygon(hand[0][0], hand[0][1], region.polygon):
+                selected_hand = hand
+                break
+    event = {"event_id": event_id, "event_type": kind, "session_id": "one_bottle",
+             "sensor_id": band_id, "timestamp": notification_epoch_ms / 1000,
+             "media_time_ms": round(notification_ms - times[0]), "schema_version": "1.0",
+             "details": {"capture_id": capture_id, "notification_ms": notification_ms,
+                         "frame_times_ms": times, "clip": str(clip_path.relative_to(ctrl.scenarios_dir.parent)),
+                         "association": evidence}}
+    previous = ctrl.engine.sessions.get("live:one_bottle")
+    blocked_sequence = ((kind == "pickup" and previous is not None and
+                         previous.state in {"HELD", "NEEDS_CONFIRMATION"}) or
+                        (kind == "release" and (previous is None or previous.state not in
+                         {"HELD", "NEEDS_CONFIRMATION"})))
+    activity = ctrl.store.apply_event(recording, event, selected_hand, (width, height),
+                                      "Live wristband", regions=view.regions, layout_id=layout_id,
+                                      joint="wrist" if selected_hand else None,
+                                      camera_id=layout_id, calibration_version=calibration)
+    ctrl.store.save()
+    await ctrl.broadcast_state_snapshot()
+    status = "reconciliation" if blocked_sequence else "applied" if selected_hand else "needs_confirmation"
+    return {"status": status,
+            "event_id": event_id, "region_id": region_id if selected_hand else None,
+            "activity": activity, "evidence": evidence,
+            "clip_url": f"/api/live/clips/{capture_id}/{event_id}"}
+
+
+@router.get("/live/clips/{capture_id}/{event_id}")
+def live_clip(capture_id: uuid.UUID, event_id: uuid.UUID, ctrl: ReplayController = Depends(get_controller)):
+    path = ctrl.scenarios_dir.parent / "live_clips" / str(capture_id) / f"{event_id}.mp4"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Clip not found")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@router.get("/live/clips/{capture_id}/{event_id}/thumbnail")
+def live_thumbnail(capture_id: uuid.UUID, event_id: uuid.UUID, ctrl: ReplayController = Depends(get_controller)):
+    path = ctrl.scenarios_dir.parent / "live_clips" / str(capture_id) / f"{event_id}.jpg"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 class ReplayControlRequest(BaseModel):
@@ -415,6 +571,8 @@ async def control_replay(req: ReplayControlRequest, ctrl: ReplayController = Dep
     """Play, pause, restart, or seek. Signals apply the first time the playhead passes them."""
     if not ctrl.current:
         raise HTTPException(status_code=400, detail="No recording is in the player")
+    if ctrl.live_active() and req.action != "pause":
+        raise HTTPException(status_code=409, detail="Stop live camera before replaying a recording")
     if req.action == "play":
         ctrl.play()
     elif req.action == "pause":

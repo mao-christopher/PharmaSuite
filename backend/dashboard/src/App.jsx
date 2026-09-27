@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
 import Setup from './pages/Setup';
+import LiveCamera from './pages/LiveCamera';
 
 const ICONS = { size: 16, weight: 'bold' };
 
@@ -51,6 +52,7 @@ function Shell() {
               )}
             </NavLink>
             <NavLink to="/recordings">Recordings</NavLink>
+            <NavLink to="/live">Live camera</NavLink>
             <NavLink to="/inventory">Inventory</NavLink>
             <NavLink to="/setup">Setup</NavLink>
           </nav>
@@ -99,6 +101,7 @@ function Shell() {
             <Route path="/recordings" element={<Recordings />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/setup" element={<Setup />} />
+            <Route path="/live" element={<LiveCamera />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}

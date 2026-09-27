@@ -144,6 +144,8 @@ class ReplayController:
         self.current: Optional[Recording] = None
         self.active_websockets: Set[WebSocket] = set()
         self.is_playing: bool = False
+        self.live_owner: Optional[str] = None
+        self.live_until: float = 0.0
         self.current_media_time_ms: float = 0
         self.generation = 0  # bumps whenever the player source or overlay changes
         self.processing: Dict[str, Dict[str, Any]] = {}
@@ -314,6 +316,8 @@ class ReplayController:
 
     def apply_recording(self, name: str) -> int:
         """Apply every remaining signal of a recording without playing it."""
+        if self.live_active():
+            raise PermissionError("Stop live camera before applying a recording")
         rec = self.current if self.current and self.current.name == name else self.open_recording(name)
         added = self.store.merge_transactions(load_json(rec.path / "transactions.json"))
         changed = self._apply(rec, float("inf"))
@@ -598,7 +602,22 @@ class ReplayController:
 
     def process_events_until(self, media_time_ms: float) -> int:
         """Apply every not-yet-applied signal at or before media_time_ms, exactly once."""
-        return self._apply(self.current, media_time_ms) if self.current else 0
+        return self._apply(self.current, media_time_ms) if self.current and not self.live_active() else 0
+
+    def live_active(self) -> bool:
+        return self.live_owner is not None and time.monotonic() < self.live_until
+
+    def renew_live(self, capture_id: str) -> None:
+        if self.live_active() and self.live_owner != capture_id:
+            raise ValueError("Another browser tab owns live camera capture")
+        self.live_owner = capture_id
+        self.live_until = time.monotonic() + 10
+        self.pause()
+
+    def stop_live(self, capture_id: str) -> None:
+        if self.live_owner == capture_id:
+            self.live_owner = None
+            self.live_until = 0
 
     def play(self):
         if not self.current:
@@ -715,11 +734,13 @@ class ReplayController:
             "media_time_ms": int(self.current_media_time_ms),
             "duration_ms": self.duration_ms,
             "is_playing": self.is_playing,
+            "live_active": self.live_active(),
             "has_video": self.video_path is not None,
             "camera_selection": rec.camera_group.at(self.current_media_time_ms) if rec and rec.camera_group else None,
             "frame_size": list(self.frame_size()),
             "events": [{**e, "processed": e["event_id"] in applied} for e in (rec.events if rec else [])],
             "activity": self.activity,
+            "live_activity": self.store.recordings.get("live", {}).get("activity", [])[-30:],
             "max_region_distance": self.engine.max_region_distance,
             "store": {"backend": "mongodb", "revision": self.store.revision,
                       "created_at": self.store.created_at, "history_count": len(self.store.history),

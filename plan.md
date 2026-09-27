@@ -491,5 +491,22 @@ arm in the selected view and remain uncertain. All 10 scripted bottle-action reg
 were correct in the integrated inventory replay, with no action abstentions/wrong
 regions. MongoDB state and applied-event counts remained unchanged after replay and
 controller restart. This does not validate real-camera performance. The multi-camera
-upload form and unsynchronized live capture remain future work; synchronized groups
+upload form and live capture from multiple synchronized cameras remain future work; synchronized groups
 are generated/imported using the documented bundle format in `backend/MULTICAMERA.md`.
+
+## Browser wristband capture — 2026-09-26
+
+The dashboard's Live camera page uses Chrome camera permission and Web Bluetooth to
+subscribe to one `Wristband-XX` at a time. Each `P` or `D` notification captures the
+preceding five seconds from the selected browser camera and uploads timestamped
+frames. The backend produces an MP4, runs the existing YOLO pose helper on rendered
+pixels, and tests the selected wrist against the configured camera regions. The
+first automatic rule requires three consecutive frames inside exactly one eligible
+region; overlap, competing regions, missing pose, or incomplete capture requires
+employee confirmation. MongoDB event IDs protect against upload retry. A short
+browser lease pauses recorded-video replay while the live camera is active.
+
+This provisional rule has not been validated against a physical band and camera.
+Firmware notifications have no action timestamp or sequence number, so a captured
+interval only brackets the model's notification and may not contain the physical
+contact instant. The live mode supports one technician and one bottle at a time.
