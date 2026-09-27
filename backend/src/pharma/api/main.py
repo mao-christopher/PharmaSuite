@@ -50,8 +50,10 @@ app = FastAPI(
 # large scan import mustn't stall playback. Saving 3D regions or a registration does:
 # it regenerates camera views' regions, so those writes take the lock like any other.
 # Live band events take the lock themselves, only around state reads and the mutation,
-# so seconds of clip encoding and pose don't stall playback (see live_routes).
-LOCK_FREE_PATHS = re.compile(r"^/api/(video/feed$|recordings/[^/]+/(floor-track|video)$|live/events$)")
+# so seconds of clip encoding and pose don't stall playback (see live_routes). Shelf
+# layout planning does the same while it waits on the Llama API.
+LOCK_FREE_PATHS = re.compile(
+    r"^/api/(video/feed$|recordings/[^/]+/(floor-track|video)$|live/events$|shelf-layout/plan$)")
 LOCK_FREE_ROOM_READS = re.compile(r"^/api/rooms(/|$)")
 LOCK_FREE_ROOM_WRITES = re.compile(r"^/api/rooms(/[^/]+/cameras/solve)?$")
 
@@ -111,10 +113,11 @@ app.add_middleware(
 )
 
 # Mount REST API routes
-from pharma.api import shipment_routes
+from pharma.api import shelf_layout_routes, shipment_routes
 from pharma.services.stocking import active_shipment
 
 app.include_router(shipment_routes.router)
+app.include_router(shelf_layout_routes.router)
 app.include_router(routes.router)
 app.include_router(room_routes.router)
 app.include_router(live_routes.router)
