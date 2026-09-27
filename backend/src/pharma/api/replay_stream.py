@@ -45,6 +45,9 @@ DRAFT_ID_PATTERN = re.compile(r"^draft-[0-9a-f]{12}$")
 SYNTHETIC_DURATION_MS = 10000
 SYNTHETIC_FPS = 30
 STREAM_MAX_WIDTH = 1280
+# Forward jumps up to this many frames are read through rather than seeked; beyond it
+# (scrubbing), a seek is cheaper than decoding every frame in between.
+MAX_SKIP_FRAMES = 30
 PLAYER_SOURCES = ("real", "sim", "side")
 TIMELINE_REASONS = {
     "unregistered": "Register camera view {view} on the Room page first.",
@@ -177,7 +180,14 @@ class _FrameReader:
             return None
         index = int(media_time_ms * (fps or self.fps) / 1000.0)
         if index != self.index or self.last is None:
-            if index != self.index + 1:
+            gap = index - self.index
+            if 1 < gap <= MAX_SKIP_FRAMES and self.last is not None:
+                # Playing faster than the stream's frame rate (a 60 fps video streamed at 30):
+                # step over frames without converting them. Seeking would decode again from
+                # the previous keyframe for every frame shown.
+                for _ in range(gap - 1):
+                    self.cap.grab()
+            elif gap != 1:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, index)
             ok, frame = self.cap.read()
             if ok:
@@ -1284,6 +1294,7 @@ class ReplayController:
         sim = _FrameReader()
         sim_source: Optional[Tuple[int, str]] = None
         sim_path: Optional[Path] = None
+        next_at = time.monotonic()
         try:
             while True:
                 t = self.current_media_time_ms
@@ -1292,6 +1303,11 @@ class ReplayController:
                 video_path = camera.video_path if camera else (rec.video_path if rec else None)
                 fps = camera.poses.fps if camera else (rec.fps if rec else SYNTHETIC_FPS)
                 frame = real.frame_at(video_path, self.generation, t, fps)
+                if frame is not None and frame.shape[1] > STREAM_MAX_WIDTH:
+                    # Shrink before drawing: regions and skeletons are in normalized coordinates,
+                    # and blending a 1080p overlay only to shrink it afterwards wastes time.
+                    h = int(frame.shape[0] * STREAM_MAX_WIDTH / frame.shape[1])
+                    frame = cv2.resize(frame, (STREAM_MAX_WIDTH, h), interpolation=cv2.INTER_AREA)
                 frame = self.annotate(frame.copy() if frame is not None else self.base_frame(), t, rec)
 
                 source = self.player_source if rec else "real"
@@ -1317,7 +1333,14 @@ class ReplayController:
                 ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n"
-                time.sleep(1.0 / min(self.fps, 30) if self.is_playing else 0.2)
+                # Pace against a schedule so rendering time doesn't lower the frame rate;
+                # after a stall, resume from now instead of bursting to catch up.
+                next_at += 1.0 / min(self.fps, 30) if self.is_playing else 0.2
+                delay = next_at - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+                else:
+                    next_at = time.monotonic()
         finally:
             real.release()
             sim.release()
