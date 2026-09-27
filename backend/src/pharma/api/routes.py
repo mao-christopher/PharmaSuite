@@ -26,7 +26,9 @@ from pharma.services.layout import (
 )
 from pharma.services.room import list_rooms, save_room
 from pharma.services.multicamera import MEDIA_CLOCK, write_spec
-from pharma.services.recordings import EVENTS_FILE, POSES_FILE, VIDEO_EXTENSIONS, parse_events_file, probe_video, write_events
+from pharma.services.recordings import (
+    EVENTS_FILE, POSES_FILE, VIDEO_EXTENSIONS, find_video, parse_events_file, probe_video, write_events,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -61,6 +63,9 @@ class ConfirmationRequest(BaseModel):
     resolved_region_id: Optional[str] = None
     # For a pickup whose put-down is also unresolved: settle both in one step.
     release_region_id: Optional[str] = None
+    # For a pickup from a shelf holding more than one kind of bottle: the misplaced bottle's
+    # session ID, or "shelf" for one of the shelf's own bottles.
+    bottle: Optional[str] = None
 
 
 class AssignViewRequest(BaseModel):
@@ -141,6 +146,15 @@ def get_recording(name: str, ctrl: ReplayController = Depends(get_controller)):
 def recording_thumbnail(name: str, ctrl: ReplayController = Depends(get_controller)):
     jpeg = _recording_errors(lambda: ctrl.thumbnail_jpeg(name))
     return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "max-age=300"})
+
+
+@router.get("/recordings/{name}/video")
+def recording_video(name: str, ctrl: ReplayController = Depends(get_controller)):
+    """A recording's raw video file (live clips are H.264, so browsers play them directly)."""
+    path = _recording_errors(lambda: find_video(ctrl.scenario_dir(name)))
+    if not path:
+        raise HTTPException(status_code=404, detail="This recording has no video")
+    return FileResponse(path, media_type="video/mp4" if path.suffix.lower() in (".mp4", ".m4v") else None)
 
 
 @router.post("/recordings/{name}/load")
@@ -798,6 +812,9 @@ async def control_replay(req: ReplayControlRequest, ctrl: ReplayController = Dep
     """Play, pause, restart, or seek. Signals apply the first time the playhead passes them."""
     if not ctrl.current:
         raise HTTPException(status_code=400, detail="No recording is in the player")
+    if ctrl.live_active() and req.action != "pause" and not ctrl.reviewing_live_clip():
+        # Live clips never apply on replay, so they can be reviewed while capture runs.
+        raise HTTPException(status_code=409, detail="Stop live camera before replaying a recording")
     if req.action == "play":
         ctrl.play()
     elif req.action == "pause":
@@ -891,7 +908,8 @@ async def resolve_alert(alert_id: str, req: ConfirmationRequest, ctrl: ReplayCon
         ctrl.use_view_for_alert(alert)
         session_id = alert.metadata.get("session_id")
         try:
-            engine.confirm_location(alert_id, req.resolved_region_id)
+            engine.confirm_location(alert_id, req.resolved_region_id,
+                                    req.bottle if alert.metadata.get("phase") == "pickup" else None)
             if req.release_region_id and alert.metadata.get("phase") == "pickup":
                 follow_up = next(
                     (a for a in engine.alerts.values()
@@ -919,8 +937,13 @@ async def resolve_alert(alert_id: str, req: ConfirmationRequest, ctrl: ReplayCon
         f"Employee confirmed the {alert.metadata.get('phase')} location as {req.resolved_region_id}."
         if alert.alert_type == "uncertainty" else f"Resolved {alert.alert_type.replace('_', ' ')} alert."
     )
+    session = engine.sessions.get(alert.metadata.get("session_id", ""))
+    if alert.alert_type == "uncertainty" and req.bottle and session is not None:
+        which = "one of the shelf's own" if req.bottle == "shelf" else "the misplaced"
+        summary += f" The bottle was {which} {session.medication_key}."
     await ctrl.commit("correction", summary, alert_id=alert_id, alert_type=alert.alert_type,
-                      region_id=req.resolved_region_id, medication_key=alert.medication_key)
+                      region_id=req.resolved_region_id, medication_key=alert.medication_key,
+                      **({"bottle": req.bottle} if req.bottle else {}))
     return {"status": "success", "alert": engine.alerts[alert_id].model_dump()}
 
 

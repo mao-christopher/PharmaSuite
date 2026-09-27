@@ -158,6 +158,7 @@ data/interim/
 backend/data/scenarios/upload-*/
 backend/data/scenarios/.drafts/
 backend/data/scenarios/*/video.*
+backend/data/live_clips/
 backend/data/scenarios/*/poses.json
 backend/data/layouts/*/background-*
 backend/data/scenarios/*/thumb.jpg

@@ -26,6 +26,7 @@ MIN_KEYPOINT_CONF = 0.35
 # region is treated as "not at any region" and needs employee confirmation.
 MAX_REGION_DISTANCE = 0.06
 PICKUP_REGION_TYPES = ("designated_shelf", "dispensing_counter")
+SHELF_STOCK = "shelf"  # bottle choice: one of the shelf's own bottles, not a misplaced one
 
 
 def point_in_polygon(x: float, y: float, polygon: List[Tuple[float, float]]) -> bool:
@@ -125,6 +126,7 @@ class InventoryEngine:
         self.max_region_distance = max_region_distance
         self._alert_counter = 1
         self._receipt_counter = 1
+        self.shipments: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------ persistence
 
@@ -144,6 +146,7 @@ class InventoryEngine:
             "alerts": {k: v.model_dump() for k, v in self.alerts.items()},
             "alert_counter": self._alert_counter,
             "receipt_counter": self._receipt_counter,
+            "shipments": self.shipments,
         }
 
     @classmethod
@@ -165,6 +168,7 @@ class InventoryEngine:
         )
         engine._alert_counter = data.get("alert_counter", len(engine.alerts) + 1)
         engine._receipt_counter = data.get("receipt_counter", 1)
+        engine.shipments = data.get("shipments", {})
         return engine
 
     # ------------------------------------------------------------------ helpers
@@ -198,7 +202,8 @@ class InventoryEngine:
         candidates = [r for r in self.regions.values() if r.region_type in region_types]
         return nearest_region(hands, candidates, self.frame_size, self.max_region_distance)
 
-    def _uncertain(self, session: MovementSession, phase: str, evidence: Dict[str, Any]) -> None:
+    def _uncertain(self, session: MovementSession, phase: str, evidence: Dict[str, Any],
+                   description: Optional[str] = None) -> None:
         session.state = "NEEDS_CONFIRMATION"
         session.evidence = {**evidence, "awaiting": phase}
         what = "picked up from" if phase == "pickup" else "put down at"
@@ -206,7 +211,7 @@ class InventoryEngine:
             "uncertainty",
             "warning",
             session.medication_key,
-            f"Couldn't tell which region the bottle was {what}. Confirm the location.",
+            description or f"Couldn't tell which region the bottle was {what}. Confirm the location.",
             {"session_id": session.session_id, "phase": phase, **evidence},
         )
 
@@ -214,7 +219,18 @@ class InventoryEngine:
 
     def handle_pickup(self, session_id: str, hands: List[Hand], timestamp: float) -> MovementSession:
         """Pickup signal: the bottle came from the region nearest the technician's hand."""
+        current = self.sessions.get(session_id)
+        if current and current.state in {"HELD", "NEEDS_CONFIRMATION"}:
+            self._add_alert("reconciliation_issue", "warning", current.medication_key,
+                            "Pickup signal received while bottle handling is unresolved.",
+                            {"session_id": session_id, "state": current.state})
+            return current
         region, evidence = self._locate(hands, PICKUP_REGION_TYPES)
+        if current and current.state in {"AT_COUNTER", "MISPLACED"} and region and region.region_id != current.current_location_id:
+            self._add_alert("reconciliation_issue", "warning", current.medication_key,
+                            "Pickup signal is away from the bottle's last recorded location.",
+                            {"session_id": session_id, "region_id": region.region_id})
+            return current
         if region is None:
             session = MovementSession(
                 session_id=session_id, medication_key="UNKNOWN", original_shelf_id="UNKNOWN"
@@ -234,13 +250,52 @@ class InventoryEngine:
             None,
         )
 
-    def _apply_pickup(self, session_id: str, region: Region, evidence: Dict[str, Any]) -> MovementSession:
+    def bottle_options(self, region: Region) -> List[Dict[str, Any]]:
+        """Bottles a pickup from this shelf could have taken: each misplaced bottle, and its own stock."""
+        options = [
+            {"bottle": s.session_id, "medication_key": s.medication_key, "original_shelf_id": s.original_shelf_id}
+            for s in {id(s): s for s in self.sessions.values()}.values()  # aliases share one session
+            if s.state == "MISPLACED" and s.current_location_id == region.region_id
+        ]
+        own = self.inventory.get(region.medication_key or "")
+        if own and own.shelf_counts.get(region.region_id, 0) > 0:
+            options.append({"bottle": SHELF_STOCK, "medication_key": own.medication_key,
+                            "original_shelf_id": region.region_id})
+        return options
+
+    def _apply_pickup(self, session_id: str, region: Region, evidence: Dict[str, Any],
+                      bottle: Optional[str] = None) -> MovementSession:
         existing = self.sessions.get(session_id)
         pending_release = existing.evidence.get("pending_release") if existing else None
 
-        # A bottle parked at the counter or misplaced on this shelf is assumed to be the one
-        # being picked up; it keeps its original medication and home shelf.
-        parked = self._parked_at(region)
+        if region.region_type == "dispensing_counter":
+            parked = self._parked_at(region)
+        else:
+            # A shelf holding its own bottles and a misplaced one (or several misplaced ones)
+            # doesn't say which was taken; an employee chooses instead of the engine guessing.
+            options = self.bottle_options(region)
+            if bottle is not None:
+                if bottle != SHELF_STOCK and bottle not in {o["bottle"] for o in options}:
+                    raise ValueError("That bottle isn't on this shelf.")
+                chosen = bottle
+            elif len(options) > 1:
+                session = existing or MovementSession(
+                    session_id=session_id, medication_key="UNKNOWN", original_shelf_id="UNKNOWN")
+                self.sessions[session_id] = session
+                names = ", ".join(sorted({o["medication_key"] for o in options}))
+                self._uncertain(
+                    session, "pickup",
+                    {**evidence, "reason": "which_bottle", "region_id": region.region_id, "bottle_options": options},
+                    f"Picked up from {region.region_id}, which holds more than one kind of bottle ({names}). "
+                    "Confirm which bottle.",
+                )
+                return session
+            else:
+                chosen = options[0]["bottle"] if options else SHELF_STOCK
+            parked = self.sessions.get(chosen) if chosen != SHELF_STOCK else None
+
+        # A bottle parked at the counter, or the misplaced bottle chosen on this shelf, keeps
+        # its original medication and home shelf.
         if parked:
             parked_state = parked.state
             inv = self.inventory.get(parked.medication_key)
@@ -389,7 +444,7 @@ class InventoryEngine:
             )
         return session
 
-    def confirm_location(self, alert_id: str, region_id: str) -> MovementSession:
+    def confirm_location(self, alert_id: str, region_id: str, bottle: Optional[str] = None) -> MovementSession:
         """Apply an employee's answer to an uncertainty alert."""
         alert = self.alerts.get(alert_id)
         if not alert or alert.alert_type != "uncertainty":
@@ -404,17 +459,33 @@ class InventoryEngine:
         if session is None:
             raise ValueError("The movement this alert refers to no longer exists.")
 
+        if phase == "pickup" and session.evidence.get("stocking_source"):
+            if region_id != session.evidence["stocking_source"]:
+                raise ValueError("Confirm the current location of this shipment bottle; do not assign a different source.")
+            session.state = session.evidence["stocking_previous_state"]
+            if bottle is None and session.state == "MISPLACED":
+                # A shipment correction already knows its bottle; don't ask which one.
+                bottle = session.session_id
         evidence = {"confirmed_by_employee": True, "region_id": region_id}
         if phase == "pickup":
             if region.region_type not in PICKUP_REGION_TYPES:
                 raise ValueError("A bottle can only be picked up from a shelf or counter.")
             if region.region_type == "dispensing_counter" and not self._parked_at(region):
                 raise ValueError("No bottle is parked at that counter.")
+            if region.region_type == "designated_shelf":
+                options = {o["bottle"] for o in self.bottle_options(region)}
+                if bottle is None and len(options) > 1:
+                    raise ValueError("That shelf holds more than one kind of bottle. Choose which one was picked up.")
+                if bottle is not None and bottle != SHELF_STOCK and bottle not in options:
+                    raise ValueError("That bottle isn't on this shelf.")
             pending = session.evidence.get("pending_release")
             alert.status = "resolved"
             alert.metadata["resolved_region_id"] = region_id
             session.evidence = {"pending_release": pending} if pending is not None else {}
-            self._apply_pickup(session.session_id, region, evidence)
+            if bottle is not None:
+                alert.metadata["resolved_bottle"] = bottle
+            # The pickup may now point at a parked or misplaced bottle's session.
+            return self._apply_pickup(session.session_id, region, evidence, bottle)
         else:
             alert.status = "resolved"
             alert.metadata["resolved_region_id"] = region_id
@@ -485,6 +556,10 @@ class InventoryEngine:
         if explicit_quantity is not None and explicit_quantity < 0:
             raise ValueError("Discard quantity cannot be negative.")
 
+        for shipment in self.shipments.values():
+            for tracked in (shipment.get("stocking") or {}).get("lines", {}).values():
+                if record.session_id in tracked["movements"] and tracked["receipt_id"] != selected_receipt_id:
+                    raise ValueError("This stocking bottle belongs to the shipment lot selected at pickup.")
         record.selected_receipt_id = selected_receipt_id
         inv = self.inventory.get(record.medication_key)
         if explicit_quantity is not None:
@@ -508,6 +583,8 @@ class InventoryEngine:
         Rule 8 defaults apply when no tablet count is entered: zero if other bottles of the
         medication remain, the whole pooled balance if these were the last bottles.
         """
+        if any(s["status"] == "stocking" for s in self.shipments.values()):
+            raise ValueError("During stocking, dispose one tracked bottle through the disposal region and form.")
         receipt = self.receipts.get(receipt_id)
         if receipt is None:
             raise ValueError(f"Batch {receipt_id} not found.")

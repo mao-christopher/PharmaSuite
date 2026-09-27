@@ -12,7 +12,7 @@ from pathlib import Path
 _DATA = Path(__file__).resolve().parents[1] / "data"
 FIXTURE_LAYOUTS = Path(__file__).resolve().parent / "fixtures" / "layouts"
 _TMP = Path(tempfile.mkdtemp(prefix="pharma-test-data-"))
-_SKIP = shutil.ignore_patterns("upload-*", "video.*", "poses.json", "thumb.jpg")
+_SKIP = shutil.ignore_patterns("upload-*", "live-*", ".live-staging", "video.*", "poses.json", "thumb.jpg")
 shutil.copytree(_DATA / "scenarios", _TMP / "scenarios", ignore=_SKIP)
 shutil.copytree(FIXTURE_LAYOUTS, _TMP / "layouts")
 shutil.copy(FIXTURE_LAYOUTS.parent / "catalog.json", _TMP / "catalog.json")

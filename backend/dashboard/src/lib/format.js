@@ -67,7 +67,8 @@ export function bottleCounts(layout, inv) {
     misplaced,
     held: inv.held_bottles,
     atCounter: inv.counter_bottles,
-    offShelf: inv.held_bottles + inv.counter_bottles,
+    staged: inv.staged_bottles || 0,
+    offShelf: inv.held_bottles + inv.counter_bottles + (inv.staged_bottles || 0),
     total: inv.total_bottles,
   };
 }
@@ -101,6 +102,38 @@ export const SESSION_STATES = {
   NEEDS_CONFIRMATION: { label: 'Needs confirmation', tone: 'amber' },
   ON_DESIGNATED_SHELF: { label: 'Returned', tone: 'green' },
   DISPOSED: { label: 'Disposed', tone: 'gray' },
+};
+
+/** Why a live clip's location needs confirmation (backend live_capture / live_routes reasons). */
+/**
+ * Bottles a pickup from this shelf could have taken: each bottle misplaced on it, and its own
+ * stock. Mirrors InventoryEngine.bottle_options; more than one means an employee must choose.
+ */
+export function bottleOptions(state, region) {
+  if (!region || region.region_type !== 'designated_shelf') return [];
+  const options = [];
+  const seen = new Set();
+  Object.values(state.sessions || {}).forEach((s) => {
+    if (s.state !== 'MISPLACED' || s.current_location_id !== region.region_id || seen.has(s.session_id)) return;
+    seen.add(s.session_id);
+    options.push({ bottle: s.session_id, medication_key: s.medication_key, original_shelf_id: s.original_shelf_id });
+  });
+  const own = state.inventory?.[region.medication_key];
+  if ((own?.shelf_counts?.[region.region_id] || 0) > 0) {
+    options.push({ bottle: 'shelf', medication_key: region.medication_key, original_shelf_id: region.region_id });
+  }
+  return options;
+}
+
+export const LIVE_REASONS = {
+  no_stable_intersection: 'The wrist never settled inside one region',
+  overlapping_regions: 'The wrist was inside overlapping regions',
+  competing_regions: 'The wrist settled in more than one region',
+  multiple_people: 'More than one person was in view',
+  camera_aspect_mismatch: "The camera's frame shape doesn't match its view",
+  no_camera_frames: 'The camera was off',
+  incomplete_clip_window: 'The clip was incomplete',
+  calibration_changed: 'The camera view changed after the clip was captured',
 };
 
 export const TX_STATUS = {

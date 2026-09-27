@@ -56,6 +56,12 @@ extraction uses `yolo11n-pose.pt`, which Ultralytics downloads on first use, at 
 inference size (`POSE_IMGSZ=640` is faster but misses more distant people). To point the dashboard at
 another backend, set `API_URL`, e.g. `API_URL=http://127.0.0.1:8001 npm run dev`.
 
+Live capture: open the dashboard in Chrome and select **Go live**. Pick the Mac webcam or
+an iPhone (Continuity Camera), its registered view and wrist, then connect the wristband.
+Only the 10 s around each band event are saved (9 s before, since the band notifies late); each clip is analyzed and applied to
+inventory once. Add `?dev=1` to the URL to trigger pickups and put-downs with Space and
+no band. Clips are encoded with OpenCV, so ffmpeg is not needed.
+
 Tests: install `simulation/requirements.txt` as well (some backend tests import the
 simulation tools), then run `python -m pytest backend/tests simulation/tests -q` from the
 repository root. `backend/tests/test_detect.py` downloads weights and a sample image, so
@@ -128,3 +134,7 @@ are packaged as a private GitHub release asset. Follow
 [the restore guide](backend/WORKSPACE_RESTORE.md) to reopen the same recording and
 player position without rerunning Unity or YOLO. This is a snapshot, not automatic
 synchronization between computers.
+
+Shipment files can be reviewed and imported from the dashboard **Shipments** page.
+See [shipment intake and stocking sessions](backend/SHIPMENTS.md) for supported
+formats, staged inventory, CV placements, and reconciliation.

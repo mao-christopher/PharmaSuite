@@ -3,6 +3,11 @@
 import cv2
 import numpy as np
 import pytest
+import io
+import json
+import uuid
+import cv2
+import numpy as np
 from fastapi.testclient import TestClient
 from pharma.api.main import app
 
@@ -16,7 +21,7 @@ def make_controller(tmp_path):
     from tests.conftest import FIXTURE_LAYOUTS
 
     data_dir = Path(__file__).resolve().parents[1] / "data"
-    skip = shutil.ignore_patterns("upload-*", "video.*", "poses.json", "thumb.jpg")
+    skip = shutil.ignore_patterns("upload-*", "live-*", ".live-staging", "video.*", "poses.json", "thumb.jpg")
     if not (tmp_path / "scenarios").exists():
         shutil.copytree(data_dir / "scenarios", tmp_path / "scenarios", ignore=skip)
     if not (tmp_path / "layouts").exists():

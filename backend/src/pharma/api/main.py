@@ -10,7 +10,7 @@ from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarg
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from pharma.api import room_routes, routes
+from pharma.api import live_routes, room_routes, routes
 from pharma.api.replay_stream import ReplayController
 from pharma.config import Settings
 
@@ -49,7 +49,9 @@ app = FastAPI(
 # Reading rooms, importing a scan and trying a camera solve never touch inventory, and a
 # large scan import mustn't stall playback. Saving 3D regions or a registration does:
 # it regenerates camera views' regions, so those writes take the lock like any other.
-LOCK_FREE_PATHS = re.compile(r"^/api/(video/feed$|recordings/[^/]+/floor-track$)")
+# Live band events take the lock themselves, only around state reads and the mutation,
+# so seconds of clip encoding and pose don't stall playback (see live_routes).
+LOCK_FREE_PATHS = re.compile(r"^/api/(video/feed$|recordings/[^/]+/(floor-track|video)$|live/events$)")
 LOCK_FREE_ROOM_READS = re.compile(r"^/api/rooms(/|$)")
 LOCK_FREE_ROOM_WRITES = re.compile(r"^/api/rooms(/[^/]+/cameras/solve)?$")
 
@@ -72,6 +74,17 @@ async def inventory_consistency(request, call_next):
         try:
             ctrl.store.refresh()
             ctrl.storage_error = None
+            active = active_shipment(ctrl.engine)
+            path = request.url.path
+            if active and request.method not in ("GET", "HEAD"):
+                # Freeze shelf identity/calibration and the recording while receipts
+                # are being reconciled. Reject before filesystem writes can occur.
+                setup_write = path.startswith(("/api/catalog", "/api/layouts", "/api/rooms/"))
+                reset = path == "/api/inventory/reset"
+                recording = re.fullmatch(r"/api/recordings/([^/]+)(?:/(load|apply|process|view))?", path)
+                unsafe_recording = recording and (recording[2] != "load" or recording[1] != active["stocking"]["recording"])
+                if setup_write or reset or unsafe_recording:
+                    return JSONResponse(status_code=409, content={"detail": "Finish shipment stocking before changing calibration, resetting inventory or changing its recording."})
             response = await call_next(request)
             if response.status_code >= 400:
                 ctrl.store.rollback()
@@ -98,8 +111,13 @@ app.add_middleware(
 )
 
 # Mount REST API routes
+from pharma.api import shipment_routes
+from pharma.services.stocking import active_shipment
+
+app.include_router(shipment_routes.router)
 app.include_router(routes.router)
 app.include_router(room_routes.router)
+app.include_router(live_routes.router)
 
 
 @app.get("/api/video/feed")
@@ -137,7 +155,9 @@ if dashboard_dist.exists():
 
 @app.get("/recordings", response_class=HTMLResponse)
 @app.get("/inventory", response_class=HTMLResponse)
+@app.get("/shipments", response_class=HTMLResponse)
 @app.get("/setup", response_class=HTMLResponse)
+@app.get("/live", response_class=HTMLResponse)
 @app.get("/room", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def root_dashboard():

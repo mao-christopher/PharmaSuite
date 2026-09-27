@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowCounterClockwiseIcon, ArrowsInIcon, ArrowsOutIcon, FilmStripIcon, PauseIcon, PlayIcon, UploadSimpleIcon,
+  ArrowCounterClockwiseIcon, ArrowsInIcon, ArrowsOutIcon, FilmStripIcon, PauseIcon, PlayIcon, UploadSimpleIcon, VideoCameraIcon,
 } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
 import { appliedState, formatMs, plural } from '../lib/format';
 import { Badge, Card, EmptyState } from './ui';
 import RenderButton from './RenderButton';
+import { PanelSwitch } from './LiveFeed';
+import { useLiveCapture } from '../lib/liveCapture';
 import { request } from '../lib/api';
 
 const SOURCES = [
@@ -101,6 +103,7 @@ function Scrubber({ t, duration, events, onSeek }) {
 export default function CameraFeed() {
   const { state, control, seek, applyRecording } = useLive();
   const { openUpload } = useDialogs();
+  const capture = useLiveCapture();
   const playerRef = useRef(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -115,13 +118,18 @@ export default function CameraFeed() {
 
   if (!rec) {
     return (
-      <Card title="Player" className="area-player">
+      <Card title="Player" className="area-player" actions={<PanelSwitch />}>
         <EmptyState
           icon={FilmStripIcon}
           title="No recording in the player"
           actions={
             <>
-              <button type="button" className="btn btn-primary" onClick={openUpload}>
+              {capture.camera === 'off' && (
+                <button type="button" className="btn btn-primary" onClick={capture.openSetup}>
+                  <VideoCameraIcon size={14} aria-hidden="true" /> Go live
+                </button>
+              )}
+              <button type="button" className="btn" onClick={openUpload}>
                 <UploadSimpleIcon size={14} aria-hidden="true" /> Upload recording
               </button>
               <Link className="btn" to="/recordings">
@@ -130,7 +138,7 @@ export default function CameraFeed() {
             </>
           }
         >
-          Upload a clip with its pickup and put-down timestamps, or open a stored one from Recordings.
+          Go live with the camera and wristband, upload a clip with its pickup and put-down timestamps, or open a stored one from Recordings.
         </EmptyState>
       </Card>
     );
@@ -138,8 +146,9 @@ export default function CameraFeed() {
 
   const { media_time_ms: t = 0, duration_ms: duration = 1, is_playing: playing } = state;
   const [fw, fh] = state.frame_size || [16, 9];
-  const applied = appliedState(rec);
-  const remaining = rec.events_total - rec.events_applied;
+  const liveClip = rec.source === 'live';
+  const applied = liveClip ? { label: 'Live clip', tone: 'blue' } : appliedState(rec);
+  const remaining = liveClip ? 0 : rec.events_total - rec.events_applied;
   const toggle = () => control(playing ? 'pause' : 'play');
   const skip = (ms) => seek(clamp(t + ms, 0, duration));
   const toggleFullscreen = () =>
@@ -205,6 +214,7 @@ export default function CameraFeed() {
       flush
       actions={
         <>
+          <PanelSwitch />
           {state.sim_render && (
             <div className="segmented" role="group" aria-label="What the player shows">
               {SOURCES.map(([id, label]) => (
@@ -285,7 +295,9 @@ export default function CameraFeed() {
         </div>
       </div>
       <div className="player-note" aria-live="polite">
-        {remaining === 0 ? (
+        {liveClip ? (
+          <span>Analyzed once when the wristband event arrived. Replaying this clip never changes inventory.</span>
+        ) : remaining === 0 ? (
           <span>Its signals are already in inventory. Replaying or skipping only moves the video.</span>
         ) : (
           <>

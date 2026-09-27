@@ -1049,3 +1049,142 @@ never becomes a collider.
 | M7 Unity scene from rebuilt room | N4, M6 | S–M |
 | M8 re-enactment player | M5–M7 | L |
 | M9 render job and button | M8 | M |
+
+## Live wristband capture in the dashboard — 2026-09-27
+
+Replaces PR 7's separate Live camera page (branch `feature/live-wristband-dashboard`,
+built on PR 7's browser capture and band connection). The live camera is now the main
+dashboard tile rather than a separate page, and every band event updates the whole
+dashboard like a played recording.
+
+Agreed behavior:
+
+- **Sources.** One camera at a time, chosen in the browser: the Mac webcam or an iPhone
+  through Continuity Camera (it appears as an ordinary camera in Chrome). Capture stays
+  in Chrome (`getUserMedia` + Web Bluetooth); the band firmware is unchanged.
+- **Privacy.** The feed lives only in browser memory (a rolling ~10.5 s JPEG buffer at
+  10 fps). Only the window from 9 s before to 1 s after each band notification is
+  uploaded and kept. The window was first 4 s + 1 s, but the band's notification arrives
+  roughly 4–5 s after the physical action (user report, 2026-09-27, not measured), so the
+  old window started around the action itself and missed the reach. The thumbnail uses
+  the frame 4.5 s before the notification; the region decision still scans the whole clip. Nothing is recorded between events, and no skeleton runs on the
+  continuous feed. Clips are kept until someone deletes them.
+- **Analysis.** Each event clip becomes a first-class recording (`scenarios/live-<event_id>`)
+  with an H.264 MP4, a thumbnail, YOLO poses from its pixels, one IMU event and its
+  scenario metadata. The existing three-consecutive-frame wrist rule decides the region,
+  and the inventory engine applies the event once, when it arrives. Replaying a clip is
+  review only, even after a reset, and review works while live capture keeps running.
+  The Unity re-render stays behind its button. OpenCV's `avc1` writer produces
+  browser-playable H.264 (`mp4v` fallback), so ffmpeg is not required.
+- **Tracking across clips.** All live events share one session scope (`live`). A pickup
+  opens a movement whose ID is its event ID; the next put-down joins that movement, so
+  the bottle's medication and original shelf carry across the two clips. The engine's
+  existing counter parking also applies here: a later pickup at the counter continues
+  the parked bottle.
+- **Out-of-sequence events** (pickup while a bottle is held, put-down with nothing held)
+  are treated as band false positives. Their raw notification is recorded in the store
+  and history as ignored, so a retry stays ignored, but no clip is written and inventory
+  is unchanged. Consequence: a missed put-down leaves the bottle held, and later pickups
+  are ignored until a put-down arrives.
+- **Uncertainty.** Multiple people, no frames, an incomplete window, a frame shape that
+  doesn't match the view, a calibration change while queued, or no confident wrist all
+  raise the normal uncertainty alert. The alert carries the live reason and its clip;
+  Notifications shows the thumbnail, and Confirm location plays the clip.
+- **Dashboard.** "Go live" replaces Upload on the top bar (Upload moved to Recordings).
+  The setup dialog has the camera, view (remembered per camera), wrist, band and a
+  privacy note. While live, the main tile switches between the live picture (with the
+  view's regions drawn over it) and the player. "Live movements" pairs each pickup with
+  its put-down, and Recordings groups clips by live session.
+- **Latency.** The target is 5–10 s from notification to dashboard update: 1 s post-roll,
+  upload, encoding (1.1 s measured) and pose on about 100 frames (6.8–7.7 s measured on
+  this Mac at 960 px, 101 frames from real footage), then the store write. That puts the
+  update at about 10 s after the notification, or 14–15 s after the physical action.
+  `POSE_IMGSZ=640` or posing every other frame would be faster; neither is chosen yet. Pose runs outside the inventory
+  lock so the replay clock doesn't stall.
+- **Dev mode.** `?dev=1` (remembered for the tab) makes Space send a pickup, then a
+  put-down, through the same upload path as the band, marked `source: dev`.
+
+Checks run (local, not Docker): the backend and simulation suites passed 262 tests,
+including 13 live API tests. Those cover:
+
+- a movement across two clips;
+- ignored out-of-sequence events without footage;
+- replay and reset never re-applying;
+- counter re-pickup keeping identity;
+- an uncertain pickup then confirm;
+- missing frames, multiple people, calibration change and frames outside the window;
+- dev source;
+- the live lease while a clip is reviewed;
+- deleting a clip keeping stock.
+
+The 5 Node band-link tests and the production dashboard build passed. The UI was checked in
+headless Chrome with a fake camera (light and dark themes); no band events were sent
+against the working database.
+
+Not validated: a physical band with a real camera, the real notification-to-contact
+timing (the firmware sends no timestamp or sequence number, so the window only brackets
+the notification), the measured end-to-end latency, Continuity Camera specifically, and
+automatic accuracy on live footage. The automatic rule remains provisional.
+
+Deferred:
+
+- Multi-camera live capture with visibility-driven handoff (AGENTS rule 15). Live mode
+  uses one camera.
+- Adapting PR 8's stocking flow to live events.
+- A timeout or manual "put down" for a band that misses a put-down.
+- Limiting the region decision to the frames around the expected action time. The rule
+  scans the whole 10 s clip, so a sustained wrist in a second eligible region (for
+  example the counter soon after a shelf pickup) makes the event uncertain rather than
+  wrong. Narrowing it needs a measured band latency.
+
+## Pickup from a shelf holding more than one kind of bottle — 2026-09-27
+
+Previously, a pickup from a shelf that held a misplaced bottle was always assumed to be
+that bottle (the correction). That guessed wrong when the technician took the shelf's own
+stock. For example, a leftover misplaced Amoxicillin on the Ibuprofen shelf turned an
+Ibuprofen pickup into Amoxicillin, and the later wrong return and its correction were then
+reported backwards.
+
+Rule now (user decision): when a shelf holds more than one kind of bottle (its own stock
+plus a misplaced bottle, or several misplaced bottles), the pickup raises an uncertainty
+alert with reason `which_bottle` and the candidate bottles. Stock doesn't change, and a
+put-down that follows waits, until an employee chooses the bottle ("Which bottle?" in
+Notifications). A shelf holding only a misplaced bottle is still picked up without
+asking. The answer is recorded in the confirmation history. Live events report
+`needs_confirmation` in this case even though the camera decided the region.
+
+Checked: engine tests cover the recorded IMG_3537 sequence:
+
+1. Ibuprofen → counter → Amoxicillin shelf raises a misplacement.
+2. Picking up from the Amoxicillin shelf then asks which bottle.
+3. Answering "the misplaced Ibuprofen" and returning it home resolves the alert.
+
+They also cover choosing the shelf's own bottle, a lone misplaced bottle, invalid answers,
+and a live API round trip. Full suite: 267 passed. After resetting the working inventory
+and re-applying IMG_3537, the dashboard showed the misplacement and the bottle question.
+The answer was left to the user.
+
+## Shipment intake and stocking sessions — 2026-09-27
+
+Implemented on `feature/shipment-stocking`; see [backend/SHIPMENTS.md](backend/SHIPMENTS.md).
+
+- Dashboard review/import for the eight synthetic deliveries: canonical JSON,
+  supplier JSON, CSV, XML, and the documented synthetic EDI profile. PDFs are reference
+  documents, not automatically parsed. Supplier/invoice deduplication also works
+  across document formats; conflicting contents require reconciliation.
+- Starting a shipment creates lot/expiry receipts and staged off-shelf stock.
+  Import alone changes no stock; starting and finishing cannot double-receive it.
+- Employee-selected incoming line/lot binds to the next replay pickup. CV determines
+  release location through existing confidence, correction, counter, and disposal
+  rules. No medication/region answers are embedded in sensor signals.
+- Persistent per-line stocking reconciliation, documented shortages, and immutable
+  completion reports. Missing/unresolved placements block completion; short or
+  disposed stock finishes with visible discrepancies. One active shipment and bottle.
+- Mongo persistence includes shipments and staging, with revision checks and existing
+  rollback/deduplication semantics. Setup/recording changes are blocked while stocking.
+- Not included: automatic shelf optimization, arbitrary supplier/PDF intake, an Atlas
+  deployment, or the unmerged live wristband adapter. Real-world CV accuracy is not
+  established by these workflow tests.
+- Validation: 266 backend/simulation tests pass with real local MongoDB, including
+  22 shipment-specific cases; dashboard production build passes. All eight imported
+  shipments were inspected in an isolated browser preview. No new Unity run needed.
