@@ -198,8 +198,12 @@ export default function LiveCamera() {
   }
 
   async function connect(selected) {
+    if (!mounted.current || !bandLink.current) return;
     clearTimeout(reconnectTimer.current);
-    if (await bandLink.current.connect(selected) && mounted.current) setBand(`Connected: ${selected.name}`);
+    if (await bandLink.current.connect(selected) && mounted.current &&
+        bandLink.current?.selected === selected && selected.gatt.connected) {
+      setBand(`Connected: ${selected.name}`);
+    }
   }
 
   function scheduleReconnect(selected) {
