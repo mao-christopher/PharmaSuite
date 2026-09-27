@@ -1141,10 +1141,21 @@ export default function Room() {
   };
 
   const remove = async () => {
-    if (!window.confirm(`Delete the scan ${room.name}, its 3D regions and camera registrations? Inventory is not affected.`)) return;
+    const cams = room.cameras.map((c) => views?.find((v) => v.layout_id === c.layout_id)?.name || c.layout_id);
+    if (
+      !window.confirm(
+        `Delete the room ${room.name}? Its 3D scan, shelf regions and camera registrations are removed permanently. ` +
+          (cams.length
+            ? `The camera ${cams.length === 1 ? 'view' : 'views'} ${cams.join(', ')} registered here will have no shelf regions until registered in another room. `
+            : '') +
+          'Recordings and inventory are kept.',
+      )
+    )
+      return;
     const res = await fetch(`/api/rooms/${room.room_id}`, { method: 'DELETE' });
     if (!res.ok) {
-      setError(await errorMessage(res));
+      // Keep the page; a failed delete isn't a failure to load rooms.
+      window.alert(`Couldn't delete ${room.name}: ${await errorMessage(res)}`);
       return;
     }
     setParam('room', null);
@@ -1202,6 +1213,11 @@ export default function Room() {
               </option>
             ))}
           </select>
+        )}
+        {room && (
+          <button type="button" className="icon-btn bordered" onClick={remove} aria-label={`Delete the room ${room.name}`} title="Delete this room">
+            <TrashIcon aria-hidden="true" />
+          </button>
         )}
         <details className="menu">
           <summary className="btn btn-sm">Scan…</summary>
