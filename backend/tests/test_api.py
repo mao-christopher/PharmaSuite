@@ -73,6 +73,12 @@ def test_live_camera_lease_pauses_replay(client):
     assert client.post("/api/replay/control", json={"action": "play"}).status_code == 200
 
 
+def test_live_page_direct_navigation(client):
+    response = client.get("/live")
+    assert response.status_code == 200
+    assert "<html" in response.text.lower() or "<div" in response.text.lower()
+
+
 def test_short_live_buffer_requires_confirmation(client, monkeypatch):
     import pharma.pose
 
