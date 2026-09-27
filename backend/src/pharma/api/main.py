@@ -120,6 +120,7 @@ if dashboard_dist.exists():
 @app.get("/recordings", response_class=HTMLResponse)
 @app.get("/inventory", response_class=HTMLResponse)
 @app.get("/setup", response_class=HTMLResponse)
+@app.get("/live", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def root_dashboard():
     """Root landing page linking to API docs and Dashboard."""
