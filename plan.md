@@ -1071,3 +1071,13 @@ This provisional rule has not been validated against a physical band and camera.
 Firmware notifications have no action timestamp or sequence number, so a captured
 interval only brackets the model's notification and may not contain the physical
 contact instant. The live mode supports one technician and one bottle at a time.
+
+The browser connection now shares one in-flight GATT attempt per selected band and
+removes notification and disconnect listeners before reconnecting or switching bands.
+Five deterministic Node tests cover concurrent connects, reconnects, band switching,
+disconnect during notification setup, and page cleanup. They passed in Docker along
+with the frontend production build; the backend suite passed 123 tests in Docker.
+If the browser camera track mutes or ends, the page clears buffered frames and stops
+the camera session so later band events cannot reuse stale footage.
+These tests do not establish real-band reconnection, camera permission behavior, or
+physical-contact timing. The live PR remains draft pending those hardware checks.

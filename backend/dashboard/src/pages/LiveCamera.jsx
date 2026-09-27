@@ -3,6 +3,7 @@ import { useLive } from '../lib/live';
 import { errorMessage } from '../lib/api';
 import { useDialogs } from '../lib/dialogs';
 import { listPending, removePending, savePending } from '../lib/pendingEvents';
+import { BandLink } from '../lib/bandLink';
 
 const SERVICE = 'c47c5b10-9c49-4b73-9af1-3c0bcabdf001';
 const EVENT = 'c47c5b11-9c49-4b73-9af1-3c0bcabdf001';
@@ -21,8 +22,9 @@ export default function LiveCamera() {
   const video = useRef(null);
   const canvas = useRef(null);
   const stream = useRef(null);
-  const device = useRef(null);
-  const characteristic = useRef(null);
+  const cameraStarting = useRef(false);
+  const cameraTrackListeners = useRef([]);
+  const bandLink = useRef(null);
   const timer = useRef(null);
   const leaseTimer = useRef(null);
   const reconnectTimer = useRef(null);
@@ -33,8 +35,6 @@ export default function LiveCamera() {
   const captureId = useRef(crypto.randomUUID());
   const activeLayout = useRef(null);
   const wristRef = useRef('right');
-  const connectedId = useRef(null);
-  const handler = useRef(null);
   const [layoutId, setLayoutId] = useState('');
   const [wrist, setWrist] = useState('right');
   const [camera, setCamera] = useState(false);
@@ -54,17 +54,23 @@ export default function LiveCamera() {
   });
 
   async function stopCamera() {
-    if (stream.current) await leaseRequest('DELETE').catch(() => {});
     clearInterval(timer.current);
     timer.current = null;
-    stream.current?.getTracks().forEach((track) => track.stop());
+    cameraTrackListeners.current.forEach(([track, lost]) => {
+      track.removeEventListener('mute', lost);
+      track.removeEventListener('ended', lost);
+    });
+    cameraTrackListeners.current = [];
+    const media = stream.current;
     stream.current = null;
+    frames.current = [];
+    media?.getTracks().forEach((track) => track.stop());
     clearInterval(leaseTimer.current);
     const lease = JSON.parse(localStorage.getItem(LEASE_KEY) || 'null');
     if (lease?.id === captureId.current) localStorage.removeItem(LEASE_KEY);
-    frames.current = [];
     if (video.current) video.current.srcObject = null;
     setCamera(false);
+    if (media) await leaseRequest('DELETE').catch(() => {});
   }
 
   async function startCamera() {
@@ -72,6 +78,8 @@ export default function LiveCamera() {
       setMessage('Camera access requires Chrome on localhost or HTTPS.');
       return;
     }
+    if (cameraStarting.current) return;
+    cameraStarting.current = true;
     try {
       const lease = JSON.parse(localStorage.getItem(LEASE_KEY) || 'null');
       if (lease && lease.id !== captureId.current && Date.now() - lease.at < 5000) {
@@ -81,9 +89,28 @@ export default function LiveCamera() {
       await stopCamera();
       const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 10 } } });
       stream.current = media;
+      const lost = () => {
+        if (stream.current !== media) return;
+        frames.current = [];
+        setMessage('Camera feed lost. Wristband events will need location confirmation until the camera restarts.');
+        stopCamera().catch(() => {});
+      };
+      cameraTrackListeners.current = media.getVideoTracks().map((track) => {
+        track.addEventListener('mute', lost);
+        track.addEventListener('ended', lost);
+        return [track, lost];
+      });
+      if (!cameraTrackListeners.current.length || media.getVideoTracks().some((track) => track.readyState !== 'live' || track.muted)) {
+        throw new Error('Camera feed stopped');
+      }
       video.current.srcObject = media;
       await video.current.play();
+      if (stream.current !== media) return;
       const leaseResponse = await leaseRequest('POST');
+      if (stream.current !== media) {
+        await leaseRequest('DELETE').catch(() => {});
+        return;
+      }
       if (!leaseResponse.ok) throw new Error(await errorMessage(leaseResponse));
       setCamera(true);
       const renew = () => localStorage.setItem(LEASE_KEY, JSON.stringify({ id: captureId.current, at: Date.now() }));
@@ -116,6 +143,8 @@ export default function LiveCamera() {
     } catch (err) {
       await stopCamera();
       setMessage(`Camera unavailable: ${err.message}`);
+    } finally {
+      cameraStarting.current = false;
     }
   }
 
@@ -142,11 +171,11 @@ export default function LiveCamera() {
     }
   }
 
-  function onNotification(event) {
+  function onNotification(event, expectedId) {
     const notificationMs = performance.now();
     const notificationEpochMs = Date.now();
     try {
-      const packet = parseBandPacket(event.target.value, connectedId.current);
+      const packet = parseBandPacket(event.target.value, expectedId);
       if (!activeLayout.current) throw new Error('Select a calibrated camera view first');
       const snapshot = frames.current.filter((frame) => frame.at >= notificationMs - 5000 && frame.at <= notificationMs);
       const eventId = crypto.randomUUID();
@@ -170,37 +199,14 @@ export default function LiveCamera() {
 
   async function connect(selected) {
     clearTimeout(reconnectTimer.current);
-    const previous = device.current;
-    device.current = selected;
-    if (previous && previous !== selected) previous.gatt?.disconnect();
-    const server = await selected.gatt.connect();
-    if (!mounted.current || device.current !== selected) {
-      selected.gatt.disconnect();
-      return;
-    }
-    const service = await server.getPrimaryService(SERVICE);
-    const events = await service.getCharacteristic(EVENT);
-    const bandId = selected.name?.match(/^Wristband-([A-Za-z0-9]{2})$/)?.[1];
-    if (!bandId) throw new Error('Selected device is not a configured Wristband-XX');
-    if (characteristic.current && handler.current) characteristic.current.removeEventListener('characteristicvaluechanged', handler.current);
-    connectedId.current = bandId;
-    handler.current = onNotification;
-    characteristic.current = events;
-    events.addEventListener('characteristicvaluechanged', handler.current);
-    await events.startNotifications();
-    selected.addEventListener('gattserverdisconnected', () => {
-      if (device.current !== selected) return;
-      setBand('Disconnected; reconnecting…');
-      scheduleReconnect(selected);
-    }, { once: true });
-    setBand(`Connected: ${selected.name}`);
+    if (await bandLink.current.connect(selected) && mounted.current) setBand(`Connected: ${selected.name}`);
   }
 
   function scheduleReconnect(selected) {
-    if (!mounted.current || device.current !== selected) return;
+    if (!mounted.current || bandLink.current?.selected !== selected) return;
     clearTimeout(reconnectTimer.current);
     reconnectTimer.current = setTimeout(() => {
-      if (!mounted.current || device.current !== selected) return;
+      if (!mounted.current || bandLink.current?.selected !== selected) return;
       connect(selected).catch((err) => {
         setBand(`Waiting for ${selected.name}`);
         setMessage(`Reconnect pending: ${err.message}`);
@@ -223,6 +229,14 @@ export default function LiveCamera() {
 
   useEffect(() => {
     mounted.current = true;
+    bandLink.current = new BandLink({
+      service: SERVICE, characteristic: EVENT, onNotification,
+      onDisconnected: (selected) => {
+        if (!mounted.current) return;
+        setBand('Disconnected; reconnecting…');
+        scheduleReconnect(selected);
+      },
+    });
     retryPending().catch((err) => setMessage(`Could not restore pending events: ${err.message}`));
     if (navigator.bluetooth?.getDevices) navigator.bluetooth.getDevices().then((devices) => {
       const previous = devices.find((item) => /^Wristband-[A-Za-z0-9]{2}$/.test(item.name || ''));
@@ -236,14 +250,17 @@ export default function LiveCamera() {
       clearInterval(timer.current);
       clearInterval(leaseTimer.current);
       clearTimeout(reconnectTimer.current);
+      cameraTrackListeners.current.forEach(([track, lost]) => {
+        track.removeEventListener('mute', lost);
+        track.removeEventListener('ended', lost);
+      });
+      cameraTrackListeners.current = [];
       stream.current?.getTracks().forEach((track) => track.stop());
       if (stream.current) leaseRequest('DELETE', true).catch(() => {});
       const lease = JSON.parse(localStorage.getItem(LEASE_KEY) || 'null');
       if (lease?.id === captureId.current) localStorage.removeItem(LEASE_KEY);
-      if (characteristic.current && handler.current) characteristic.current.removeEventListener('characteristicvaluechanged', handler.current);
-      const selected = device.current;
-      device.current = null;
-      selected?.gatt?.disconnect();
+      bandLink.current?.close();
+      bandLink.current = null;
     };
   }, []);
 
