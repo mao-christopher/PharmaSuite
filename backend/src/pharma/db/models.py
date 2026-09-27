@@ -80,19 +80,6 @@ class InventoryState(BaseModel):
     uncertain_location: bool = Field(default=False, description="True if location tracking is uncertain")
 
 
-class SensorEvent(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    event_id: str = Field(..., description="Unique event UUID")
-    schema_version: str = Field(default="1.0")
-    session_id: str = Field(..., description="Active session ID")
-    timestamp: float = Field(..., description="Event epoch timestamp")
-    media_time_ms: int = Field(..., description="Video media timestamp in milliseconds")
-    event_type: str = Field(..., description="pickup | movement | release")
-    sensor_id: str = Field(..., description="Sensor identifier")
-    details: Dict[str, Any] = Field(default_factory=dict)
-
-
 class MovementSession(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

@@ -1,6 +1,6 @@
 """Point the app at a throwaway copy of the data directory so tests never touch live state.
 
-Layouts come from tests/fixtures, not data/layouts, because the Setup page edits the
+Layouts come from tests/fixtures, not data/layouts, because the Room page edits the
 live layout and tests must not depend on whatever was last annotated.
 """
 

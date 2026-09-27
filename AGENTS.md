@@ -2,11 +2,10 @@
 
 ## Purpose and authority
 
-Build a pharmacy inventory demo that combines YOLO pose estimation on prerecorded
-room-camera footage with synchronized mock IMU events. Read `plan.md` before
-implementation; it records agreed product behavior, milestones, and open decisions.
-The plan distinguishes implemented simulation work from future inventory features.
-Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
+Build a pharmacy inventory demo that combines YOLO pose estimation on room-camera
+footage (prerecorded, rendered, or live) with pickup/put-down signals. Read `plan.md`
+before implementation; it records agreed product behavior, design, status, and open
+work. Read `simulation/README.md` and `simulation/VALIDATION.md` for the simulation.
 
 ## Scope
 
@@ -18,9 +17,10 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
 - Use an actual CV pipeline on rendered footage. The simulator uses Unity 6000.6.3f1.
   Render offline, then replay the video and mock sensor events together.
 - Store inventory, receipts, events, alerts, and employee corrections in MongoDB.
-- Physical IMU hardware, firmware, and real pickup/release recognition are separate
-  work. Do not modify or develop that code as part of this demo. Define an input
-  contract and mock adapter; real integration remains optional future work.
+- Physical IMU hardware, firmware (`wristband/`), and real pickup/release recognition
+  are separate work. Do not modify or develop that code as part of this demo. The
+  dashboard consumes the band's BLE events through its documented contract; mock
+  adapters and timestamp files serve recorded and rendered footage.
 - Automatic shelf segmentation, multiple simultaneous technicians/prescriptions,
   and physical pill counting are outside the first demo.
 
@@ -82,20 +82,23 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
     Each observation must identify its camera and calibration version.
 16. The intended final presentation mixes real-world and simulated footage with
     seamless transitions. This is project context and future presentation work;
-    implementing or editing those transitions is not part of the current MongoDB
-    migration. Automatic camera handoff is a requirement, not an implemented claim.
+    implementing or editing those transitions is not part of this codebase.
+    Automatic camera handoff is implemented for prerecorded multi-camera recordings
+    only; live mode uses a single camera.
 
 ## Repository conventions
 
-- Existing code: `backend/src/pharma/{config,detect,pose,train}.py`; thin CLIs in `backend/scripts/`.
-  `backend/scripts/pose.py` runs the existing pose helper with `yolo11n-pose.pt` by default.
+- Backend code lives in `backend/src/pharma/` (`api/`, `db/`, `services/`, `pose.py`,
+  `config.py`); thin CLIs live in `backend/scripts/`. `backend/scripts/pose.py` runs
+  the pose helper with `yolo11n-pose.pt` by default.
 - Unity code lives in `simulation/Assets/Pharma/`; the generated scene/materials
   and stable asset metadata are committed. Fetch the pinned character assets using
   `simulation/tools/fetch_character.py`; do not commit large source art or recordings.
 - Keep CV, replay, event association, inventory rules, persistence, and dashboard
   interfaces separate. Extend this Python package rather than duplicate inference.
-- Implement one milestone at a time. Record assumptions and measured results in
-  `plan.md`; do not present proposed confidence thresholds as validated accuracy.
+- Implement one milestone at a time. Record assumptions in `plan.md` and measured
+  simulation results in `simulation/VALIDATION.md`; do not present proposed
+  confidence thresholds as validated accuracy.
 - Keep frame dimensions, camera/calibration version, video timestamps, and event
   timestamps explicit. Playback speed must not change event association.
 - Preserve raw events and correction history. Use stable IDs and idempotent writes;
@@ -110,8 +113,9 @@ Read `simulation/README.md` and `simulation/VALIDATION.md` for that project.
 - For documentation-only changes, inspect the diff and run `git diff --check`.
   Do not download model weights or install packages solely to validate Markdown.
 - For code changes, run relevant deterministic tests and the existing `pytest`
-  suite as appropriate. Existing inference smoke tests can download weights and a
-  remote sample; report unavailable dependencies/network instead of claiming a pass.
+  suite (`python -m pytest backend/tests simulation/tests -q` from the repository
+  root). Pose tools may download model weights; report unavailable
+  dependencies/network instead of claiming a pass.
 - Test duplicate events, restart/replay, uncertain locations, wrong returns,
   counter placement, disposal defaults and corrections, expiry matching, and
   prescription completion/payment deduplication.

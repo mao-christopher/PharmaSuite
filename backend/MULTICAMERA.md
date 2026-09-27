@@ -15,7 +15,7 @@ with at least 0.1 seconds of continuous evidence. Decisions use only frames up t
 the current timestamp and remain identical after seeking/restarting.
 
 If no view qualifies, keep the current POV with an uncertainty label. For a sensor
-event at that moment, fall back in order (added 2026-09-26, unvalidated):
+event at that moment, fall back in order (unvalidated defaults):
 
 1. any confident wrist, then any confident elbow (>= 0.35), in the signal's frame or
    the nearest frame within 5 before or after it, in every camera (selected first,
@@ -25,10 +25,10 @@ event at that moment, fall back in order (added 2026-09-26, unvalidated):
 
 The hand is matched against the regions of the camera it was found in. Camera
 selection never uses future frames; the event fallback may, since recordings are
-processed before playback. Nothing uses Unity rig truth. Confidence remains an imperfect visibility proxy.
-This demo assumes one technician, cameras that start together, and prerecorded
-videos. Unsynchronized live streams and identity tracking across multiple people
-are not implemented.
+processed before playback. Nothing uses Unity rig truth. Confidence remains an
+imperfect visibility proxy. This assumes one technician, cameras that start
+together, and prerecorded videos. Live mode uses a single camera; unsynchronized
+live streams and identity tracking across multiple people are not implemented.
 
 ## Recording format
 
@@ -60,7 +60,7 @@ Uploading several videos in the dashboard's upload window writes the same file w
 `"clock": "media_time"` and `"source": "upload"`. Its cameras only share a zero time
 origin, so their frame rates and lengths may differ; the first camera's clock drives
 the player. Its `calibration_version` is `null`, meaning it follows the view's current
-calibration, so editing a view in Setup doesn't break the recording. Each camera also
+calibration, so editing a view on the Room page doesn't break the recording. Each camera also
 records its `label` (the file name), `width`, `height`, `fps` and `view_confirmed`.
 The upload window's second step shows each camera's own frame and view before the
 recording is created, so every camera's view is confirmed on upload.

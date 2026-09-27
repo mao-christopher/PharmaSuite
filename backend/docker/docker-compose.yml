@@ -1,38 +1,6 @@
-version: "3.9"
-
+# Local MongoDB for inventory state, events, receipts and alerts.
+#   docker compose -f backend/docker/docker-compose.yml up -d mongo
 services:
-  yolo:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: pharma-yolo:latest
-    volumes:
-      - ../data:/app/data
-      - ../models:/app/models
-      - ../runs:/app/runs
-    env_file:
-      - ../.env
-    # Remove the deploy block if you don't have an NVIDIA GPU
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-  # Jupyter for notebook-based exploration
-  notebook:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: pharma-yolo:latest
-    command: ["-m", "jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--allow-root"]
-    ports:
-      - "8888:8888"
-    volumes:
-      - ../:/app
-  # MongoDB for inventory state, events, receipts, and alerts
   mongo:
     image: mongo:7.0
     ports:

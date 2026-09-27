@@ -45,7 +45,7 @@ def main():
                 conf_str = f"  conf={c:.2f}" if c is not None else ""
                 print(f"    [{j:2d}] {name:<16} x={x:.1f}  y={y:.1f}{conf_str}")
 
-    print(f"\nDone. Results saved to runs/pose/")
+    print("\nDone. Results saved to runs/pose/")
 
 
 if __name__ == "__main__":

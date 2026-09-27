@@ -19,8 +19,3 @@ def get_database(client=None):
 def get_collection(name, database=None):
     db = database if database is not None else get_database()
     return db.get_collection(name, write_concern=WriteConcern(w="majority", j=True))
-
-
-def init_indexes(database):
-    # _id is MongoDB's unique pharmacy identity; revision provides compare-and-swap.
-    database.command("ping")

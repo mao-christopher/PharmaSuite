@@ -19,7 +19,7 @@ export function useRebuilt(room, enabled) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, key]);
   return state.key === key ? state : { key, data: null, error: null };
 }
 

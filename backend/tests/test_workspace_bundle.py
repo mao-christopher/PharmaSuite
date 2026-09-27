@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 import zipfile
 import pytest
 from pharma.services.workspace_bundle import export_bundle, restore_bundle

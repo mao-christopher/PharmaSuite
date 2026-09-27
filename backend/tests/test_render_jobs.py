@@ -200,9 +200,7 @@ def test_queued_render_uses_its_own_timeline_snapshot(tmp_path):
 @pytest.mark.skipif(__import__('os').name != 'posix', reason='POSIX process-group cancellation')
 def test_cancel_stops_renderer_child_processes(tmp_path):
     """Exercise the real runner with a lightweight wrapper/child, without starting Unity."""
-    import os
     import time
-    from pathlib import Path
     from pharma.services.render_jobs import unity_runner
     tools = tmp_path / 'simulation' / 'tools'
     tools.mkdir(parents=True)

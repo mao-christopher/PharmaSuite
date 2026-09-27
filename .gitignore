@@ -128,13 +128,10 @@ ipython_config.py
 *.pkl
 *.joblib
 
-# Allow placeholder / tiny example weights if explicitly committed
 !models/.gitkeep
-!weights/.gitkeep
 
 # YOLO run outputs
 runs/
-wandb/
 
 # ============================================================
 # Data (large files should NOT be in git — use DVC or similar)
@@ -169,11 +166,6 @@ backend/data/scenarios/*/floor_track.json
 # Re-enactment timelines and Unity renders are regenerated from the recording
 backend/data/scenarios/*/timeline.json
 backend/data/scenarios/*/renders/
-
-# Keep directory structure
-!data/.gitkeep
-!data/**/.gitkeep
-!datasets/.gitkeep
 
 # ============================================================
 # Docker
@@ -249,5 +241,5 @@ tmp/
 temp/
 .temp/
 
-# Restored portable workspace (media/state stay in release assets)
+# Restored workspace snapshots (see backend/WORKSPACE_SNAPSHOTS.md)
 backend/restored-data/

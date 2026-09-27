@@ -1,5 +1,12 @@
 # PharmaSuite
 
+PharmaSuite tracks pill-bottle handling in a pharmacy. A wrist-worn IMU detects
+pickups and put-downs, pose estimation on ordinary camera footage works out which
+shelf was involved, and a MongoDB-backed dashboard keeps pooled tablet stock,
+shelf counts, expiry and alerts up to date. Built at HackGT.
+
+[Watch the demo video](https://github.com/mao-christopher/Pharma/releases/tag/hackgt-demo-v4)
+
 ## Inspiration
 
 Every year, thousands of Americans die due to pharmaceutical drug mishandling. Dr. Marv Shepard, the former Chairman of the Pharmacy Administration at the University of Texas, claims that the typical pharmacy makes 2 to 4 mistakes a day, which is an alarming rate for such a high-stakes action. After speaking with peers that worked as pharma technicians at Walgreens, CVS, and local stores, we began to better understand the issues that afflict the drug handling process. By developing our own edge compute model, we were confident we could create an automated system to reduce error. With tools like PharmaSuite, we hope to build a new tomorrow where everyone can trust healthcare professionals.
@@ -34,33 +41,49 @@ We’re proud to develop such an extensive pipeline that covers so many aspects 
 
 In the future, we plan to train the edge compute model to better classify a wider range of tasks. We recognize that pharmacists may not always place items in the exact same way, or that other tasks may have a similar range of motion to it. However, with a wider range of training data, it would be possible for the model to better isolate the tasks we want it to recognize. In addition, we haven’t configured YOLO to consider multiple pharmacy technicians, which would be necessary in many real world pharmacies. However, past a 36-hour hackathon, we can definitely implement these improvements.
 
-## Development and setup
+## What's in this repository
 
-What works today, and what is still planned, is tracked in [plan.md](plan.md).
-Results on rendered footage are in [simulation/VALIDATION.md](simulation/VALIDATION.md);
-nothing has been validated on real pharmacy footage yet.
+The write-up above describes the whole vision. This is what the code does today:
 
-## Project Structure
+- **Inventory engine and API** (`backend/`): FastAPI service that runs YOLO11 pose on
+  recorded or live footage, matches the wrist to configured shelf, counter and
+  disposal regions at each pickup/put-down signal, and applies pharmacy rules
+  exactly once per signal: pooled tablets per medication, bottles on and off
+  shelves, wrong-shelf alerts, counter parking, disposal forms, expiry alerts, and
+  one-time prescription deductions. Uncertain locations wait for an employee.
+- **Dashboard** (`backend/dashboard/`): React app with the player and signal log,
+  notifications, inventory, prescriptions, shipment intake, room setup (LiDAR scan
+  import, 3D shelf tags, camera registration) and live capture.
+- **Wristband firmware** (`wristband/`): ESP32-S3 + MPU6050 with an on-device Edge
+  Impulse classifier that sends pickup/put-down events over BLE.
+- **Unity simulation** (`simulation/`): a synthetic pharmacy with a rigged technician
+  that renders test footage with synchronized mock sensor events, and re-enacts real
+  recordings from the dashboard's decisions.
+- **Synthetic data** (`demo/synthetic_shipments/`): eight fictitious supplier
+  deliveries in CSV, XML, EDI, JSON and PDF.
+
+Accuracy has only been measured on rendered footage (see
+[simulation/VALIDATION.md](simulation/VALIDATION.md)); nothing has been validated in
+a real pharmacy. [plan.md](plan.md) records the product rules, design and open work.
+
+## Repository layout
 
 ```
-.
-├── backend/
-│   ├── src/pharma/           # Python package: pose/detect helpers, API, inventory rules, services
-│   ├── dashboard/            # React dashboard (Vite): player, recordings, inventory, camera setup
-│   ├── data/                 # catalog.json (medications, opening stock), layouts/ (camera views),
-│   │                         # scenarios/ (bundled demo; uploads land here, gitignored)
-│   ├── scripts/              # CLI entrypoints (run_server.py, pose.py, detect.py, …)
-│   ├── tests/                # pytest suite (uses an in-memory MongoDB)
-│   ├── docker/               # Dockerfile and docker-compose (MongoDB service)
-│   ├── MONGODB.md            # Storage, migration and recovery
-│   └── MULTICAMERA.md        # Camera switching and the multi-camera recording format
-├── simulation/               # Unity pharmacy scene, offline capture, fixtures & evaluation
-├── plan.md                   # Product rules, decisions, milestones and open risks
-├── AGENTS.md                 # Agent guidelines and conventions
-└── README.md                 # Project overview and quickstart
+backend/
+  src/pharma/        Python package: API, inventory engine, pose, rooms, storage
+  dashboard/         React (Vite) dashboard
+  scripts/           CLIs: run_server.py, pose.py, live_pose.py, import_sim_room.py, ...
+  tests/             pytest suite (in-memory MongoDB by default)
+  data/              catalog, camera views and a bundled demo recording
+  docker/            docker-compose for local MongoDB
+simulation/          Unity 6 project, render/evaluation tools and their tests
+wristband/           PlatformIO firmware for the BLE wristband
+demo/                synthetic shipment documents
+plan.md              product rules, design and status
+AGENTS.md            guidelines for AI coding agents working in this repo
 ```
 
-## Run the dashboard locally
+## Run it locally
 
 You need Python 3.10+, Node 20+, and Docker (for MongoDB).
 
@@ -72,98 +95,72 @@ docker compose -f backend/docker/docker-compose.yml up -d mongo
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt && pip install -e . --no-deps
-python scripts/run_server.py --host 127.0.0.1 --reload
+python scripts/run_server.py --reload
 
 # 3. Dashboard on http://localhost:3000 (in another terminal; proxies /api to :8000)
 cd backend/dashboard
 npm ci && npm run dev
 ```
 
-`backend/.env.example` lists the settings (`MONGO_URI`, `MONGO_DB_NAME`, `PHARMACY_ID`,
-`DATA_DIR`, `POSE_IMGSZ`); the defaults work with the MongoDB container above. Pose
-extraction uses `yolo11n-pose.pt`, which Ultralytics downloads on first use, at 960 px
-inference size (`POSE_IMGSZ=640` is faster but misses more distant people). To point the dashboard at
-another backend, set `API_URL`, e.g. `API_URL=http://127.0.0.1:8001 npm run dev`.
+The defaults work with the MongoDB container above. To change them, copy
+`backend/.env.example` to `backend/.env` (`MONGO_URI`, `MONGO_DB_NAME`, `PHARMACY_ID`,
+`DATA_DIR`, `POSE_IMGSZ`, `UNITY_PATH`). Ultralytics downloads `yolo11n-pose.pt` on
+first use. To point the dashboard at another backend, run
+`API_URL=http://127.0.0.1:8001 npm run dev`.
 
-Live capture: open the dashboard in Chrome and select **Go live**. Pick the Mac webcam or
-an iPhone (Continuity Camera), its registered view and wrist, then connect the wristband.
-Only the 10 s around each band event are saved (9 s before, since the band notifies late); each clip is analyzed and applied to
-inventory once. Add `?dev=1` to the URL to trigger pickups and put-downs with Space and
-no band. Clips are encoded with OpenCV, so ffmpeg is not needed.
+The repository ships only a scripted signal-only demo (`demo_scenario_01`, no video),
+since recordings are not committed. Upload your own footage with a pickup/put-down
+timestamps file from **Recordings**, or render footage with the Unity simulation.
 
-Tests: install `simulation/requirements.txt` as well (some backend tests import the
-simulation tools), then run `python -m pytest backend/tests simulation/tests -q` from the
-repository root. `backend/tests/test_detect.py` downloads weights and a sample image, so
-skip it offline with `--ignore=backend/tests/test_detect.py`.
+### Live capture
 
-## Unity Simulation
+Open the dashboard in Chrome and select **Go live**. Pick a camera (a webcam or an
+iPhone through Continuity Camera), its registered view and the wearing wrist, then
+connect the wristband from Chrome's Bluetooth picker. Only the 10 s around each band
+event are kept (9 s before, since the band notifies late); each clip is analyzed and
+applied to inventory once. Add `?dev=1` to the URL to send pickups and put-downs with
+the Space bar when no band is connected.
 
-See [simulation/README.md](simulation/README.md) for opening the Unity project,
-playing the scene, exporting a recording, and running pose evaluation. The demo
-contains one technician, three shelf banks with aisles, a dispensing counter, and a disposal bin.
-It records an 106-second aisle walkthrough and pickup/counter/wrong-return/correction/disposal
-sequence with explicit agent/bottle states, paths around obstacles, and per-tick collision guards.
-The CV presentation tool exports an actual YOLO overlay, skeleton-only video, side-by-side
-comparison, and timestamped keypoint/confidence observations from the rendered pixels.
-A separate labeled simulation X-ray view keeps the Unity skeleton visible behind geometry.
-Animation includes planted feet, smoother turns, arm swing, and eased reach/handling motion.
+### Tests
+
+```bash
+pip install -r simulation/requirements.txt   # some backend tests import simulation tools
+python -m pytest backend/tests simulation/tests -q
+cd backend/dashboard && npm test && npm run build
+```
+
+Run pytest from the repository root. Set `TEST_MONGO_URI` to test against a real
+MongoDB server instead of the in-memory default.
+
+## Unity simulation
+
+See [simulation/README.md](simulation/README.md) for opening the project (Unity
+6000.6.3f1), rendering footage and mock sensor events, and running pose evaluation.
+Character art is fetched from a pinned, MIT-licensed Microsoft Rocketbox source:
 
 ```sh
 python3 simulation/tools/fetch_character.py
-# Add simulation/ in Unity Hub; open Assets/Pharma/Generated/Pharmacy.unity and press Play.
 ```
 
-The simulator uses Unity 6000.6.3f1. Large character assets are fetched from a pinned
-MIT-licensed source; recordings and model weights are not committed. Physical IMU
-hardware/firmware remain separate from this project change.
+## Pose CLIs
 
-## Pose and detection CLIs
-
-With the backend environment from above activated:
+With the backend environment activated:
 
 ```bash
 cd backend
-python scripts/pose.py path/to/video.mp4      # 17-point skeletons on an image or video
-python scripts/live_pose.py                   # webcam pose estimation
-python scripts/detect.py path/to/image.jpg    # object detection
+python scripts/pose.py path/to/video.mp4   # 17-point skeletons on an image or video
+python scripts/live_pose.py                # webcam pose estimation
 ```
 
-## Quick Start (Docker)
+## More documentation
 
-```bash
-# Build backend image
-docker compose -f backend/docker/docker-compose.yml build
+- [plan.md](plan.md): product rules, architecture and status
+- [backend/MONGODB.md](backend/MONGODB.md): storage, migration and recovery
+- [backend/MULTICAMERA.md](backend/MULTICAMERA.md): camera switching and multi-camera recordings
+- [backend/SHIPMENTS.md](backend/SHIPMENTS.md): shipment import and stocking
+- [backend/WORKSPACE_SNAPSHOTS.md](backend/WORKSPACE_SNAPSHOTS.md): moving a demo workspace between computers
+- [simulation/README.md](simulation/README.md) and [simulation/VALIDATION.md](simulation/VALIDATION.md)
+- [wristband/README.md](wristband/README.md): firmware, BLE protocol and model
 
-# Run detection inside container
-docker compose -f backend/docker/docker-compose.yml run --rm yolo \
-  scripts/detect.py /app/data/raw/test/images/sample.jpg
-
-# Launch Jupyter Lab
-docker compose -f backend/docker/docker-compose.yml up notebook
-# then open http://localhost:8888
-```
-
-## Model Weights
-
-YOLO weights are downloaded automatically by Ultralytics on first use.
-They are listed in `.gitignore` — do **not** commit large `.pt` files.
-Store shared weights in a shared drive or object storage and reference the path in `.env`.
-
-## Team Workflow
-
-1. Branch off `main` for each feature/experiment.
-2. Keep `datasets/*.yaml` (not `datasets/*.yaml.example`) in git once they're stable.
-3. Log experiments with [Weights & Biases](https://wandb.ai) — set `WANDB_API_KEY` in `.env`.
-4. Run `pytest` inside `backend/` before opening a PR.
-
-## Restore the saved workspace on another computer
-
-The current recordings, photos, room scans, camera calibration and MongoDB state
-are packaged as a private GitHub release asset. Follow
-[the restore guide](backend/WORKSPACE_RESTORE.md) to reopen the same recording and
-player position without rerunning Unity or YOLO. This is a snapshot, not automatic
-synchronization between computers.
-
-Shipment files can be reviewed and imported from the dashboard **Shipments** page.
-See [shipment intake and stocking sessions](backend/SHIPMENTS.md) for supported
-formats, staged inventory, CV placements, and reconciliation.
+All medications, prescriptions, suppliers and shipments in this repository are
+synthetic. Do not commit `.env` files, model weights, recordings or room scans.

@@ -3,9 +3,6 @@
 import cv2
 import numpy as np
 import pytest
-import io
-import json
-import uuid
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient

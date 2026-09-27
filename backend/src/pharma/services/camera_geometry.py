@@ -10,7 +10,7 @@ Conventions follow OpenCV: x_cam = R @ x_room + t, camera x right, y down, z for
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np

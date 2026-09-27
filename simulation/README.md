@@ -5,8 +5,8 @@ configured medication regions on the front bank, a dispensing counter,
 central terminal prop, disposal bin, and one textured, rigged medical character.
 The deterministic 106-second sequence begins with a 40-second aisle survey, then
 handles one bottle at a time in the 66-second handling workflow (the original schedule slowed by 1.5×). It exports
-prerecorded footage and synchronized mock IMU events for the existing Python CV
-pipeline. It does not implement the inventory service, MongoDB, or dashboard.
+prerecorded footage and synchronized mock IMU events for the Python CV pipeline in
+`backend/`. Inventory rules, MongoDB and the dashboard live there, not here.
 
 ## Scene detail
 
@@ -35,9 +35,8 @@ a camera change or replace calibrated CV footage.
 5. Press **Play**. The Game view shows the camera feed and controls for play/pause,
    restart, seeking, and the occluded-return variant. Use a 16:9 Game view.
 
-The downloadable project archive includes the character assets, so step 2 is only
-necessary for a Git checkout. The generated scene and material files are committed;
-Unity's Library cache, rendered recordings, and large character files are not.
+The generated scene and material files are committed; Unity's Library cache,
+rendered recordings, and the downloaded character files are not.
 
 ## Record footage and mock signals
 
@@ -162,7 +161,9 @@ frame of both variants, path speed, seek/restart determinism, counter and dispos
 states, invalid ownership transitions, and a newly inserted aisle blocker. It also runs in batch mode through
 `-executeMethod Pharma.Simulation.Editor.SimulationChecks.Run`.
 
-Install the backend dependencies to use the existing pose helper on the recording:
+Install the backend dependencies to run pose estimation on the recording. The
+commands below expect YOLO weights at `models/yolo11n-pose.pt`; Ultralytics
+downloads `yolo11n-pose.pt` on first use, so copy it there or pass another path:
 
 ```sh
 python backend/scripts/pose.py simulation/Exports/demo-001/camera.mp4 --no-save
@@ -341,8 +342,8 @@ and export new calibration. Decorative props and bottle geometry are not navigat
 obstacles; this prototype does not model bottle-to-bottle contact forces.
 Animation is procedural and repeatable, not motion-capture quality. This initial
 recording uses the lower shelf row; the upper row is stocked and calibrated but not
-an evaluated reach scenario. No real IMU code, real prescription integration, patient
-information, inventory database, or working cashier dashboard is included.
+an evaluated reach scenario. The simulation uses only synthetic medications and
+prescriptions and contains no patient information.
 
 See `VALIDATION.md` for measured results and limitations, and
 `Assets/ThirdParty/Rocketbox/NOTICE.md` for asset provenance and licensing.

@@ -82,13 +82,7 @@ The tests compare all eight supplier documents against the canonical manifest an
 exercise duplicate/conflicting imports, invalid input, staged stock, replay gates,
 wrong shelves, employee confirmation, counter continuity, disposal, shortages,
 restart, and Mongo write rollback. They do not establish pose or wearable accuracy.
-The unmerged live-browser/wristband PR is separate: this implementation connects to
-the merged prerecorded CV pipeline. Live stocking needs to route its events through
-these stocking checks when that adapter is integrated. Shelf assignment remains
-employee-configured; automatic shelf optimization is separate work.
 
-Verified on 2026-09-27: 266 backend/simulation tests passed using a real local
-MongoDB instance (22 shipment tests); the dashboard production build passed with
-its existing large-chunk warning. An isolated running server imported all eight
-shipments and displayed their reconciliations in the browser. No Unity rerender or
-physical wristband validation was performed.
+Stocking works with prerecorded recordings. Live wristband events do not yet go
+through these stocking checks. Shelf assignment is employee-configured; automatic
+shelf optimization is not implemented.

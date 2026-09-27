@@ -5,10 +5,8 @@ import json
 from pathlib import Path
 
 import pytest
-from pharma.db.models import Region
 from pharma.services import shipment_import as importer, stocking
-from pharma.services.inventory_engine import InventoryEngine
-from tests.test_api import client, make_controller
+from tests.test_api import client, make_controller  # noqa: F401 (client is a fixture)
 
 FIXTURES = Path(__file__).resolve().parents[2] / "demo/synthetic_shipments"
 AT = "2026-09-27T00:00:00+00:00"

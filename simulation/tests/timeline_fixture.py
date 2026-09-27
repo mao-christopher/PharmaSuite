@@ -74,7 +74,7 @@ def track(gap=(12.2, 13.0)):
         (t0, a), (t1, b) = SCHEDULE[k], SCHEDULE[k + 1]
         u = (t - t0) / (t1 - t0)
         u = u * u * (3 - 2 * u)
-        (x0, z0, y0), (x1, z1, y1) = STOPS[a], STOPS[b]
+        (x0, z0, y0), (x1, z1, _) = STOPS[a], STOPS[b]
         x, z = x0 + (x1 - x0) * u, z0 + (z1 - z0) * u
         yaw = y0 if a == b else math.degrees(math.atan2(x1 - x0, z1 - z0))
         if gap[0] <= t < gap[1]:

@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 from pharma.api.replay_stream import DRAFT_FILE, ReplayController, ScenarioNotReady, pharmacy_today
-from pharma.db.models import BACKGROUND_PATTERN, Catalog, Layout, Region, medication_key_for
+from pharma.db.models import BACKGROUND_PATTERN, Catalog, Layout, medication_key_for
 from pharma.services.layout import (
     DEFAULT_LAYOUT_ID, layout_path, list_layout_ids, load_layout, merge_view, new_layout_id, save_background,
     save_catalog, save_layout, split_view,

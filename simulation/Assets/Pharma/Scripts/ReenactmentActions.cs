@@ -159,8 +159,6 @@ namespace Pharma.Simulation
                 pair.Value.Show(active.TryGetValue(pair.Key, out var look), look);
         }
 
-        public bool AnyHighlight => highlights.Count > 0;
-
         static float Ease(float u) { u=Mathf.Clamp01(u); return u*u*u*(u*(u*6-15)+10); }
 
         public static Color LookColor(string look)

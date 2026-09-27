@@ -7,8 +7,7 @@ License: MIT, copyright (c) 2020 Microsoft; see `LICENSE.md`.
 
 The FBX and eight texture files are downloaded unchanged by
 `simulation/tools/fetch_character.py`. Exact source URLs and SHA-256 hashes are in
-`sources.json`. Large source assets are omitted from Git; the downloadable project
-archive includes them with this license. Unity materials and procedural animation
+`sources.json`. The large source assets are not committed to Git. Unity materials and procedural animation
 are configured by this repository. The character is used as a fictional technician;
 no identity or actual pharmacy employee is represented.
 

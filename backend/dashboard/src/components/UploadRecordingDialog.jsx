@@ -316,7 +316,7 @@ function useStagedUpload(videos, keepRef) {
       xhr.abort();
       if (created && !keepRef.current) fetch(`/api/uploads/${created}`, { method: 'DELETE' }).catch(() => {});
     };
-  }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key, attempt]);
 
   return draft;
 }
@@ -459,7 +459,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
     setViews({});
     setVisited(new Set());
     setCameraId(draftData?.cameras[0].camera_id ?? null);
-  }, [draftData?.draft_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [draftData?.draft_id]);
 
   useEffect(() => {
     if (step === 1 && cameraId) setVisited((v) => (v.has(cameraId) ? v : new Set(v).add(cameraId)));
@@ -491,7 +491,7 @@ export default function UploadRecordingDialog({ onClose, onUploaded }) {
     return () => {
       stopped = true;
     };
-  }, [step, draftData?.draft_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, draftData?.draft_id]);
 
   // The form is long; bring a validation message into view.
   useEffect(() => {

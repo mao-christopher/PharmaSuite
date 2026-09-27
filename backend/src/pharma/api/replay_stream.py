@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 from fastapi import WebSocket
 
-from pharma.db.models import Catalog, Layout, Region, RegionsSource
+from pharma.db.models import Catalog, Layout, RegionsSource
 from pharma.services.fixture_loader import load_json, load_jsonl
 from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, Hand
 from pharma.services.layout import (
@@ -80,10 +80,6 @@ class ScenarioNotReady(Exception):
 def scenario_meta(scenario_path: Path) -> Dict[str, Any]:
     meta = load_json(scenario_path / "scenario.json")
     return meta if isinstance(meta, dict) else {}
-
-
-def scenario_layout_id(scenario_path: Path) -> Optional[str]:
-    return scenario_meta(scenario_path).get("layout_id")
 
 
 def upload_order(summary: Dict[str, Any]):
@@ -155,10 +151,6 @@ class Recording:
 
     def hands_at(self, media_time_ms: float) -> List[Hand]:
         return self.hand_points_at(media_time_ms)[0]
-
-    def track_at(self, media_time_ms: float) -> Optional[PoseTrack]:
-        """The pose track the player shows at a time (the selected camera's, for a group)."""
-        return self.camera_group.camera_at(media_time_ms).poses if self.camera_group else self.poses
 
 
 class _FrameReader:
