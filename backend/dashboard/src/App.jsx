@@ -39,11 +39,11 @@ function Shell() {
       </a>
       <header className="topbar">
         <div className="topbar-inner">
-          <Link to="/" className="brand" aria-label="Pharma inventory home">
+          <Link to="/" className="brand" aria-label="PharmaSuite home">
             <span className="brand-mark" aria-hidden="true">
               <PillIcon size={15} />
             </span>
-            <span>Pharma</span>
+            <span>PharmaSuite</span>
           </Link>
           <nav className="nav" aria-label="Main">
             <NavLink to="/" end>

@@ -1302,3 +1302,6 @@ Certbot renewal dry-run also passes.
 The IMG_3537 recording's display label is now Pharmacy camera. The player subtitle
 shows the camera name without the skeleton timing description. Pre-action pose
 visibility is unchanged; only the user-facing label and caption were updated.
+
+Top-left dashboard branding now reads PharmaSuite, with a matching accessible
+home-link label.
