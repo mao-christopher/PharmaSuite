@@ -28,6 +28,7 @@ from pharma.services.layout import (
     DEFAULT_LAYOUT_ID, frame_similarity, list_layout_ids, load_background, load_catalog, load_layout,
     merge_view, new_layout_id, save_catalog, save_frame_background, save_layout,
 )
+from pharma.services import stocking
 from pharma.services.forecast import reorder_point, stock_suggestions
 from pharma.services.multicamera import MULTICAM_FILE, CameraGroup, camera_specs, read_spec, write_spec
 from pharma.services.recordings import (
@@ -934,6 +935,10 @@ class ReplayController:
             return 0
         changed = 0
         for evt in pending:
+            if stocking.blocked_reason(self.engine, rec.name, evt):
+                self.is_playing = False
+                self.current_media_time_ms = evt["media_time_ms"]
+                break
             fix = rec.locate(evt["media_time_ms"])
             # The hand is matched against the regions of the camera it was found in.
             camera = rec.camera_group.cameras[fix.camera_id] if rec.camera_group else None
@@ -1012,6 +1017,7 @@ class ReplayController:
         self._last_tick = now
         self.current_media_time_ms = min(self.duration_ms, self.current_media_time_ms + elapsed_ms)
         changed = self.process_events_until(self.current_media_time_ms) > 0
+        changed = changed or not self.is_playing
         changed = self._select_camera() or changed
         if self.current_media_time_ms >= self.duration_ms:
             self.is_playing = False
@@ -1136,6 +1142,7 @@ class ReplayController:
                 "medications": [m.model_dump() for m in layout.medications],
                 "regions": [r.model_dump() for r in layout.regions],
             },
+            "shipments": {k: {**s, "report": stocking.report(self.engine, s)} for k, s in self.engine.shipments.items()},
             "inventory": {k: v.model_dump() for k, v in self.engine.inventory.items()},
             "sessions": {k: v.model_dump() for k, v in self.engine.sessions.items()},
             "disposals": {k: v.model_dump() for k, v in self.engine.disposals.items()},

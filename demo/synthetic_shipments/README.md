@@ -41,4 +41,7 @@ physical shelf stock. Units form the pooled balance for each medication and stre
   (`total_bottles`, `total_units`, lot count, and earliest expiry).
 
 Medication keys follow the backend's `medication_key_for` convention
-(for example, `AMOXICILLIN_500MG`). No parser for these files exists yet.
+(for example, `AMOXICILLIN_500MG`). Import the electronic documents or canonical
+manifest through the dashboard Shipments page. See
+[the importer and stocking guide](../../backend/SHIPMENTS.md); PDF slips remain
+reference documents.

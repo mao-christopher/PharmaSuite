@@ -126,6 +126,7 @@ class InventoryEngine:
         self.max_region_distance = max_region_distance
         self._alert_counter = 1
         self._receipt_counter = 1
+        self.shipments: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------ persistence
 
@@ -145,6 +146,7 @@ class InventoryEngine:
             "alerts": {k: v.model_dump() for k, v in self.alerts.items()},
             "alert_counter": self._alert_counter,
             "receipt_counter": self._receipt_counter,
+            "shipments": self.shipments,
         }
 
     @classmethod
@@ -166,6 +168,7 @@ class InventoryEngine:
         )
         engine._alert_counter = data.get("alert_counter", len(engine.alerts) + 1)
         engine._receipt_counter = data.get("receipt_counter", 1)
+        engine.shipments = data.get("shipments", {})
         return engine
 
     # ------------------------------------------------------------------ helpers
@@ -456,6 +459,10 @@ class InventoryEngine:
         if session is None:
             raise ValueError("The movement this alert refers to no longer exists.")
 
+        if phase == "pickup" and session.evidence.get("stocking_source"):
+            if region_id != session.evidence["stocking_source"]:
+                raise ValueError("Confirm the current location of this shipment bottle; do not assign a different source.")
+            session.state = session.evidence["stocking_previous_state"]
         evidence = {"confirmed_by_employee": True, "region_id": region_id}
         if phase == "pickup":
             if region.region_type not in PICKUP_REGION_TYPES:
@@ -546,6 +553,10 @@ class InventoryEngine:
         if explicit_quantity is not None and explicit_quantity < 0:
             raise ValueError("Discard quantity cannot be negative.")
 
+        for shipment in self.shipments.values():
+            for tracked in (shipment.get("stocking") or {}).get("lines", {}).values():
+                if record.session_id in tracked["movements"] and tracked["receipt_id"] != selected_receipt_id:
+                    raise ValueError("This stocking bottle belongs to the shipment lot selected at pickup.")
         record.selected_receipt_id = selected_receipt_id
         inv = self.inventory.get(record.medication_key)
         if explicit_quantity is not None:
@@ -569,6 +580,8 @@ class InventoryEngine:
         Rule 8 defaults apply when no tablet count is entered: zero if other bottles of the
         medication remain, the whole pooled balance if these were the last bottles.
         """
+        if any(s["status"] == "stocking" for s in self.shipments.values()):
+            raise ValueError("During stocking, dispose one tracked bottle through the disposal region and form.")
         receipt = self.receipts.get(receipt_id)
         if receipt is None:
             raise ValueError(f"Batch {receipt_id} not found.")

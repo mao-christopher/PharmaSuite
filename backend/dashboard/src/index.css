@@ -3220,3 +3220,9 @@ button.move-thumb:hover { border-color: var(--hairline-strong); }
   .live-dot,
   .live-chip.busy::before { animation: none; }
 }
+
+/* Shipment intake and stocking controls */
+.shipment-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.shipment-preview { margin-top: 1.25rem; }
+.shipment-preview h3 { font-size: 1rem; margin-bottom: .5rem; }
+.shipment-controls input[type="file"] { max-width: 22rem; }

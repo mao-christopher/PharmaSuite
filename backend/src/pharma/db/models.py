@@ -73,6 +73,7 @@ class InventoryState(BaseModel):
     pooled_tablets: int = Field(default=0, ge=0, description="Pooled tablet balance")
     total_bottles: int = Field(default=0, ge=0, description="Total undisposed bottles in pharmacy")
     shelf_counts: Dict[str, int] = Field(default_factory=dict, description="Region ID -> on-shelf bottle count")
+    staged_bottles: int = Field(default=0, ge=0, description="Received bottles awaiting shelf placement")
     held_bottles: int = Field(default=0, ge=0, description="Bottles currently being held")
     counter_bottles: int = Field(default=0, ge=0, description="Bottles temporarily at counter")
     disposed_bottles: int = Field(default=0, ge=0, description="Total disposed bottles")
