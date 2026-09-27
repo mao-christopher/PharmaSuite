@@ -10,7 +10,7 @@ from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarg
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from pharma.api import room_routes, routes
+from pharma.api import live_routes, room_routes, routes
 from pharma.api.replay_stream import ReplayController
 from pharma.config import Settings
 
@@ -49,7 +49,9 @@ app = FastAPI(
 # Reading rooms, importing a scan and trying a camera solve never touch inventory, and a
 # large scan import mustn't stall playback. Saving 3D regions or a registration does:
 # it regenerates camera views' regions, so those writes take the lock like any other.
-LOCK_FREE_PATHS = re.compile(r"^/api/(video/feed$|recordings/[^/]+/floor-track$)")
+# Live band events take the lock themselves, only around state reads and the mutation,
+# so seconds of clip encoding and pose don't stall playback (see live_routes).
+LOCK_FREE_PATHS = re.compile(r"^/api/(video/feed$|recordings/[^/]+/(floor-track|video)$|live/events$)")
 LOCK_FREE_ROOM_READS = re.compile(r"^/api/rooms(/|$)")
 LOCK_FREE_ROOM_WRITES = re.compile(r"^/api/rooms(/[^/]+/cameras/solve)?$")
 
@@ -100,6 +102,7 @@ app.add_middleware(
 # Mount REST API routes
 app.include_router(routes.router)
 app.include_router(room_routes.router)
+app.include_router(live_routes.router)
 
 
 @app.get("/api/video/feed")

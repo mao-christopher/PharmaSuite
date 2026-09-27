@@ -39,3 +39,44 @@ def test_overlap_or_occlusion_abstains():
     a, b = shelf("first", .1, .6), shelf("second", .3, .9)
     assert associate_wrist([pose(.4)] * 3, [a, b], "right", "release")[0] is None
     assert associate_wrist([pose(.25, confidence=.1)] * 4, [a], "right", "pickup")[0] is None
+
+
+def test_clip_window_needs_four_seconds_before_and_one_after():
+    from pharma.services.live_capture import buffer_complete
+
+    full = list(range(6000, 11001, 100))  # notification at 10 000 ms
+    assert buffer_complete(full, 10_000)
+    assert not buffer_complete(full[20:], 10_000)  # starts 2 s before
+    assert not buffer_complete(full[:-8], 10_000)  # ends before the post-roll
+    assert not buffer_complete(full[:10] + full[15:], 10_000)  # half-second gap
+
+
+def test_written_clip_keeps_every_frame(tmp_path):
+    import cv2
+    import numpy as np
+    from pharma.services.live_capture import write_clip
+
+    frames = [np.full((72, 128, 3), i * 20, np.uint8) for i in range(12)]
+    codec = write_clip(frames, 10.0, tmp_path / "video.mp4")
+    assert codec in ("avc1", "mp4v")
+    cap = cv2.VideoCapture(str(tmp_path / "video.mp4"))
+    assert int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) == len(frames)
+    cap.release()
+
+
+def test_only_a_live_pickup_still_in_hand_counts_as_held():
+    from pharma.db.models import MovementSession
+    from pharma.services.live_capture import held_movement, holds_bottle
+
+    held = MovementSession(session_id="live:a", medication_key="TEST", original_shelf_id="s", state="HELD")
+    uncertain = MovementSession(session_id="live:b", medication_key="UNKNOWN", original_shelf_id="UNKNOWN",
+                                state="NEEDS_CONFIRMATION", evidence={"awaiting": "pickup"})
+    released = uncertain.model_copy(update={"evidence": {"awaiting": "pickup", "pending_release": {}}})
+    assert holds_bottle(held) and holds_bottle(uncertain) and not holds_bottle(released)
+
+    def entry(movement, at, ignored=None):
+        return {"live": {"event_type": "pickup", "movement_id": movement, "ingested_at": at, "ignored": ignored}}
+
+    recordings = {"live-1": entry("a", 1), "live-2": entry("c", 2, ignored="pickup_while_holding")}
+    assert held_movement(recordings, {"live:a": held}) == "a"
+    assert held_movement(recordings, {"live:a": held.model_copy(update={"state": "AT_COUNTER"})}) is None

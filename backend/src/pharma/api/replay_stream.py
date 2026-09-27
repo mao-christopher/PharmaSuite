@@ -35,7 +35,7 @@ from pharma.services.recordings import (
 )
 from pharma.db.repository import StorageUnavailable, StateConflict, StateTooLarge
 from pharma.services.store import PharmacyStore, now_iso, session_key
-from pharma.services import region_projection, render_jobs, timeline
+from pharma.services import live_capture, region_projection, render_jobs, timeline
 from pharma.services.render_jobs import RenderQueue
 from pharma.services.room import registration_for_view
 
@@ -414,6 +414,8 @@ class ReplayController:
 
     def apply_recording(self, name: str) -> int:
         """Apply every remaining signal of a recording without playing it."""
+        if self.is_live_clip(name):
+            return 0  # applied once when the clip was uploaded; replays are review only
         if self.live_active():
             raise PermissionError("Stop live camera before applying a recording")
         rec = self.current if self.current and self.current.name == name else self.open_recording(name)
@@ -440,8 +442,8 @@ class ReplayController:
     def delete_recording(self, name: str) -> None:
         path = self.scenario_dir(name)
         meta = scenario_meta(path)
-        if meta.get("source") != "upload":
-            raise PermissionError("Only uploaded recordings can be deleted; bundled fixtures stay.")
+        if meta.get("source") not in ("upload", live_capture.LIVE_SOURCE):
+            raise PermissionError("Only uploaded and live recordings can be deleted; bundled fixtures stay.")
         if self.processing.get(name, {}).get("state") == "processing":
             raise PermissionError("Wait for skeleton extraction to finish before deleting.")
         if self.current and self.current.name == name:
@@ -463,8 +465,7 @@ class ReplayController:
         job = self.processing.get(path.name, {})
         events = load_jsonl(path / EVENTS_FILE)
         applied = self.store.applied_event_ids(path.name)
-        prefix = session_key(path.name, "")
-        alerts = [a for a in self.engine.alerts.values() if str(a.metadata.get("session_id", "")).startswith(prefix)]
+        alerts = self.recording_alerts(path.name)
         entry = self.store.recordings.get(path.name, {})
         cameras = [
             {
@@ -506,7 +507,20 @@ class ReplayController:
             "alerts_open": sum(1 for a in alerts if a.status == "open"),
             "in_player": self.current is not None and self.current.name == path.name,
             "render": self.render_summary(path),
+            "live": meta.get("live"),
         }
+
+    def recording_alerts(self, name: str) -> List[Any]:
+        """Alerts a recording's signals raised (live clips share a session scope, so match by recording too)."""
+        prefix = session_key(name, "")
+        return [a for a in self.engine.alerts.values()
+                if a.metadata.get("recording") == name or str(a.metadata.get("session_id", "")).startswith(prefix)]
+
+    def is_live_clip(self, name: str) -> bool:
+        try:
+            return scenario_meta(self.scenario_dir(name)).get("source") == live_capture.LIVE_SOURCE
+        except FileNotFoundError:
+            return False
 
     # ------------------------------------------------------------------ simulation renders
 
@@ -597,7 +611,8 @@ class ReplayController:
         ]
         # Uploads are assumed to have happened in the order they were uploaded.
         pending = 0
-        for n, item in enumerate(sorted((i for i in items if i["uploaded_at"]), key=upload_order), start=1):
+        uploads = (i for i in items if i["uploaded_at"] and i["source"] == "upload")
+        for n, item in enumerate(sorted(uploads, key=upload_order), start=1):
             item["upload_index"] = n
             item["earlier_pending"] = pending
             pending += item["events_applied"] < item["events_total"]
@@ -606,7 +621,8 @@ class ReplayController:
 
     def earlier_pending(self, name: str) -> List[Dict[str, Any]]:
         """Uploads before this one (oldest first) that still have signals to apply."""
-        ordered = sorted((r for r in self.list_recordings() if r["uploaded_at"]), key=upload_order)
+        ordered = sorted((r for r in self.list_recordings() if r["uploaded_at"] and r["source"] == "upload"),
+                         key=upload_order)
         names = [r["name"] for r in ordered]
         if name not in names:
             return []
@@ -616,13 +632,11 @@ class ReplayController:
         path = self.scenario_dir(name)
         summary = self.recording_summary(path)
         applied = self.store.applied_event_ids(name)
-        prefix = session_key(name, "")
         return {
             **summary,
             "events": [{**e, "processed": e["event_id"] in applied} for e in load_jsonl(path / EVENTS_FILE)],
             "activity": self.store.recordings.get(name, {}).get("activity", []),
-            "alerts": [a.model_dump() for a in self.engine.alerts.values()
-                       if str(a.metadata.get("session_id", "")).startswith(prefix)],
+            "alerts": [a.model_dump() for a in self.recording_alerts(name)],
         }
 
     def thumbnail_jpeg(self, name: str) -> bytes:
@@ -902,6 +916,8 @@ class ReplayController:
         return self.current.hands_at(media_time_ms) if self.current else []
 
     def _apply(self, rec: Recording, until_ms: float) -> int:
+        if rec.meta.get("source") == live_capture.LIVE_SOURCE:
+            return 0  # applied once on upload; playing a live clip is review only
         applied_ids = self.store.applied_event_ids(rec.name)
         pending = [e for e in rec.events if e["media_time_ms"] <= until_ms and e["event_id"] not in applied_ids]
         if not pending:
@@ -933,9 +949,15 @@ class ReplayController:
     def renew_live(self, capture_id: str) -> None:
         if self.live_active() and self.live_owner != capture_id:
             raise ValueError("Another browser tab owns live camera capture")
+        starting = not self.live_active()
         self.live_owner = capture_id
         self.live_until = time.monotonic() + 10
-        self.pause()
+        if starting and not self.reviewing_live_clip():
+            self.pause()
+
+    def reviewing_live_clip(self) -> bool:
+        """The player holds a live clip, which can play during live capture (it never applies)."""
+        return bool(self.current and self.current.meta.get("source") == live_capture.LIVE_SOURCE)
 
     def stop_live(self, capture_id: str) -> None:
         if self.live_owner == capture_id:
@@ -1077,7 +1099,7 @@ class ReplayController:
             "frame_size": list(self.frame_size()),
             "events": [{**e, "processed": e["event_id"] in applied} for e in (rec.events if rec else [])],
             "activity": self.activity,
-            "live_activity": self.store.recordings.get("live", {}).get("activity", [])[-30:],
+            "live": self.live_state(),
             "max_region_distance": self.engine.max_region_distance,
             "store": {"backend": "mongodb", "revision": self.store.revision,
                       "created_at": self.store.created_at, "history_count": len(self.store.history),
@@ -1112,6 +1134,41 @@ class ReplayController:
             "transactions": {k: v.model_dump() for k, v in self.engine.transactions.items()},
             "suggestions": self.suggestions(),
             "reorder_points": {m.medication_key: reorder_point(m, self.catalog) for m in self.catalog.medications},
+        }
+
+    def live_state(self, limit: int = 12) -> Dict[str, Any]:
+        """Recent live movements (pickup + put-down clips of one bottle), newest first."""
+        engine = self.engine
+        movements: Dict[str, Dict[str, Any]] = {}
+        for name, entry in live_capture.live_entries(self.store.recordings):
+            meta = entry["live"]
+            row = entry["activity"][0] if entry.get("activity") else {}
+            movement = movements.setdefault(meta["movement_id"], {
+                "movement_id": meta["movement_id"], "live_session_id": meta["live_session_id"],
+                "pickup": None, "release": None,
+            })
+            movement[meta["event_type"]] = {
+                "event_id": meta["event_id"],
+                "recording": name if meta["clip"] and (self.scenarios_dir / name).is_dir() else None,
+                "captured_at": meta["captured_at"],
+                "source": meta.get("source"),
+                "region_id": row.get("confirmed_region_id") or meta.get("region_id"),
+                "confirmed": bool(row.get("confirmed_region_id")),
+                "reason": meta.get("reason"),
+            }
+        recent = list(movements.values())[-limit:][::-1]
+        for movement in recent:
+            session = engine.sessions.get(session_key(live_capture.LIVE_SCOPE, movement["movement_id"]))
+            movement["state"] = session.state if session else None
+            movement["medication_key"] = session.medication_key if session else None
+            movement["original_shelf_id"] = session.original_shelf_id if session else None
+            alert = next((a for a in engine.alerts.values() if session and a.alert_type == "uncertainty"
+                          and a.status == "open" and a.metadata.get("session_id") == session.session_id), None)
+            movement["alert_id"] = alert.alert_id if alert else None
+        return {
+            "active": self.live_active(),
+            "held_movement_id": live_capture.held_movement(self.store.recordings, engine.sessions),
+            "movements": recent,
         }
 
     def suggestions(self) -> List[Dict[str, Any]]:
