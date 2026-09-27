@@ -63,10 +63,11 @@ async def stop_live_lease(req: LiveLeaseRequest, ctrl: ReplayController = Depend
 @router.post("/live/events")
 async def ingest_live_event(
     metadata: str = Form(...),
-    frames: List[UploadFile] = File(...),
+    frames: Optional[List[UploadFile]] = File(None),
     ctrl: ReplayController = Depends(get_controller),
 ):
     """Process one browser BLE notification with its preceding camera frames."""
+    frames = frames or []
     try:
         data = json.loads(metadata)
         event_id = str(uuid.UUID(data["event_id"]))
@@ -81,11 +82,11 @@ async def ingest_live_event(
         notification_epoch_ms = float(data["notification_epoch_ms"])
         if not re.fullmatch(r"[0-9A-Za-z_-]{2,32}", band_id) or wrist not in {"left", "right"}:
             raise ValueError("Invalid wristband identity or wrist")
-        if not 3 <= len(frames) <= 60 or len(times) != len(frames):
-            raise ValueError("Provide 3 to 60 timestamped camera frames")
+        if len(frames) > 60 or len(times) != len(frames):
+            raise ValueError("Provide at most 60 timestamped camera frames")
         if not all(math.isfinite(t) for t in times + [notification_ms, notification_epoch_ms]):
             raise ValueError("Camera timestamps must be finite")
-        if any(b <= a for a, b in zip(times, times[1:])) or times[-1] > notification_ms + 200:
+        if any(b <= a for a, b in zip(times, times[1:])) or (times and times[-1] > notification_ms + 200):
             raise ValueError("Camera timestamps must precede the notification")
         view = ctrl.view(layout_id)
         if view.calibration_version != calibration:
@@ -98,7 +99,9 @@ async def ingest_live_event(
         raise HTTPException(status_code=409, detail="Another browser tab owns live camera capture")
     if event_id in ctrl.store.applied_event_ids(recording):
         return {"status": "duplicate", "event_id": event_id,
-                "clip_url": f"/api/live/clips/{capture_id}/{event_id}"}
+                "clip_url": (f"/api/live/clips/{capture_id}/{event_id}" if
+                             (ctrl.scenarios_dir.parent / "live_clips" / capture_id / f"{event_id}.mp4").is_file()
+                             else None)}
     if ctrl.is_playing:
         ctrl.pause()
     images = []
@@ -110,37 +113,48 @@ async def ingest_live_event(
         if image is None:
             raise HTTPException(status_code=400, detail="Invalid camera frame")
         images.append(image)
-    height, width = images[0].shape[:2]
-    if any(image.shape[:2] != (height, width) for image in images):
-        raise HTTPException(status_code=400, detail="Camera frame dimensions changed")
-    clip_dir = ctrl.scenarios_dir.parent / "live_clips" / capture_id
-    clip_dir.mkdir(parents=True, exist_ok=True)
-    clip_path = clip_dir / f"{event_id}.mp4"
-    fps = min(30.0, max(1.0, (len(images) - 1) * 1000 / max(times[-1] - times[0], 1)))
-    writer = cv2.VideoWriter(str(clip_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
-    if not writer.isOpened():
-        raise HTTPException(status_code=503, detail="MP4 encoder unavailable")
-    try:
-        for image in images:
-            writer.write(image)
-    finally:
-        writer.release()
-    cv2.imwrite(str(clip_dir / f"{event_id}.jpg"), images[-1])
+    width, height = view.frame_width, view.frame_height
+    poses = []
+    clip_path = None
+    people_per_frame: List[int] = []
+    if images:
+        height, width = images[0].shape[:2]
+        if any(image.shape[:2] != (height, width) for image in images):
+            raise HTTPException(status_code=400, detail="Camera frame dimensions changed")
+        clip_dir = ctrl.scenarios_dir.parent / "live_clips" / capture_id
+        clip_dir.mkdir(parents=True, exist_ok=True)
+        clip_path = clip_dir / f"{event_id}.mp4"
+        fps = min(30.0, max(1.0, (len(images) - 1) * 1000 / max(times[-1] - times[0], 1)))
+        writer = cv2.VideoWriter(str(clip_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+        if not writer.isOpened():
+            raise HTTPException(status_code=503, detail="MP4 encoder unavailable")
+        try:
+            for image in images:
+                writer.write(image)
+        finally:
+            writer.release()
+        cv2.imwrite(str(clip_dir / f"{event_id}.jpg"), images[-1])
 
-    # Reuse the package's YOLO pose path. Any frame containing multiple detected
-    # people becomes uncertain instead of silently choosing another technician.
-    from pharma.pose import extract_video_keypoints
-    try:
-        poses = extract_video_keypoints(clip_path, len(images), require_single_person=True)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Pose extraction failed: {exc}") from exc
-    complete = (len(poses) == len(images) and times[0] <= notification_ms - 4800 and
+        # Reuse the package's YOLO pose path; a second visible person makes the
+        # event uncertain instead of silently selecting a different technician.
+        from pharma.pose import extract_video_keypoints
+        try:
+            poses = extract_video_keypoints(clip_path, len(images), require_single_person=True,
+                                            person_counts=people_per_frame)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Pose extraction failed: {exc}") from exc
+    complete = (len(images) >= 3 and len(poses) == len(images) and
+                times[0] <= notification_ms - 4800 and
                 notification_ms - times[-1] <= 300 and
                 all(b - a <= 300 for a, b in zip(times, times[1:])))
     region_id, evidence = associate_wrist(poses, view.regions, wrist, kind)
-    if abs(width / height - view.frame_width / view.frame_height) > .02:
+    if any(count > 1 for count in people_per_frame):
+        region_id, evidence["reason"] = None, "multiple_people"
+    if images and abs(width / height - view.frame_width / view.frame_height) > .02:
         region_id, evidence["reason"] = None, "camera_aspect_mismatch"
-    if not complete:
+    if not images:
+        region_id, evidence["reason"] = None, "no_camera_frames"
+    elif not complete:
         region_id, evidence["reason"] = None, "incomplete_five_second_buffer"
     region = next((r for r in view.regions if r.region_id == region_id), None)
     selected_hand = []
@@ -152,9 +166,10 @@ async def ingest_live_event(
                 break
     event = {"event_id": event_id, "event_type": kind, "session_id": "one_bottle",
              "sensor_id": band_id, "timestamp": notification_epoch_ms / 1000,
-             "media_time_ms": round(notification_ms - times[0]), "schema_version": "1.0",
+             "media_time_ms": round(notification_ms - times[0]) if times else 0, "schema_version": "1.0",
              "details": {"capture_id": capture_id, "notification_ms": notification_ms,
-                         "frame_times_ms": times, "clip": str(clip_path.relative_to(ctrl.scenarios_dir.parent)),
+                         "frame_times_ms": times,
+                         "clip": str(clip_path.relative_to(ctrl.scenarios_dir.parent)) if clip_path else None,
                          "association": evidence}}
     previous = ctrl.engine.sessions.get("live:one_bottle")
     blocked_sequence = ((kind == "pickup" and previous is not None and
@@ -171,7 +186,7 @@ async def ingest_live_event(
     return {"status": status,
             "event_id": event_id, "region_id": region_id if selected_hand else None,
             "activity": activity, "evidence": evidence,
-            "clip_url": f"/api/live/clips/{capture_id}/{event_id}"}
+            "clip_url": f"/api/live/clips/{capture_id}/{event_id}" if clip_path else None}
 
 
 @router.get("/live/clips/{capture_id}/{event_id}")

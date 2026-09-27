@@ -25,6 +25,8 @@ export default function LiveCamera() {
   const characteristic = useRef(null);
   const timer = useRef(null);
   const leaseTimer = useRef(null);
+  const reconnectTimer = useRef(null);
+  const mounted = useRef(true);
   const frames = useRef([]);
   const captureBusy = useRef(false);
   const uploadQueue = useRef(Promise.resolve());
@@ -145,9 +147,8 @@ export default function LiveCamera() {
     const notificationEpochMs = Date.now();
     try {
       const packet = parseBandPacket(event.target.value, connectedId.current);
-      if (!stream.current || !activeLayout.current) throw new Error('Start the camera and select a calibrated view first');
+      if (!activeLayout.current) throw new Error('Select a calibrated camera view first');
       const snapshot = frames.current.filter((frame) => frame.at >= notificationMs - 5000 && frame.at <= notificationMs);
-      if (snapshot.length < 3) throw new Error('Camera buffer has fewer than three frames');
       const eventId = crypto.randomUUID();
       const layout = activeLayout.current;
       const pending = { event_id: eventId, snapshot, metadata: {
@@ -168,10 +169,15 @@ export default function LiveCamera() {
   }
 
   async function connect(selected) {
+    clearTimeout(reconnectTimer.current);
     const previous = device.current;
     device.current = selected;
     if (previous && previous !== selected) previous.gatt?.disconnect();
     const server = await selected.gatt.connect();
+    if (!mounted.current || device.current !== selected) {
+      selected.gatt.disconnect();
+      return;
+    }
     const service = await server.getPrimaryService(SERVICE);
     const events = await service.getCharacteristic(EVENT);
     const bandId = selected.name?.match(/^Wristband-([A-Za-z0-9]{2})$/)?.[1];
@@ -185,28 +191,51 @@ export default function LiveCamera() {
     selected.addEventListener('gattserverdisconnected', () => {
       if (device.current !== selected) return;
       setBand('Disconnected; reconnecting…');
-      setTimeout(() => connect(selected).catch((err) => setMessage(`Reconnect failed: ${err.message}`)), 1500);
+      scheduleReconnect(selected);
     }, { once: true });
     setBand(`Connected: ${selected.name}`);
   }
 
+  function scheduleReconnect(selected) {
+    if (!mounted.current || device.current !== selected) return;
+    clearTimeout(reconnectTimer.current);
+    reconnectTimer.current = setTimeout(() => {
+      if (!mounted.current || device.current !== selected) return;
+      connect(selected).catch((err) => {
+        setBand(`Waiting for ${selected.name}`);
+        setMessage(`Reconnect pending: ${err.message}`);
+        scheduleReconnect(selected);
+      });
+    }, 2000);
+  }
+
   async function chooseBand() {
     if (!navigator.bluetooth) { setMessage('Web Bluetooth is unavailable. Use Chrome on localhost or HTTPS.'); return; }
+    let selected;
     try {
-      const selected = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'Wristband-' }], optionalServices: [SERVICE] });
+      selected = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'Wristband-' }], optionalServices: [SERVICE] });
       await connect(selected);
-    } catch (err) { setMessage(`Wristband connection failed: ${err.message}`); }
+    } catch (err) {
+      setMessage(`Wristband connection failed: ${err.message}`);
+      if (selected) scheduleReconnect(selected);
+    }
   }
 
   useEffect(() => {
+    mounted.current = true;
     retryPending().catch((err) => setMessage(`Could not restore pending events: ${err.message}`));
     if (navigator.bluetooth?.getDevices) navigator.bluetooth.getDevices().then((devices) => {
       const previous = devices.find((item) => /^Wristband-[A-Za-z0-9]{2}$/.test(item.name || ''));
-      if (previous) connect(previous).catch(() => setBand('Previously authorized band is offline'));
+      if (previous) connect(previous).catch(() => {
+        setBand('Previously authorized band is offline');
+        scheduleReconnect(previous);
+      });
     }).catch(() => {});
     return () => {
+      mounted.current = false;
       clearInterval(timer.current);
       clearInterval(leaseTimer.current);
+      clearTimeout(reconnectTimer.current);
       stream.current?.getTracks().forEach((track) => track.stop());
       if (stream.current) leaseRequest('DELETE', true).catch(() => {});
       const lease = JSON.parse(localStorage.getItem(LEASE_KEY) || 'null');
@@ -242,7 +271,7 @@ export default function LiveCamera() {
           <td>{action.event_type === 'pickup' ? 'Pickup' : 'Put-down'}</td>
           <td>{action.confirmed_region_id || action.nearest_region_id || 'Uncertain'}</td>
           <td>{action.state} {alert && <button type="button" className="btn btn-sm btn-primary" onClick={() => openConfirm(alert.alert_id)}>Confirm location</button>}</td>
-          <td><a href={`/api/live/clips/${detail.capture_id}/${action.event_id}`} target="_blank" rel="noreferrer"><img className="live-thumb" src={`/api/live/clips/${detail.capture_id}/${action.event_id}/thumbnail`} alt="Action camera snapshot" />View five-second clip</a></td>
+          <td>{detail.clip ? <a href={`/api/live/clips/${detail.capture_id}/${action.event_id}`} target="_blank" rel="noreferrer"><img className="live-thumb" src={`/api/live/clips/${detail.capture_id}/${action.event_id}/thumbnail`} alt="Action camera snapshot" />View five-second clip</a> : 'No camera frames'}</td>
         </tr>;
       })}
     </tbody></table></div>}
