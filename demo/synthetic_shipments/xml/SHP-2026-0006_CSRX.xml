@@ -1,0 +1,88 @@
+<?xml version="1.0" ?>
+<AdvanceShipNotice xmlns="urn:synthetic:cascade-rx:asn:1.2" version="1.2">
+  <Header>
+    <ASNNumber>ASN34254465</ASNNumber>
+    <InvoiceNumber>CSRX-INV-2210106</InvoiceNumber>
+    <PurchaseOrder>PO-RCP-0142-26132</PurchaseOrder>
+    <ShipDateTime>2026-09-16T07:30-07:00</ShipDateTime>
+    <DeliveredDateTime>2026-09-19T11:30-07:00</DeliveredDateTime>
+    <Carrier>Courier - LifeLine Medical</Carrier>
+    <TrackingNumber>LL-578563</TrackingNumber>
+    <Cartons>2</Cartons>
+    <Supplier dea="RC0000907">Cascade Rx Wholesale LLC</Supplier>
+    <ShipTo store="RCP-0142" dea="FR0000142">Riverside Community Pharmacy (SYNTHETIC)</ShipTo>
+  </Header>
+  <Items>
+    <Item line="1" status="SHIPPED">
+      <NDC>95195-1601-15</NDC>
+      <Product form="tablets">
+        <Name>Ibuprofen</Name>
+        <Strength>200mg</Strength>
+        <Manufacturer>Brightwater Pharma</Manufacturer>
+      </Product>
+      <Lot expires="2028-09-30">BR83H3455</Lot>
+      <Quantity>
+        <BottlesOrdered>5</BottlesOrdered>
+        <BottlesShipped>5</BottlesShipped>
+        <BottlesDamaged>0</BottlesDamaged>
+        <UnitsPerBottle uom="tablets">500</UnitsPerBottle>
+        <TotalUnits>2500</TotalUnits>
+      </Quantity>
+      <Pricing currency="USD">
+        <PerBottle>20.19</PerBottle>
+        <Extended>100.95</Extended>
+      </Pricing>
+    </Item>
+    <Item line="2" status="SHIPPED">
+      <NDC>93478-4682-03</NDC>
+      <Product form="capsules">
+        <Name>Amoxicillin</Name>
+        <Strength>500mg</Strength>
+        <Manufacturer>Orchid Generics</Manufacturer>
+      </Product>
+      <Lot expires="2029-03-31">OR51V3008</Lot>
+      <Quantity>
+        <BottlesOrdered>8</BottlesOrdered>
+        <BottlesShipped>8</BottlesShipped>
+        <BottlesDamaged>0</BottlesDamaged>
+        <UnitsPerBottle uom="capsules">100</UnitsPerBottle>
+        <TotalUnits>800</TotalUnits>
+      </Quantity>
+      <Pricing currency="USD">
+        <PerBottle>9.57</PerBottle>
+        <Extended>76.56</Extended>
+      </Pricing>
+    </Item>
+    <Item line="3" status="SHIPPED">
+      <NDC>91260-4363-30</NDC>
+      <Product form="tablets">
+        <Name>Metformin HCl</Name>
+        <Strength>500mg</Strength>
+        <Manufacturer>Keystone Therapeutics</Manufacturer>
+      </Product>
+      <Lot expires="2028-01-31">KE97I5666</Lot>
+      <Quantity>
+        <BottlesOrdered>5</BottlesOrdered>
+        <BottlesShipped>5</BottlesShipped>
+        <BottlesDamaged>0</BottlesDamaged>
+        <UnitsPerBottle uom="tablets">1000</UnitsPerBottle>
+        <TotalUnits>5000</TotalUnits>
+      </Quantity>
+      <Pricing currency="USD">
+        <PerBottle>38.81</PerBottle>
+        <Extended>194.05</Extended>
+      </Pricing>
+    </Item>
+  </Items>
+  <Summary>
+    <LineCount>3</LineCount>
+    <BottlesOrdered>18</BottlesOrdered>
+    <BottlesShipped>18</BottlesShipped>
+    <BottlesAccepted>18</BottlesAccepted>
+    <UnitsShipped>8300</UnitsShipped>
+    <UnitsAccepted>8300</UnitsAccepted>
+    <Subtotal>371.56</Subtotal>
+    <Freight>0.0</Freight>
+    <TotalDue>371.56</TotalDue>
+  </Summary>
+</AdvanceShipNotice>

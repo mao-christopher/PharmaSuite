@@ -1,0 +1,89 @@
+<?xml version="1.0" ?>
+<AdvanceShipNotice xmlns="urn:synthetic:cascade-rx:asn:1.2" version="1.2">
+  <Header>
+    <ASNNumber>ASN95917413</ASNNumber>
+    <InvoiceNumber>CSRX-INV-2926196</InvoiceNumber>
+    <PurchaseOrder>PO-RCP-0142-26104</PurchaseOrder>
+    <ShipDateTime>2026-09-04T06:42-07:00</ShipDateTime>
+    <DeliveredDateTime>2026-09-05T10:42-07:00</DeliveredDateTime>
+    <Carrier>UPS Ground</Carrier>
+    <TrackingNumber>1ZUYULRRETB6WPV84P</TrackingNumber>
+    <Cartons>2</Cartons>
+    <Supplier dea="RC0000907">Cascade Rx Wholesale LLC</Supplier>
+    <ShipTo store="RCP-0142" dea="FR0000142">Riverside Community Pharmacy (SYNTHETIC)</ShipTo>
+  </Header>
+  <Items>
+    <Item line="1" status="SHIPPED">
+      <NDC>98581-6821-15</NDC>
+      <Product form="capsules">
+        <Name>Amoxicillin</Name>
+        <Strength>500mg</Strength>
+        <Manufacturer>Orchid Generics</Manufacturer>
+      </Product>
+      <Lot expires="2026-10-31">OR12Q4292</Lot>
+      <Quantity>
+        <BottlesOrdered>2</BottlesOrdered>
+        <BottlesShipped>2</BottlesShipped>
+        <BottlesDamaged>0</BottlesDamaged>
+        <UnitsPerBottle uom="capsules">500</UnitsPerBottle>
+        <TotalUnits>1000</TotalUnits>
+      </Quantity>
+      <Pricing currency="USD">
+        <PerBottle>34.93</PerBottle>
+        <Extended>69.86</Extended>
+      </Pricing>
+      <Note>SHORT-DATED: expires within 90 days of receipt</Note>
+    </Item>
+    <Item line="2" status="SHIPPED">
+      <NDC>94526-8312-90</NDC>
+      <Product form="tablets">
+        <Name>Amlodipine Besylate</Name>
+        <Strength>5mg</Strength>
+        <Manufacturer>Keystone Therapeutics</Manufacturer>
+      </Product>
+      <Lot expires="2028-02-29">KE54S3474</Lot>
+      <Quantity>
+        <BottlesOrdered>12</BottlesOrdered>
+        <BottlesShipped>12</BottlesShipped>
+        <BottlesDamaged>0</BottlesDamaged>
+        <UnitsPerBottle uom="tablets">90</UnitsPerBottle>
+        <TotalUnits>1080</TotalUnits>
+      </Quantity>
+      <Pricing currency="USD">
+        <PerBottle>14.17</PerBottle>
+        <Extended>170.04</Extended>
+      </Pricing>
+    </Item>
+    <Item line="3" status="SHIPPED">
+      <NDC>96290-8813-03</NDC>
+      <Product form="tablets">
+        <Name>Ibuprofen</Name>
+        <Strength>200mg</Strength>
+        <Manufacturer>Orchid Generics</Manufacturer>
+      </Product>
+      <Lot expires="2028-11-30">OR19P1207</Lot>
+      <Quantity>
+        <BottlesOrdered>3</BottlesOrdered>
+        <BottlesShipped>3</BottlesShipped>
+        <BottlesDamaged>0</BottlesDamaged>
+        <UnitsPerBottle uom="tablets">100</UnitsPerBottle>
+        <TotalUnits>300</TotalUnits>
+      </Quantity>
+      <Pricing currency="USD">
+        <PerBottle>4.69</PerBottle>
+        <Extended>14.07</Extended>
+      </Pricing>
+    </Item>
+  </Items>
+  <Summary>
+    <LineCount>3</LineCount>
+    <BottlesOrdered>17</BottlesOrdered>
+    <BottlesShipped>17</BottlesShipped>
+    <BottlesAccepted>17</BottlesAccepted>
+    <UnitsShipped>2380</UnitsShipped>
+    <UnitsAccepted>2380</UnitsAccepted>
+    <Subtotal>253.97</Subtotal>
+    <Freight>0.0</Freight>
+    <TotalDue>253.97</TotalDue>
+  </Summary>
+</AdvanceShipNotice>

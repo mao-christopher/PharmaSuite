@@ -142,6 +142,7 @@ data/processed/
 data/external/
 data/interim/
 *.csv
+!demo/synthetic_shipments/**/*.csv
 *.tsv
 *.parquet
 *.feather
