@@ -505,6 +505,11 @@ first automatic rule requires three consecutive frames inside exactly one eligib
 region; overlap, competing regions, missing pose, or incomplete capture requires
 employee confirmation. MongoDB event IDs protect against upload retry. A short
 browser lease pauses recorded-video replay while the live camera is active.
+If a queued event arrives after its camera calibration changes, the API keeps its
+raw notification and clip but marks the location uncertain; it does not reinterpret
+old footage using the new region geometry. A Docker regression test verifies that
+the event survives, does not change stock, and deduplicates on retry. The full
+backend suite passed 123 tests in Docker after this change.
 
 This provisional rule has not been validated against a physical band and camera.
 Firmware notifications have no action timestamp or sequence number, so a captured

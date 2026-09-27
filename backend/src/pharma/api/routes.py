@@ -89,8 +89,7 @@ async def ingest_live_event(
         if any(b <= a for a, b in zip(times, times[1:])) or (times and times[-1] > notification_ms + 200):
             raise ValueError("Camera timestamps must precede the notification")
         view = ctrl.view(layout_id)
-        if view.calibration_version != calibration:
-            raise ValueError("Camera calibration changed; review this event")
+        calibration_changed = view.calibration_version != calibration
     except (KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -138,11 +137,12 @@ async def ingest_live_event(
         # Reuse the package's YOLO pose path; a second visible person makes the
         # event uncertain instead of silently selecting a different technician.
         from pharma.pose import extract_video_keypoints
-        try:
-            poses = extract_video_keypoints(clip_path, len(images), require_single_person=True,
-                                            person_counts=people_per_frame)
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Pose extraction failed: {exc}") from exc
+        if not calibration_changed:
+            try:
+                poses = extract_video_keypoints(clip_path, len(images), require_single_person=True,
+                                                person_counts=people_per_frame)
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail=f"Pose extraction failed: {exc}") from exc
     complete = (len(images) >= 3 and len(poses) == len(images) and
                 times[0] <= notification_ms - 4800 and
                 notification_ms - times[-1] <= 300 and
@@ -156,6 +156,10 @@ async def ingest_live_event(
         region_id, evidence["reason"] = None, "no_camera_frames"
     elif not complete:
         region_id, evidence["reason"] = None, "incomplete_five_second_buffer"
+    if calibration_changed:
+        region_id, evidence["reason"] = None, "calibration_changed"
+        evidence["event_calibration_version"] = calibration
+        evidence["current_calibration_version"] = view.calibration_version
     region = next((r for r in view.regions if r.region_id == region_id), None)
     selected_hand = []
     if region:
