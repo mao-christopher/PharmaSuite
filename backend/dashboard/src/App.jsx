@@ -11,6 +11,7 @@ import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
 import Shipments from './pages/Shipments';
+import Demo from './pages/Demo';
 
 const Room = React.lazy(() => import('./pages/Room')); // three.js loads only on this page
 
@@ -58,6 +59,7 @@ function Shell() {
             <NavLink to="/inventory">Inventory</NavLink>
             <NavLink to="/shipments">Shipments</NavLink>
             <NavLink to="/room">Room</NavLink>
+            <NavLink to="/demo">Demo setup</NavLink>
           </nav>
           <div className="topbar-right">
             <JobsIndicator />
@@ -102,6 +104,7 @@ function Shell() {
             <Route path="/recordings" element={<Recordings />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/shipments" element={<Shipments />} />
+            <Route path="/demo" element={<Demo />} />
             <Route path="/setup" element={<Navigate to="/room" replace />} />
             <Route
               path="/room"

@@ -1,0 +1,17 @@
+.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.env
+**/Library
+**/Temp
+**/Logs
+**/Obj
+**/Exports
+**/restored-data
+**/dist
+persistent
+wristband
+*.pt
+*.jpg

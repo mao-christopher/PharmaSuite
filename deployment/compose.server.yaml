@@ -1,0 +1,33 @@
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, 'db.adminCommand({ping:1}).ok']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:8000:8000
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB_NAME: pharma
+      PHARMACY_ID: server-demo
+      DATA_DIR: /data/workspace
+      SIMULATION_DIR: /app/simulation
+      POSE_IMGSZ: '960'
+    volumes:
+      - ./persistent:/data
+      - /opt/server-workspace.zip:/restore/workspace.zip:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+volumes:
+  mongo-data:

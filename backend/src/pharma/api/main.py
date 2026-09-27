@@ -118,6 +118,8 @@ app.include_router(shipment_routes.router)
 app.include_router(routes.router)
 app.include_router(room_routes.router)
 app.include_router(live_routes.router)
+from pharma.api import demo_routes
+app.include_router(demo_routes.router)
 
 
 @app.get("/api/video/feed")
@@ -159,6 +161,7 @@ if dashboard_dist.exists():
 @app.get("/setup", response_class=HTMLResponse)
 @app.get("/live", response_class=HTMLResponse)
 @app.get("/room", response_class=HTMLResponse)
+@app.get("/demo", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 def root_dashboard():
     """Root landing page linking to API docs and Dashboard."""

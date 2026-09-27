@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { errorMessage } from './api';
+import { newId } from './uuid';
 import { useLive } from './live';
 import { BandLink } from './bandLink';
 import { listPending, removePending, savePending } from './pendingEvents';
@@ -91,7 +92,7 @@ export function LiveCaptureProvider({ children }) {
   const queued = useRef(new Set());
   const inflight = useRef(0);
   const lastDevCode = useRef(null);
-  const captureId = useRef(crypto.randomUUID());
+  const captureId = useRef(newId());
   const liveSessionId = useRef(null);
   const bandLink = useRef(null);
   const mounted = useRef(true);
@@ -215,7 +216,7 @@ export function LiveCaptureProvider({ children }) {
       setActiveDeviceId(used);
       if (used) updatePrefs({ deviceId: used });
       refreshDevices().catch(() => {});
-      liveSessionId.current = crypto.randomUUID();
+      liveSessionId.current = newId();
       setVideoSize([video.videoWidth, video.videoHeight]);
       setStream(media);
       setCamera('on');
@@ -342,7 +343,7 @@ export function LiveCaptureProvider({ children }) {
       say('Choose a camera view before handling bottles.', 'red');
       return;
     }
-    const eventId = crypto.randomUUID();
+    const eventId = newId();
     inflight.current += 1;
     setAnalyzing(inflight.current);
     setLastEventAt(Date.now());

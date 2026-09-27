@@ -1,5 +1,21 @@
 # Pharmacy inventory demo plan
 
+## Linux demo deployment — 2026-09-27
+
+The demo server now has a guided `/demo` page for the supplied September 27 GLB
+and IMG_3537 recording. Python-assisted frame review annotated six stock-bottle
+actions, with approximate ±250 ms timing; provenance is retained on the events.
+These annotations are not wristband measurements or a validated recognition model.
+The server completed pose extraction. Shelf regions and camera registration remain
+user setup tasks; no invented shelf identities were applied to inventory.
+
+The HTTP deployment exposed a startup failure from secure-context-only
+`crypto.randomUUID`. Event IDs now fall back to Web Crypto random bytes while
+preserving UUID v4 format. API regression/setup tests: 28 passed; UUID fallback
+test and production frontend build passed. Linux Unity 6000.6.3f1 was installed,
+but its launch returned exit 198 (no valid Editor license). Existing simulation
+playback works; fresh server rendering is not claimed complete until activation.
+
 ## Status and objective
 
 The agreed product requirements below remain the implementation baseline.

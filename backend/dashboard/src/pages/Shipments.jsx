@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { newId } from '../lib/uuid';
 import { Link } from 'react-router-dom';
 import { useLive } from '../lib/live';
 import { request, errorMessage } from '../lib/api';
@@ -79,7 +80,7 @@ export default function Shipments() {
         <td>{r.lot}<div className="row-sub">{r.expiry}</div></td><td>{r.accepted}</td><td>{s.status === 'imported' ? 'Not received' : r.staged}</td><td>{r.correct}</td><td>{r.unresolved}</td><td>{r.short} / {r.disposed || 0}</td>
         <td>{s.status === 'stocking' && r.staged > 0 && <div className="shipment-controls">
           <button className="btn btn-sm" disabled={busy || state.is_playing || !nextPickup || s.stocking.recording !== state.scenario || s.report.lines.some((l) => l.unresolved > 0)} onClick={() => run(() => post(s.id, 'select', { line_id: r.line_id, event_id: nextPickup.event_id }))}>Select for next pickup</button>
-          <button className="btn btn-sm" disabled={busy || state.is_playing} onClick={() => setShortage({ shipment: s.id, line_id: r.line_id, max: r.staged, quantity: 1, reason: '', operation_id: crypto.randomUUID() })}>Document shortage</button>
+          <button className="btn btn-sm" disabled={busy || state.is_playing} onClick={() => setShortage({ shipment: s.id, line_id: r.line_id, max: r.staged, quantity: 1, reason: '', operation_id: newId() })}>Document shortage</button>
         </div>}</td>
       </tr>)}</tbody></table></div>
       {s.report.lines.some((r) => r.unresolved > 0) && <p className="text-amber">A bottle is held, misplaced, at the counter, or awaiting confirmation. Resolve it before selecting another bottle.</p>}
