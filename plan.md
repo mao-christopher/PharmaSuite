@@ -1062,9 +1062,12 @@ Agreed behavior:
 - **Sources.** One camera at a time, chosen in the browser: the Mac webcam or an iPhone
   through Continuity Camera (it appears as an ordinary camera in Chrome). Capture stays
   in Chrome (`getUserMedia` + Web Bluetooth); the band firmware is unchanged.
-- **Privacy.** The feed lives only in browser memory (a rolling ~5.5 s JPEG buffer at
-  10 fps). Only the window from 4 s before to 1 s after each band notification is
-  uploaded and kept. Nothing is recorded between events, and no skeleton runs on the
+- **Privacy.** The feed lives only in browser memory (a rolling ~10.5 s JPEG buffer at
+  10 fps). Only the window from 9 s before to 1 s after each band notification is
+  uploaded and kept. The window was first 4 s + 1 s, but the band's notification arrives
+  roughly 4–5 s after the physical action (user report, 2026-09-27, not measured), so the
+  old window started around the action itself and missed the reach. The thumbnail uses
+  the frame 4.5 s before the notification; the region decision still scans the whole clip. Nothing is recorded between events, and no skeleton runs on the
   continuous feed. Clips are kept until someone deletes them.
 - **Analysis.** Each event clip becomes a first-class recording (`scenarios/live-<event_id>`)
   with an H.264 MP4, a thumbnail, YOLO poses from its pixels, one IMU event and its
@@ -1093,7 +1096,10 @@ Agreed behavior:
   view's regions drawn over it) and the player. "Live movements" pairs each pickup with
   its put-down, and Recordings groups clips by live session.
 - **Latency.** The target is 5–10 s from notification to dashboard update: 1 s post-roll,
-  upload, pose on about 50 frames, then the store write. Pose runs outside the inventory
+  upload, encoding (1.1 s measured) and pose on about 100 frames (6.8–7.7 s measured on
+  this Mac at 960 px, 101 frames from real footage), then the store write. That puts the
+  update at about 10 s after the notification, or 14–15 s after the physical action.
+  `POSE_IMGSZ=640` or posing every other frame would be faster; neither is chosen yet. Pose runs outside the inventory
   lock so the replay clock doesn't stall.
 - **Dev mode.** `?dev=1` (remembered for the tab) makes Space send a pickup, then a
   put-down, through the same upload path as the band, marked `source: dev`.
@@ -1126,3 +1132,7 @@ Deferred:
   uses one camera.
 - Adapting PR 8's stocking flow to live events.
 - A timeout or manual "put down" for a band that misses a put-down.
+- Limiting the region decision to the frames around the expected action time. The rule
+  scans the whole 10 s clip, so a sustained wrist in a second eligible region (for
+  example the counter soon after a shelf pickup) makes the event uncertain rather than
+  wrong. Narrowing it needs a measured band latency.

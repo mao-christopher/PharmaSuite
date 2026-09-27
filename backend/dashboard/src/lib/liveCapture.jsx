@@ -15,7 +15,7 @@ import LiveSetupDialog from '../components/LiveSetupDialog';
 const SERVICE = 'c47c5b10-9c49-4b73-9af1-3c0bcabdf001';
 const EVENT = 'c47c5b11-9c49-4b73-9af1-3c0bcabdf001';
 // Must match backend/src/pharma/services/live_capture.py.
-export const PRE_ROLL_MS = 4000;
+export const PRE_ROLL_MS = 9000; // the band notifies ~4-5 s after the action
 export const POST_ROLL_MS = 1000;
 const FRAME_INTERVAL_MS = 100;
 const BUFFER_MS = PRE_ROLL_MS + POST_ROLL_MS + 500;

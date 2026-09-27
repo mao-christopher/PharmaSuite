@@ -41,12 +41,12 @@ def test_overlap_or_occlusion_abstains():
     assert associate_wrist([pose(.25, confidence=.1)] * 4, [a], "right", "pickup")[0] is None
 
 
-def test_clip_window_needs_four_seconds_before_and_one_after():
+def test_clip_window_needs_nine_seconds_before_and_one_after():
     from pharma.services.live_capture import buffer_complete
 
-    full = list(range(6000, 11001, 100))  # notification at 10 000 ms
+    full = list(range(1000, 11001, 100))  # notification at 10 000 ms
     assert buffer_complete(full, 10_000)
-    assert not buffer_complete(full[20:], 10_000)  # starts 2 s before
+    assert not buffer_complete(full[50:], 10_000)  # starts 4 s before, as the old window did
     assert not buffer_complete(full[:-8], 10_000)  # ends before the post-roll
     assert not buffer_complete(full[:10] + full[15:], 10_000)  # half-second gap
 

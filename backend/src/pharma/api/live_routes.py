@@ -202,8 +202,9 @@ def analyse(event: LiveEvent, raw_frames: List[bytes], view: Layout, staging: Pa
         staging.mkdir(parents=True, exist_ok=True)
         fps = live.clip_fps(times)
         codec = live.write_clip(images, fps, staging / "video.mp4")
-        # The thumbnail is the frame at the notification, like any recording's.
-        at = min(range(len(times)), key=lambda i: abs(times[i] - event.notification_ms))
+        # The thumbnail shows the estimated moment of the action, which precedes the notification.
+        action_ms = event.notification_ms - live.BAND_LATENCY_MS
+        at = min(range(len(times)), key=lambda i: abs(times[i] - action_ms))
         live.write_thumbnail(images[at], staging / "thumb.jpg")
         cfg = Settings()
         if calibration_changed:

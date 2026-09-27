@@ -58,7 +58,7 @@ another backend, set `API_URL`, e.g. `API_URL=http://127.0.0.1:8001 npm run dev`
 
 Live capture: open the dashboard in Chrome and select **Go live**. Pick the Mac webcam or
 an iPhone (Continuity Camera), its registered view and wrist, then connect the wristband.
-Only the 5 s around each band event are saved; each clip is analyzed and applied to
+Only the 10 s around each band event are saved (9 s before, since the band notifies late); each clip is analyzed and applied to
 inventory once. Add `?dev=1` to the URL to trigger pickups and put-downs with Space and
 no band. Clips are encoded with OpenCV, so ffmpeg is not needed.
 

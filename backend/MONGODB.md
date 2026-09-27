@@ -8,7 +8,7 @@ Continuity Camera), its registered view and the wearing wrist, then connect the
 `Wristband-XX` device from Chrome's Bluetooth picker. Chrome requires a user gesture
 for first-time device authorization; later visits try to reconnect to an authorized
 band. The firmware sends only `P` and `D` notifications. Each notification uploads
-the 4 s before and 1 s after it. The clip becomes a recording (`live-<event_id>`),
+the 9 s before and 1 s after it (the band notifies about 4–5 s after the action). The clip becomes a recording (`live-<event_id>`),
 its pose is extracted, and stock updates once when the selected wrist stays inside
 exactly one region. Other cases wait for employee confirmation. A pickup and the next
 put-down count as one bottle; out-of-sequence notifications are stored as ignored,

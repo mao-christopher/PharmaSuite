@@ -19,7 +19,7 @@ AMOX = "AMOXICILLIN_500MG"
 AMOX_SHELF = "shelf_amoxicillin_500mg"
 COUNTER = "counter_dispensing_01"
 NOTIFY_MS = 10_000
-# 4 s before to 1 s after the notification at 10 fps.
+# 9 s before to 1 s after the notification at 10 fps.
 WINDOW = list(range(NOTIFY_MS - live_capture.PRE_ROLL_MS, NOTIFY_MS + live_capture.POST_ROLL_MS + 1, 100))
 
 

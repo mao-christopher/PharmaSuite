@@ -26,15 +26,20 @@ from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, point_in_polygon
 WRIST_INDEX = {"left": 9, "right": 10}
 MIN_RUN = 3
 
-# Clip window around a band notification (decided 2026-09-26; not tuned on hardware).
-PRE_ROLL_MS = 4000
+# Clip window around a band notification (not tuned on hardware). The band's
+# notification arrives roughly 4-5 s after the physical pickup or put-down (reported
+# 2026-09-27, not measured), so most of the window lies before the notification.
+PRE_ROLL_MS = 9000
 POST_ROLL_MS = 1000
+# Estimated delay from the physical action to the notification, used only to pick the
+# thumbnail frame. The region decision still scans the whole clip.
+BAND_LATENCY_MS = 4500
 # A buffer counts as complete when it reaches within this much of each window edge
 # and no two frames are further apart than MAX_FRAME_GAP_MS.
 EDGE_TOLERANCE_MS = 300
 MAX_FRAME_GAP_MS = 300
 MIN_FRAMES = 3
-MAX_FRAMES = 80
+MAX_FRAMES = 130  # 10 s at the browser's 10 fps, with room for timing jitter
 
 LIVE_SCOPE = "live"  # movement sessions shared by every live clip: live:<pickup event ID>
 LIVE_SOURCE = "live"  # scenario.json source of a live clip recording
