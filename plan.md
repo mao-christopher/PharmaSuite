@@ -1049,3 +1049,28 @@ never becomes a collider.
 | M7 Unity scene from rebuilt room | N4, M6 | S–M |
 | M8 re-enactment player | M5–M7 | L |
 | M9 render job and button | M8 | M |
+
+## Shipment intake and stocking sessions — 2026-09-27
+
+Implemented on `feature/shipment-stocking`; see [backend/SHIPMENTS.md](backend/SHIPMENTS.md).
+
+- Dashboard review/import for the eight synthetic deliveries: canonical JSON,
+  supplier JSON, CSV, XML, and the documented synthetic EDI profile. PDFs are reference
+  documents, not automatically parsed. Supplier/invoice deduplication also works
+  across document formats; conflicting contents require reconciliation.
+- Starting a shipment creates lot/expiry receipts and staged off-shelf stock.
+  Import alone changes no stock; starting and finishing cannot double-receive it.
+- Employee-selected incoming line/lot binds to the next replay pickup. CV determines
+  release location through existing confidence, correction, counter, and disposal
+  rules. No medication/region answers are embedded in sensor signals.
+- Persistent per-line stocking reconciliation, documented shortages, and immutable
+  completion reports. Missing/unresolved placements block completion; short or
+  disposed stock finishes with visible discrepancies. One active shipment and bottle.
+- Mongo persistence includes shipments and staging, with revision checks and existing
+  rollback/deduplication semantics. Setup/recording changes are blocked while stocking.
+- Not included: automatic shelf optimization, arbitrary supplier/PDF intake, an Atlas
+  deployment, or the unmerged live wristband adapter. Real-world CV accuracy is not
+  established by these workflow tests.
+- Validation: 266 backend/simulation tests pass with real local MongoDB, including
+  22 shipment-specific cases; dashboard production build passes. All eight imported
+  shipments were inspected in an isolated browser preview. No new Unity run needed.

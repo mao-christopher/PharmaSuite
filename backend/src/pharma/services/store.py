@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from pharma.db.models import Catalog, MovementSession, PrescriptionTransaction, Region, shelf_region_id
 from pharma.services.inventory_engine import MIN_KEYPOINT_CONF, Hand, InventoryEngine
 from pharma.services.layout import build_initial_state
+from pharma.services import stocking
 from pharma.db.repository import MongoStateRepository, StateConflict, StorageUnavailable
 
 STORE_VERSION = 1
@@ -251,6 +252,9 @@ class PharmacyStore:
         entry = self.recording_entry(recording)
         if event["event_id"] in entry["applied_event_ids"]:
             return None
+        problem = stocking.blocked_reason(self.engine, recording, event)
+        if problem:
+            raise ValueError(problem)
         entry["applied_event_ids"].append(event["event_id"])
         entry.setdefault("first_applied_at", now_iso())
         # Where the bottles stood before this recording's first signal (for the re-enactment).
@@ -270,7 +274,9 @@ class PharmacyStore:
         before = set(engine.alerts)
         sid = session_key(recording, event["session_id"])
         if event["event_type"] == "pickup":
-            session = engine.handle_pickup(sid, hands, event.get("timestamp", 0.0))
+            session = stocking.pickup(engine, recording, event, sid, hands)
+            if session is None:
+                session = engine.handle_pickup(sid, hands, event.get("timestamp", 0.0))
         else:
             session = engine.handle_release(sid, hands, event.get("timestamp", 0.0))
         for alert_id in set(engine.alerts) - before:

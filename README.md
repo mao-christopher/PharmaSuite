@@ -128,3 +128,7 @@ are packaged as a private GitHub release asset. Follow
 [the restore guide](backend/WORKSPACE_RESTORE.md) to reopen the same recording and
 player position without rerunning Unity or YOLO. This is a snapshot, not automatic
 synchronization between computers.
+
+Shipment files can be reviewed and imported from the dashboard **Shipments** page.
+See [shipment intake and stocking sessions](backend/SHIPMENTS.md) for supported
+formats, staged inventory, CV placements, and reconciliation.

@@ -67,7 +67,8 @@ export function bottleCounts(layout, inv) {
     misplaced,
     held: inv.held_bottles,
     atCounter: inv.counter_bottles,
-    offShelf: inv.held_bottles + inv.counter_bottles,
+    staged: inv.staged_bottles || 0,
+    offShelf: inv.held_bottles + inv.counter_bottles + (inv.staged_bottles || 0),
     total: inv.total_bottles,
   };
 }

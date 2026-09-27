@@ -21,6 +21,11 @@ import { Badge, Card, ConfirmDialog, Empty, Metric, Metrics, PageHeader } from '
 import StockEditor from '../components/StockEditor';
 
 const HISTORY_KINDS = {
+  shipment_import: 'Shipment import',
+  stocking_started: 'Stocking started',
+  stocking_selected: 'Incoming bottle identified',
+  stocking_finished: 'Shipment reconciled',
+  shipment_shortage: 'Shipment shortage',
   signal: 'Signal',
   receive_stock: 'Received',
   disposal: 'Disposal',
@@ -254,7 +259,7 @@ export default function Inventory() {
         <Metric label="Medications" value={meds.length} />
         <Metric label="Bottles in pharmacy" value={formatNumber(totals.bottles)} hint="Undisposed, any location" />
         <Metric label="On shelves" value={formatNumber(totals.onShelf)} hint={totals.misplaced ? `${totals.misplaced} on the wrong shelf` : undefined} />
-        <Metric label="Off shelf" value={totals.offShelf} hint="In hand or at the counter" />
+        <Metric label="Off shelf" value={totals.offShelf} hint="Staged, in hand or at the counter" />
         <Metric label="Out of stock" value={totals.out} tone={totals.out ? 'red' : undefined} />
         <Metric label="Expired batches" value={totals.expired} tone={totals.expired ? 'red' : undefined} hint="Still on shelves" />
       </Metrics>
@@ -272,6 +277,7 @@ export default function Inventory() {
                   </th>
                   <th scope="col">Medication</th>
                   <th scope="col" className="num">On shelf</th>
+                  <th scope="col" className="num">Staged</th>
                   <th scope="col" className="num">In hand</th>
                   <th scope="col" className="num">At counter</th>
                   <th scope="col" className="num">Total bottles</th>
@@ -311,6 +317,7 @@ export default function Inventory() {
                           {c.onShelf}
                           {c.misplaced > 0 && <div className="row-sub text-red">+{c.misplaced} misplaced</div>}
                         </td>
+                        <td className="num">{c.staged}</td>
                         <td className="num">{c.held}</td>
                         <td className="num">{c.atCounter}</td>
                         <td className="num strong">{c.total}</td>
@@ -328,7 +335,7 @@ export default function Inventory() {
                       {isOpen && (
                         <tr className="expanded-row">
                           <td />
-                          <td colSpan={8}>
+                          <td colSpan={9}>
                             <ReceiptTable receipts={receipts} unit={med.unit} highlight={highlight} alertsByReceipt={alertsByReceipt} onDispose={openDisposeBatch} />
                           </td>
                         </tr>
