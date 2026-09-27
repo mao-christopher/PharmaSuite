@@ -4,7 +4,8 @@ import { BellIcon, ClockCountdownIcon, InfoIcon, PackageIcon, TrashIcon, TrendDo
 import { useLive } from '../lib/live';
 import { request } from '../lib/api';
 import { useDialogs } from '../lib/dialogs';
-import { ALERT_TYPES, LIVE_REASONS, SEVERITY_RANK, SEVERITY_TONE, formatDate, medLabel, plural, regionLabel } from '../lib/format';
+import { ALERT_TYPES, LIVE_REASONS, SEVERITY_RANK, SEVERITY_TONE, formatDate, formatMs, medLabel, plural, regionLabel } from '../lib/format';
+import { movementNotices } from '../lib/movementNotices';
 import { Badge, Card } from './ui';
 
 const ICONS = { red: WarningCircleIcon, amber: WarningIcon, blue: InfoIcon };
@@ -132,7 +133,7 @@ function Suggestions({ suggestions, meds, onReceive }) {
 }
 
 export default function Notifications() {
-  const { state, resolveAlert } = useLive();
+  const { state, resolveAlert, resetInventory } = useLive();
   const { openDisposal, openConfirm, openReceive, openDisposeBatch } = useDialogs();
   const [showResolved, setShowResolved] = useState(false);
   const meds = state.layout?.medications;
@@ -144,19 +145,28 @@ export default function Notifications() {
   const pendingDisposals = Object.values(state.disposals).filter((d) => d.status === 'pending_employee_entry');
   const count = open.length + pendingDisposals.length;
   const suggestions = state.suggestions || [];
+  const movements = movementNotices(state);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const resetDemo = async () => {
+    setResetting(true); setResetError('');
+    try { await resetInventory(); } catch(e) { setResetError(e.message); }
+    finally { setResetting(false); }
+  };
 
   return (
     <Card
       title="Notifications"
       className="area-alerts"
       actions={
-        count > 0 ? (
+        <>{state.recording?.reset_on_replay && <button className="btn btn-sm" disabled={resetting} onClick={resetDemo} title="Restore opening stock, clear demo notifications, and return the video to the start">{resetting ? 'Resetting…' : 'Reset demo'}</button>}
+        {count > 0 ? (
           <Badge tone="red">{count} open</Badge>
         ) : suggestions.length > 0 ? (
           <Badge tone="blue">{plural(suggestions.length, 'suggestion')}</Badge>
         ) : (
           <Badge tone="green">All clear</Badge>
-        )
+        )}</>
       }
       flush
       footer={
@@ -180,7 +190,23 @@ export default function Notifications() {
       }
     >
       <div aria-live="polite">
-        {count === 0 && suggestions.length === 0 && (
+        {resetError && <p className="form-error" role="alert">{resetError}</p>}
+        {movements.length > 0 && <>
+          <div className="suggestion-head"><span>Wristband activity</span><span>{movements.length} recent</span></div>
+          <ul className="notice-list">
+            {movements.map(m => <li key={m.event_id} className="notice">
+              <span className={`notice-icon tone-${m.alert ? 'amber' : 'blue'}`} aria-hidden="true"><InfoIcon /></span>
+              <div className="notice-content">
+                <div className="notice-title">{m.title}</div>
+                <div className="notice-med">{m.medication}</div>
+                <p className="notice-text">{m.message}</p>
+                <div className="row-sub">{formatMs(m.media_time_ms)} · {m.simulated ? 'Simulated wristband · video timing' : 'Wristband signal'}</div>
+              </div>
+              {m.alert && <div className="notice-action"><button className="btn btn-sm btn-primary" onClick={() => openConfirm(m.alert.alert_id)}>{m.alert.metadata?.reason === 'which_bottle' ? 'Confirm bottle' : 'Confirm location'}</button></div>}
+            </li>)}
+          </ul>
+        </>}
+        {count === 0 && suggestions.length === 0 && movements.length === 0 && (
           <div className="notice-empty">
             <span className="notice-icon tone-green" aria-hidden="true">
               <BellIcon />

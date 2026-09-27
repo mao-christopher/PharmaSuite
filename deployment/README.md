@@ -44,3 +44,23 @@ The Unity presentation is generated on a licensed machine and copied to
 `persistent/workspace/demo/simulation.mp4` and the recording's `presentation.mp4`.
 It is explicitly illustrative, separate from registered-camera evidence. Camera
 rectangles in recording metadata only draw overlays and cannot mutate stock.
+
+For the recorded wristband demo, copy `configure_img3537_events.py` and
+`img3537-camera-regions.json` into the API container's `/tmp/` directory, then
+run `python /tmp/configure_img3537_events.py`. It only runs with pharmacy ID
+`img-3537-demo`. This one-time migration pauses and backs up the existing state,
+preserves existing camera registration (or installs manually annotated fallback regions), and resets the
+earlier unconfigured replay to opening stock. Do not run it routinely: it is a
+demo reset. The notifications label the video-reviewed times as simulated
+wristband events; medication/location are resolved using YOLO wrist evidence.
+
+Set `reset_on_replay: true` in the supplied recording's scenario.json to enable
+the Reset demo button and automatic reset when restarting or returning to zero.
+The app archives prior run activity in its audit history before restoring opening
+stock. Leave this flag absent for ordinary recordings that must remain replay-only.
+
+The current registered camera is retained. The supplied recording uses
+`min_region_margin: 0.01` to ask for confirmation when two candidate storage
+regions are separated by less than 1% of the frame diagonal in wrist distance.
+This provisional setting catches its final shelf-boundary placement. It does not
+change the annotations, infer drug identity from pixels, or override a review.

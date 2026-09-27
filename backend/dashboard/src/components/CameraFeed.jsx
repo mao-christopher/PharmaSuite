@@ -208,7 +208,7 @@ export default function CameraFeed() {
           ? `Switching between ${state.camera_selection.cameras} cameras. Showing ${state.camera_selection.label || state.camera_selection.camera_id} (${
               state.camera_selection.reliable_arm ? 'arm visible' : 'arm not clearly visible'
             }), view ${state.layout?.name || state.layout?.layout_id}`
-          : `${state.layout?.name || state.layout?.layout_id} · ${rec.privacy_windows ? 'Skeleton only in the second before an action; illustrative shelf boxes' : state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}`
+          : `${state.layout?.name || state.layout?.layout_id} · ${rec.privacy_windows ? 'Skeleton only in the second before an action' : state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}`
       }
       className="area-player"
       flush
@@ -295,6 +295,7 @@ export default function CameraFeed() {
         </div>
       </div>
       <div className="player-note" aria-live="polite">
+        {rec.reset_on_replay && <span>Restarting this demo restores opening stock and clears notifications.</span>}
         {rec.presentation_only && source !== 'real' && <span>Authored Unity illustration from video review; not calibrated motion capture.</span>}
         {liveClip ? (
           <span>Analyzed once when the wristband event arrived. Replaying this clip never changes inventory.</span>

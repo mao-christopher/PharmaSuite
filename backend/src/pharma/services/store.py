@@ -252,6 +252,7 @@ class PharmacyStore:
         calibration_version: Optional[int] = None,
         joint_offset_ms: float = 0.0,
         session_scope: Optional[str] = None,
+        min_region_margin: float = 0.0,
     ) -> Optional[Dict[str, Any]]:
         """Apply one pickup/release signal exactly once. Returns its activity entry, or None if seen.
 
@@ -285,9 +286,9 @@ class PharmacyStore:
         if event["event_type"] == "pickup":
             session = stocking.pickup(engine, recording, event, sid, hands)
             if session is None:
-                session = engine.handle_pickup(sid, hands, event.get("timestamp", 0.0))
+                session = engine.handle_pickup(sid, hands, event.get("timestamp", 0.0), min_margin=min_region_margin)
         else:
-            session = engine.handle_release(sid, hands, event.get("timestamp", 0.0))
+            session = engine.handle_release(sid, hands, event.get("timestamp", 0.0), min_margin=min_region_margin)
         for alert_id in set(engine.alerts) - before:
             engine.alerts[alert_id].metadata.update(recording=recording, layout_id=layout_id, joint=joint,
                                                          joint_offset_ms=round(joint_offset_ms), camera_id=camera_id,

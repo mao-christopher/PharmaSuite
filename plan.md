@@ -1242,3 +1242,46 @@ never masquerades as a render derived from confirmed inventory decisions. Named
 medications are Metformin 500 mg, Atorvastatin 20 mg, Ibuprofen 200 mg, and
 Amoxicillin 500 mg, with fictional opening stock. Existing quantities and audit
 history are preserved during the medication rename. Privacy windows remain.
+
+## Playback wristband notifications and IMG_3537 inventory wiring — 2026-09-27
+
+The original Notifications panel now includes the six pickup/put-down notices,
+with medication, clock time, inventory outcome, and a visible simulated-wristband
+label. Notices use persisted signal activity and follow the current playhead,
+including replay, without reapplying inventory events.
+
+Photo-annotated fallback regions were tested against six measured wrist samples.
+During deployment the server was found to have a newer user-saved room 9-27-2026
+and registered camera. That calibration is preserved; the fallback polygons are
+not installed over it. The current calibration matches the first five locations;
+the final return wrist is near the boundary. The supplied recording therefore
+uses a provisional 1% frame-diagonal minimum separation between candidate regions
+to abstain there instead of confidently assigning the wrong shelf. It requests
+location confirmation. This threshold is not an accuracy validation; other
+recordings retain the original exact-tie rule. Sensor signals contain
+only action/timing and retain video-review provenance, with no drug/shelf answers.
+
+Pickup moves one bottle from shelf/counter to hand; release places it at the
+counter or destination shelf. Total undisposed bottles and tablets stay unchanged.
+The Ibuprofen placement on the Amoxicillin shelf raises a misplacement alert.
+The fifth action still requires the employee to select which bottle was picked
+up because that shelf holds two medications. A later release waits for that
+answer. Selecting the misplaced Ibuprofen applies the pending return once.
+
+Before provisioning, the server migration pauses playback and archives the current
+MongoDB document, UI snapshot and camera layout. It then resets this demo's earlier
+unconfigured run to opening stock and time zero through the existing API.
+
+Validation: 64 backend engine/replay/API tests and 2 frontend notification tests pass;
+production dashboard build passes. Regression covers actual six-contact wrist
+samples, shelf/counter changes, original identity after misplacement, ambiguity,
+pending release, confirmation, restart/replay idempotency, and conserved totals.
+
+
+User-requested demo reset: Notifications has a Reset demo control. The supplied
+recording explicitly opts into reset_on_replay, so restart, playing again after
+EOF, loading/playing from zero, and seeking to zero restore opening stock and
+clear run activity/alerts. Each completed/partial run is copied into audit history
+before clearing. Other recordings retain the original replay idempotency policy;
+within one demo run, repeated event IDs still cannot mutate stock twice.
+Baseline stock suggestions may reappear because they derive from opening stock.

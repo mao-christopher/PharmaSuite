@@ -6,7 +6,7 @@ import { Badge, Card, Empty } from './ui';
 
 const REASONS = {
   too_far: 'Too far from any region',
-  ambiguous: 'Overlapping regions',
+  ambiguous: 'Overlapping or nearby regions',
   no_confident_hand: 'No hand visible',
   nothing_parked_at_counter: 'Nothing parked at the counter',
 };

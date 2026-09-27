@@ -6,6 +6,7 @@ passes them (or when it is applied without playback), and never again.
 """
 
 import asyncio
+import copy
 import json
 import os
 import re
@@ -848,13 +849,20 @@ class ReplayController:
 
     def reset_inventory(self) -> None:
         """Restore the layout's opening stock; every recording's signals become unapplied."""
+        if self.current and self.current.meta.get('reset_on_replay') and self.activity:
+            self.store.record('demo_run', 'Archived demo run before restoring opening stock.',
+                              recording=self.current.name, activity=copy.deepcopy(self.activity),
+                              inventory={key: inv.model_dump() for key, inv in self.engine.inventory.items()})
         self.store.reset(self.catalog)
         if self.current:
             self.store.merge_transactions(load_json(self.current.path / "transactions.json"))
         self.engine.trigger_expiry_alerts(pharmacy_today())
-        self.store.save()
         self.is_playing = False
         self.current_media_time_ms = 0
+        if self.current:
+            self.store.player_state = {'scenario': self.current.name, 'media_time_ms': 0,
+                                      'player_source': self.player_source}
+        self.store.save()
 
     def apply_catalog(self, catalog: Catalog, reset_inventory: bool = False) -> List[str]:
         """Adopt saved medications and opening stock. Live inventory is kept unless reset."""
@@ -961,7 +969,8 @@ class ReplayController:
                                       regions=view.regions, layout_id=view.layout_id, joint=fix.joint,
                                       camera_id=camera.camera_id if camera else None,
                                       calibration_version=view.calibration_version,
-                                      joint_offset_ms=fix.offset_ms):
+                                      joint_offset_ms=fix.offset_ms,
+                                      min_region_margin=max(0.0, min(0.06, float(rec.meta.get('min_region_margin', 0))))):
                 changed += 1
         if changed:
             self.store.save()
@@ -995,6 +1004,9 @@ class ReplayController:
     def play(self):
         if not self.current:
             return
+        if self.current.meta.get('reset_on_replay') and self.current.meta.get('source') != live_capture.LIVE_SOURCE:
+            if self.current_media_time_ms >= self.duration_ms or (self.current_media_time_ms == 0 and self.processed_event_ids):
+                self.reset_inventory()
         if self.current_media_time_ms >= self.duration_ms:
             self.current_media_time_ms = 0
         self.is_playing = True
@@ -1008,6 +1020,9 @@ class ReplayController:
 
     def seek(self, media_time_ms: float):
         """Move the playhead. Passing a signal applies it; going back never undoes one."""
+        if (media_time_ms <= 0 and self.current and self.current.meta.get('reset_on_replay')
+                and self.current.meta.get('source') != live_capture.LIVE_SOURCE and self.processed_event_ids):
+            self.reset_inventory()
         self.current_media_time_ms = max(0.0, min(float(media_time_ms), float(self.duration_ms)))
         self._last_tick = time.monotonic()
         self.process_events_until(self.current_media_time_ms)
@@ -1113,6 +1128,7 @@ class ReplayController:
                 "source": rec.meta.get("source", "fixture"),
                 "privacy_windows": bool(rec.meta.get('privacy_windows')),
                 "presentation_only": bool(rec.meta.get('presentation_only')),
+                "reset_on_replay": bool(rec.meta.get('reset_on_replay')),
                 "uploaded_at": rec.meta.get("uploaded_at"),
                 "events_total": len(rec.events),
                 "events_applied": sum(1 for e in rec.events if e["event_id"] in applied),
