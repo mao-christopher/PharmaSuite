@@ -1,0 +1,120 @@
+{
+  "api_version": "2026-04",
+  "event": "shipment.delivered",
+  "supplier": {
+    "name": "Summit Generics Direct",
+    "code": "SGDX",
+    "dea": "RS0000561"
+  },
+  "shipment": {
+    "shipment_id": "SHP-2026-0008",
+    "asn_number": "ASN44816946",
+    "invoice_number": "SGDX-INV-4883464",
+    "po_number": "PO-RCP-0142-26146",
+    "ship_date": "2026-09-23T12:05-07:00",
+    "arrival_time": "2026-09-25T15:05-07:00",
+    "carrier": "FedEx Priority",
+    "tracking_number": "744537735791",
+    "cartons": 2,
+    "temperature_log": "Ambient, logger 26.1C peak (within USP CRT)",
+    "payment_terms": "2% 10 Net 30"
+  },
+  "ship_to": {
+    "store_number": "RCP-0142",
+    "name": "Riverside Community Pharmacy (SYNTHETIC)"
+  },
+  "items": [
+    {
+      "line": "1",
+      "ndc": "99098-3571-90",
+      "product": {
+        "name": "Levothyroxine Sodium",
+        "strength": "50mcg",
+        "form": "tablets",
+        "manufacturer": "Keystone Therapeutics"
+      },
+      "lot": {
+        "number": "KE80B8052",
+        "expiration": "2028-04-30"
+      },
+      "bottles": {
+        "ordered": 8,
+        "shipped": 8,
+        "damaged": 0
+      },
+      "units_per_bottle": 90,
+      "total_units": 720,
+      "price": {
+        "per_bottle": 14.93,
+        "extended": 119.44,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    },
+    {
+      "line": "2",
+      "ndc": "93448-6792-30",
+      "product": {
+        "name": "Metformin HCl",
+        "strength": "500mg",
+        "form": "tablets",
+        "manufacturer": "Brightwater Pharma"
+      },
+      "lot": {
+        "number": "BR12U4828",
+        "expiration": "2028-09-30"
+      },
+      "bottles": {
+        "ordered": 2,
+        "shipped": 2,
+        "damaged": 0
+      },
+      "units_per_bottle": 1000,
+      "total_units": 2000,
+      "price": {
+        "per_bottle": 100.92,
+        "extended": 201.84,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    },
+    {
+      "line": "3",
+      "ndc": "95913-8433-15",
+      "product": {
+        "name": "Amoxicillin",
+        "strength": "500mg",
+        "form": "capsules",
+        "manufacturer": "Orchid Generics"
+      },
+      "lot": {
+        "number": "OR23X8315",
+        "expiration": "2028-04-30"
+      },
+      "bottles": {
+        "ordered": 2,
+        "shipped": 2,
+        "damaged": 0
+      },
+      "units_per_bottle": 500,
+      "total_units": 1000,
+      "price": {
+        "per_bottle": 33.68,
+        "extended": 67.36,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    }
+  ],
+  "totals": {
+    "line_count": 3,
+    "bottles_ordered": 12,
+    "bottles_shipped": 12,
+    "bottles_accepted": 12,
+    "units_shipped": 3720,
+    "units_accepted": 3720,
+    "subtotal": 388.64,
+    "freight": 0.0,
+    "total_due": 388.64
+  }
+}

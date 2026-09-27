@@ -1,0 +1,147 @@
+{
+  "api_version": "2026-04",
+  "event": "shipment.delivered",
+  "supplier": {
+    "name": "Summit Generics Direct",
+    "code": "SGDX",
+    "dea": "RS0000561"
+  },
+  "shipment": {
+    "shipment_id": "SHP-2026-0004",
+    "asn_number": "ASN68086689",
+    "invoice_number": "SGDX-INV-2828434",
+    "po_number": "PO-RCP-0142-26118",
+    "ship_date": "2026-09-09T05:20-07:00",
+    "arrival_time": "2026-09-12T13:20-07:00",
+    "carrier": "FedEx Priority",
+    "tracking_number": "779650037814",
+    "cartons": 3,
+    "temperature_log": "Ambient 20-25C, no excursion",
+    "payment_terms": "2% 10 Net 30"
+  },
+  "ship_to": {
+    "store_number": "RCP-0142",
+    "name": "Riverside Community Pharmacy (SYNTHETIC)"
+  },
+  "items": [
+    {
+      "line": "1a",
+      "ndc": "99529-5881-90",
+      "product": {
+        "name": "Atorvastatin Calcium",
+        "strength": "20mg",
+        "form": "tablets",
+        "manufacturer": "Keystone Therapeutics"
+      },
+      "lot": {
+        "number": "KE37S1491",
+        "expiration": "2027-12-31"
+      },
+      "bottles": {
+        "ordered": 5,
+        "shipped": 5,
+        "damaged": 0
+      },
+      "units_per_bottle": 90,
+      "total_units": 450,
+      "price": {
+        "per_bottle": 12.36,
+        "extended": 61.8,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    },
+    {
+      "line": "1b",
+      "ndc": "99529-5881-90",
+      "product": {
+        "name": "Atorvastatin Calcium",
+        "strength": "20mg",
+        "form": "tablets",
+        "manufacturer": "Keystone Therapeutics"
+      },
+      "lot": {
+        "number": "KE20X1025",
+        "expiration": "2028-11-30"
+      },
+      "bottles": {
+        "ordered": 5,
+        "shipped": 5,
+        "damaged": 0
+      },
+      "units_per_bottle": 90,
+      "total_units": 450,
+      "price": {
+        "per_bottle": 12.36,
+        "extended": 61.8,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    },
+    {
+      "line": "2",
+      "ndc": "92601-3812-03",
+      "product": {
+        "name": "Metformin HCl",
+        "strength": "500mg",
+        "form": "tablets",
+        "manufacturer": "Brightwater Pharma"
+      },
+      "lot": {
+        "number": "BR28W6855",
+        "expiration": "2028-07-31"
+      },
+      "bottles": {
+        "ordered": 4,
+        "shipped": 4,
+        "damaged": 0
+      },
+      "units_per_bottle": 100,
+      "total_units": 400,
+      "price": {
+        "per_bottle": 13.88,
+        "extended": 55.52,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    },
+    {
+      "line": "3",
+      "ndc": "93629-8533-03",
+      "product": {
+        "name": "Omeprazole DR",
+        "strength": "20mg",
+        "form": "capsules",
+        "manufacturer": "Pinecrest Pharmaceuticals"
+      },
+      "lot": {
+        "number": "PI56Y6046",
+        "expiration": "2029-01-31"
+      },
+      "bottles": {
+        "ordered": 12,
+        "shipped": 12,
+        "damaged": 0
+      },
+      "units_per_bottle": 100,
+      "total_units": 1200,
+      "price": {
+        "per_bottle": 28.42,
+        "extended": 341.04,
+        "currency": "USD"
+      },
+      "status": "shipped"
+    }
+  ],
+  "totals": {
+    "line_count": 4,
+    "bottles_ordered": 26,
+    "bottles_shipped": 26,
+    "bottles_accepted": 26,
+    "units_shipped": 2500,
+    "units_accepted": 2500,
+    "subtotal": 520.16,
+    "freight": 0.0,
+    "total_due": 520.16
+  }
+}
