@@ -1,0 +1,9 @@
+{
+  "name": "pharmasuite-pitch-video",
+  "private": true,
+  "type": "module",
+  "description": "Builds the 2:45 hackathon pitch video from dashboard captures and code-generated scenes.",
+  "dependencies": {
+    "playwright-core": "^1.47.0"
+  }
+}

@@ -1,0 +1,2420 @@
+{
+ "broll/New Recording 201.m4a": [
+  {
+   "start": 0.0,
+   "end": 4.9,
+   "text": " PharmaSuite minimizes drug handling errors by monitoring all activities relating to",
+   "words": [
+    {
+     "w": " PharmaSuite",
+     "s": 0.0,
+     "e": 0.78
+    },
+    {
+     "w": " minimizes",
+     "s": 0.78,
+     "e": 1.34
+    },
+    {
+     "w": " drug",
+     "s": 1.34,
+     "e": 1.62
+    },
+    {
+     "w": " handling",
+     "s": 1.62,
+     "e": 2.02
+    },
+    {
+     "w": " errors",
+     "s": 2.02,
+     "e": 2.54
+    },
+    {
+     "w": " by",
+     "s": 2.54,
+     "e": 2.86
+    },
+    {
+     "w": " monitoring",
+     "s": 2.86,
+     "e": 3.32
+    },
+    {
+     "w": " all",
+     "s": 3.32,
+     "e": 3.72
+    },
+    {
+     "w": " activities",
+     "s": 3.72,
+     "e": 4.22
+    },
+    {
+     "w": " relating",
+     "s": 4.22,
+     "e": 4.7
+    },
+    {
+     "w": " to",
+     "s": 4.7,
+     "e": 4.9
+    }
+   ]
+  },
+  {
+   "start": 4.9,
+   "end": 10.5,
+   "text": " prescription drug handling within a pharmacy. From the moment an item is shipped to the pharmacy,",
+   "words": [
+    {
+     "w": " prescription",
+     "s": 4.9,
+     "e": 5.28
+    },
+    {
+     "w": " drug",
+     "s": 5.28,
+     "e": 5.74
+    },
+    {
+     "w": " handling",
+     "s": 5.74,
+     "e": 6.18
+    },
+    {
+     "w": " within",
+     "s": 6.18,
+     "e": 6.5
+    },
+    {
+     "w": " a",
+     "s": 6.5,
+     "e": 6.62
+    },
+    {
+     "w": " pharmacy.",
+     "s": 6.62,
+     "e": 7.02
+    },
+    {
+     "w": " From",
+     "s": 7.96,
+     "e": 8.22
+    },
+    {
+     "w": " the",
+     "s": 8.22,
+     "e": 8.36
+    },
+    {
+     "w": " moment",
+     "s": 8.36,
+     "e": 8.54
+    },
+    {
+     "w": " an",
+     "s": 8.54,
+     "e": 8.9
+    },
+    {
+     "w": " item",
+     "s": 8.9,
+     "e": 9.2
+    },
+    {
+     "w": " is",
+     "s": 9.2,
+     "e": 9.38
+    },
+    {
+     "w": " shipped",
+     "s": 9.38,
+     "e": 9.58
+    },
+    {
+     "w": " to",
+     "s": 9.58,
+     "e": 9.88
+    },
+    {
+     "w": " the",
+     "s": 9.88,
+     "e": 9.98
+    },
+    {
+     "w": " pharmacy,",
+     "s": 9.98,
+     "e": 10.5
+    }
+   ]
+  },
+  {
+   "start": 10.96,
+   "end": 15.86,
+   "text": " PharmaSuite keeps track of the quantities, expiration dates, and locations of every drug",
+   "words": [
+    {
+     "w": " PharmaSuite",
+     "s": 10.96,
+     "e": 11.38
+    },
+    {
+     "w": " keeps",
+     "s": 11.38,
+     "e": 11.7
+    },
+    {
+     "w": " track",
+     "s": 11.7,
+     "e": 12.0
+    },
+    {
+     "w": " of",
+     "s": 12.0,
+     "e": 12.24
+    },
+    {
+     "w": " the",
+     "s": 12.24,
+     "e": 12.38
+    },
+    {
+     "w": " quantities,",
+     "s": 12.38,
+     "e": 12.86
+    },
+    {
+     "w": " expiration",
+     "s": 13.16,
+     "e": 13.52
+    },
+    {
+     "w": " dates,",
+     "s": 13.52,
+     "e": 13.94
+    },
+    {
+     "w": " and",
+     "s": 14.18,
+     "e": 14.36
+    },
+    {
+     "w": " locations",
+     "s": 14.36,
+     "e": 14.8
+    },
+    {
+     "w": " of",
+     "s": 14.8,
+     "e": 15.16
+    },
+    {
+     "w": " every",
+     "s": 15.16,
+     "e": 15.5
+    },
+    {
+     "w": " drug",
+     "s": 15.5,
+     "e": 15.86
+    }
+   ]
+  },
+  {
+   "start": 15.86,
+   "end": 21.4,
+   "text": " and pill bottle. When a pharmacy technician makes a transaction, throws away expired pills,",
+   "words": [
+    {
+     "w": " and",
+     "s": 15.86,
+     "e": 16.12
+    },
+    {
+     "w": " pill",
+     "s": 16.12,
+     "e": 16.3
+    },
+    {
+     "w": " bottle.",
+     "s": 16.3,
+     "e": 16.62
+    },
+    {
+     "w": " When",
+     "s": 17.44,
+     "e": 17.68
+    },
+    {
+     "w": " a",
+     "s": 17.68,
+     "e": 17.82
+    },
+    {
+     "w": " pharmacy",
+     "s": 17.82,
+     "e": 18.14
+    },
+    {
+     "w": " technician",
+     "s": 18.14,
+     "e": 18.62
+    },
+    {
+     "w": " makes",
+     "s": 18.62,
+     "e": 19.0
+    },
+    {
+     "w": " a",
+     "s": 19.0,
+     "e": 19.18
+    },
+    {
+     "w": " transaction,",
+     "s": 19.18,
+     "e": 19.8
+    },
+    {
+     "w": " throws",
+     "s": 20.14,
+     "e": 20.34
+    },
+    {
+     "w": " away",
+     "s": 20.34,
+     "e": 20.64
+    },
+    {
+     "w": " expired",
+     "s": 20.64,
+     "e": 21.02
+    },
+    {
+     "w": " pills,",
+     "s": 21.02,
+     "e": 21.4
+    }
+   ]
+  },
+  {
+   "start": 21.84,
+   "end": 27.44,
+   "text": " or picks up a new product, PharmaSuite's MongoDB database is automatically updated.",
+   "words": [
+    {
+     "w": " or",
+     "s": 21.84,
+     "e": 22.2
+    },
+    {
+     "w": " picks",
+     "s": 22.2,
+     "e": 22.54
+    },
+    {
+     "w": " up",
+     "s": 22.54,
+     "e": 22.76
+    },
+    {
+     "w": " a",
+     "s": 22.76,
+     "e": 22.92
+    },
+    {
+     "w": " new",
+     "s": 22.92,
+     "e": 23.06
+    },
+    {
+     "w": " product,",
+     "s": 23.06,
+     "e": 23.44
+    },
+    {
+     "w": " PharmaSuite's",
+     "s": 24.2,
+     "e": 24.82
+    },
+    {
+     "w": " MongoDB",
+     "s": 24.82,
+     "e": 25.4
+    },
+    {
+     "w": " database",
+     "s": 25.4,
+     "e": 25.94
+    },
+    {
+     "w": " is",
+     "s": 25.94,
+     "e": 26.38
+    },
+    {
+     "w": " automatically",
+     "s": 26.38,
+     "e": 26.78
+    },
+    {
+     "w": " updated.",
+     "s": 26.78,
+     "e": 27.44
+    }
+   ]
+  },
+  {
+   "start": 28.22,
+   "end": 32.1,
+   "text": " If a pharmacist attempts to place a pill bottle on the wrong shelf",
+   "words": [
+    {
+     "w": " If",
+     "s": 28.22,
+     "e": 28.86
+    },
+    {
+     "w": " a",
+     "s": 28.86,
+     "e": 29.02
+    },
+    {
+     "w": " pharmacist",
+     "s": 29.02,
+     "e": 29.42
+    },
+    {
+     "w": " attempts",
+     "s": 29.42,
+     "e": 29.82
+    },
+    {
+     "w": " to",
+     "s": 29.82,
+     "e": 30.12
+    },
+    {
+     "w": " place",
+     "s": 30.12,
+     "e": 30.32
+    },
+    {
+     "w": " a",
+     "s": 30.32,
+     "e": 30.54
+    },
+    {
+     "w": " pill",
+     "s": 30.54,
+     "e": 30.7
+    },
+    {
+     "w": " bottle",
+     "s": 30.7,
+     "e": 31.04
+    },
+    {
+     "w": " on",
+     "s": 31.04,
+     "e": 31.38
+    },
+    {
+     "w": " the",
+     "s": 31.38,
+     "e": 31.48
+    },
+    {
+     "w": " wrong",
+     "s": 31.48,
+     "e": 31.68
+    },
+    {
+     "w": " shelf",
+     "s": 31.68,
+     "e": 32.1
+    }
+   ]
+  },
+  {
+   "start": 32.88,
+   "end": 37.18,
+   "text": " or sell an expired product, they are alerted and the transaction is blocked.",
+   "words": [
+    {
+     "w": " or",
+     "s": 32.88,
+     "e": 33.24
+    },
+    {
+     "w": " sell",
+     "s": 33.24,
+     "e": 33.58
+    },
+    {
+     "w": " an",
+     "s": 33.58,
+     "e": 33.72
+    },
+    {
+     "w": " expired",
+     "s": 33.72,
+     "e": 34.1
+    },
+    {
+     "w": " product,",
+     "s": 34.1,
+     "e": 34.64
+    },
+    {
+     "w": " they",
+     "s": 34.96,
+     "e": 35.1
+    },
+    {
+     "w": " are",
+     "s": 35.1,
+     "e": 35.2
+    },
+    {
+     "w": " alerted",
+     "s": 35.2,
+     "e": 35.6
+    },
+    {
+     "w": " and",
+     "s": 35.6,
+     "e": 35.98
+    },
+    {
+     "w": " the",
+     "s": 35.98,
+     "e": 36.06
+    },
+    {
+     "w": " transaction",
+     "s": 36.06,
+     "e": 36.48
+    },
+    {
+     "w": " is",
+     "s": 36.48,
+     "e": 36.8
+    },
+    {
+     "w": " blocked.",
+     "s": 36.8,
+     "e": 37.18
+    }
+   ]
+  },
+  {
+   "start": 38.5,
+   "end": 42.56,
+   "text": " Replay data is collected for each transaction to maximize transparency.",
+   "words": [
+    {
+     "w": " Replay",
+     "s": 38.5,
+     "e": 38.6
+    },
+    {
+     "w": " data",
+     "s": 38.6,
+     "e": 38.98
+    },
+    {
+     "w": " is",
+     "s": 38.98,
+     "e": 39.2
+    },
+    {
+     "w": " collected",
+     "s": 39.2,
+     "e": 39.48
+    },
+    {
+     "w": " for",
+     "s": 39.48,
+     "e": 39.88
+    },
+    {
+     "w": " each",
+     "s": 39.88,
+     "e": 40.02
+    },
+    {
+     "w": " transaction",
+     "s": 40.02,
+     "e": 40.84
+    },
+    {
+     "w": " to",
+     "s": 40.84,
+     "e": 41.28
+    },
+    {
+     "w": " maximize",
+     "s": 41.28,
+     "e": 41.68
+    },
+    {
+     "w": " transparency.",
+     "s": 41.68,
+     "e": 42.56
+    }
+   ]
+  },
+  {
+   "start": 43.78,
+   "end": 48.56,
+   "text": " Whenever a pharmacy is low on stock, PharmaSuite will automatically ask providers for a new",
+   "words": [
+    {
+     "w": " Whenever",
+     "s": 43.78,
+     "e": 44.1
+    },
+    {
+     "w": " a",
+     "s": 44.1,
+     "e": 44.4
+    },
+    {
+     "w": " pharmacy",
+     "s": 44.4,
+     "e": 44.6
+    },
+    {
+     "w": " is",
+     "s": 44.6,
+     "e": 44.9
+    },
+    {
+     "w": " low",
+     "s": 44.9,
+     "e": 45.16
+    },
+    {
+     "w": " on",
+     "s": 45.16,
+     "e": 45.34
+    },
+    {
+     "w": " stock,",
+     "s": 45.34,
+     "e": 45.72
+    },
+    {
+     "w": " PharmaSuite",
+     "s": 46.24,
+     "e": 46.52
+    },
+    {
+     "w": " will",
+     "s": 46.52,
+     "e": 46.72
+    },
+    {
+     "w": " automatically",
+     "s": 46.72,
+     "e": 47.16
+    },
+    {
+     "w": " ask",
+     "s": 47.16,
+     "e": 47.6
+    },
+    {
+     "w": " providers",
+     "s": 47.6,
+     "e": 48.1
+    },
+    {
+     "w": " for",
+     "s": 48.1,
+     "e": 48.38
+    },
+    {
+     "w": " a",
+     "s": 48.38,
+     "e": 48.46
+    },
+    {
+     "w": " new",
+     "s": 48.46,
+     "e": 48.56
+    }
+   ]
+  },
+  {
+   "start": 48.56,
+   "end": 54.64,
+   "text": " shipment. Through the full stack, almost all possible sources of error in a pharmacy would",
+   "words": [
+    {
+     "w": " shipment.",
+     "s": 48.56,
+     "e": 48.86
+    },
+    {
+     "w": " Through",
+     "s": 49.86,
+     "e": 50.08
+    },
+    {
+     "w": " the",
+     "s": 50.08,
+     "e": 50.2
+    },
+    {
+     "w": " full",
+     "s": 50.2,
+     "e": 50.4
+    },
+    {
+     "w": " stack,",
+     "s": 50.4,
+     "e": 50.92
+    },
+    {
+     "w": " almost",
+     "s": 51.46,
+     "e": 51.7
+    },
+    {
+     "w": " all",
+     "s": 51.7,
+     "e": 52.06
+    },
+    {
+     "w": " possible",
+     "s": 52.06,
+     "e": 52.44
+    },
+    {
+     "w": " sources",
+     "s": 52.44,
+     "e": 52.72
+    },
+    {
+     "w": " of",
+     "s": 52.72,
+     "e": 53.08
+    },
+    {
+     "w": " error",
+     "s": 53.08,
+     "e": 53.4
+    },
+    {
+     "w": " in",
+     "s": 53.4,
+     "e": 53.72
+    },
+    {
+     "w": " a",
+     "s": 53.72,
+     "e": 53.84
+    },
+    {
+     "w": " pharmacy",
+     "s": 53.84,
+     "e": 54.26
+    },
+    {
+     "w": " would",
+     "s": 54.26,
+     "e": 54.64
+    }
+   ]
+  },
+  {
+   "start": 54.64,
+   "end": 55.2,
+   "text": " be automated.",
+   "words": [
+    {
+     "w": " be",
+     "s": 54.64,
+     "e": 54.78
+    },
+    {
+     "w": " automated.",
+     "s": 54.78,
+     "e": 55.2
+    }
+   ]
+  }
+ ],
+ "broll/New Recording 202.m4a": [
+  {
+   "start": 0.0,
+   "end": 2.88,
+   "text": " AI was integrated into our project on every level.",
+   "words": [
+    {
+     "w": " AI",
+     "s": 0.0,
+     "e": 0.44
+    },
+    {
+     "w": " was",
+     "s": 0.44,
+     "e": 0.7
+    },
+    {
+     "w": " integrated",
+     "s": 0.7,
+     "e": 1.12
+    },
+    {
+     "w": " into",
+     "s": 1.12,
+     "e": 1.42
+    },
+    {
+     "w": " our",
+     "s": 1.42,
+     "e": 1.6
+    },
+    {
+     "w": " project",
+     "s": 1.6,
+     "e": 1.98
+    },
+    {
+     "w": " on",
+     "s": 1.98,
+     "e": 2.22
+    },
+    {
+     "w": " every",
+     "s": 2.22,
+     "e": 2.54
+    },
+    {
+     "w": " level.",
+     "s": 2.54,
+     "e": 2.88
+    }
+   ]
+  },
+  {
+   "start": 3.42,
+   "end": 8.5,
+   "text": " The shipment data was covered into stock information by the meta-API ecosystem, which then used",
+   "words": [
+    {
+     "w": " The",
+     "s": 3.42,
+     "e": 3.5
+    },
+    {
+     "w": " shipment",
+     "s": 3.5,
+     "e": 3.78
+    },
+    {
+     "w": " data",
+     "s": 3.78,
+     "e": 4.1
+    },
+    {
+     "w": " was",
+     "s": 4.1,
+     "e": 4.32
+    },
+    {
+     "w": " covered",
+     "s": 4.32,
+     "e": 4.54
+    },
+    {
+     "w": " into",
+     "s": 4.54,
+     "e": 4.96
+    },
+    {
+     "w": " stock",
+     "s": 4.96,
+     "e": 5.26
+    },
+    {
+     "w": " information",
+     "s": 5.26,
+     "e": 5.7
+    },
+    {
+     "w": " by",
+     "s": 5.7,
+     "e": 6.02
+    },
+    {
+     "w": " the",
+     "s": 6.02,
+     "e": 6.16
+    },
+    {
+     "w": " meta",
+     "s": 6.16,
+     "e": 6.34
+    },
+    {
+     "w": "-API",
+     "s": 6.34,
+     "e": 6.74
+    },
+    {
+     "w": " ecosystem,",
+     "s": 6.74,
+     "e": 7.36
+    },
+    {
+     "w": " which",
+     "s": 7.36,
+     "e": 8.1
+    },
+    {
+     "w": " then",
+     "s": 8.1,
+     "e": 8.32
+    },
+    {
+     "w": " used",
+     "s": 8.32,
+     "e": 8.5
+    }
+   ]
+  },
+  {
+   "start": 8.5,
+   "end": 12.6,
+   "text": " the information to create bounding boxes for where the drugs should be placed in a way",
+   "words": [
+    {
+     "w": " the",
+     "s": 8.5,
+     "e": 8.68
+    },
+    {
+     "w": " information",
+     "s": 8.68,
+     "e": 9.02
+    },
+    {
+     "w": " to",
+     "s": 9.02,
+     "e": 9.38
+    },
+    {
+     "w": " create",
+     "s": 9.38,
+     "e": 9.64
+    },
+    {
+     "w": " bounding",
+     "s": 9.64,
+     "e": 10.08
+    },
+    {
+     "w": " boxes",
+     "s": 10.08,
+     "e": 10.36
+    },
+    {
+     "w": " for",
+     "s": 10.36,
+     "e": 10.7
+    },
+    {
+     "w": " where",
+     "s": 10.7,
+     "e": 10.86
+    },
+    {
+     "w": " the",
+     "s": 10.86,
+     "e": 11.02
+    },
+    {
+     "w": " drugs",
+     "s": 11.02,
+     "e": 11.26
+    },
+    {
+     "w": " should",
+     "s": 11.26,
+     "e": 11.48
+    },
+    {
+     "w": " be",
+     "s": 11.48,
+     "e": 11.64
+    },
+    {
+     "w": " placed",
+     "s": 11.64,
+     "e": 11.92
+    },
+    {
+     "w": " in",
+     "s": 11.92,
+     "e": 12.4
+    },
+    {
+     "w": " a",
+     "s": 12.4,
+     "e": 12.48
+    },
+    {
+     "w": " way",
+     "s": 12.48,
+     "e": 12.6
+    }
+   ]
+  },
+  {
+   "start": 12.6,
+   "end": 14.44,
+   "text": " that minimizes the chance of mixups.",
+   "words": [
+    {
+     "w": " that",
+     "s": 12.6,
+     "e": 12.78
+    },
+    {
+     "w": " minimizes",
+     "s": 12.78,
+     "e": 13.34
+    },
+    {
+     "w": " the",
+     "s": 13.34,
+     "e": 13.54
+    },
+    {
+     "w": " chance",
+     "s": 13.54,
+     "e": 13.76
+    },
+    {
+     "w": " of",
+     "s": 13.76,
+     "e": 13.98
+    },
+    {
+     "w": " mixups.",
+     "s": 13.98,
+     "e": 14.44
+    }
+   ]
+  }
+ ],
+ "broll/New Recording 203.m4a": [
+  {
+   "start": 0.0,
+   "end": 4.48,
+   "text": " Every year, thousands of Americans die due to pharmaceutical drug mishandling.",
+   "words": [
+    {
+     "w": " Every",
+     "s": 0.0,
+     "e": 0.6
+    },
+    {
+     "w": " year,",
+     "s": 0.6,
+     "e": 0.84
+    },
+    {
+     "w": " thousands",
+     "s": 1.12,
+     "e": 1.34
+    },
+    {
+     "w": " of",
+     "s": 1.34,
+     "e": 1.6
+    },
+    {
+     "w": " Americans",
+     "s": 1.6,
+     "e": 1.94
+    },
+    {
+     "w": " die",
+     "s": 1.94,
+     "e": 2.34
+    },
+    {
+     "w": " due",
+     "s": 2.34,
+     "e": 2.54
+    },
+    {
+     "w": " to",
+     "s": 2.54,
+     "e": 2.76
+    },
+    {
+     "w": " pharmaceutical",
+     "s": 2.76,
+     "e": 3.18
+    },
+    {
+     "w": " drug",
+     "s": 3.18,
+     "e": 3.74
+    },
+    {
+     "w": " mishandling.",
+     "s": 3.74,
+     "e": 4.48
+    }
+   ]
+  },
+  {
+   "start": 5.24,
+   "end": 9.42,
+   "text": " Dr. Marv Sheppard, the former chairman of the Pharmacy Administration at the University",
+   "words": [
+    {
+     "w": " Dr.",
+     "s": 5.24,
+     "e": 5.4
+    },
+    {
+     "w": " Marv",
+     "s": 5.56,
+     "e": 5.7
+    },
+    {
+     "w": " Sheppard,",
+     "s": 5.7,
+     "e": 6.04
+    },
+    {
+     "w": " the",
+     "s": 6.32,
+     "e": 6.36
+    },
+    {
+     "w": " former",
+     "s": 6.36,
+     "e": 6.6
+    },
+    {
+     "w": " chairman",
+     "s": 6.6,
+     "e": 6.9
+    },
+    {
+     "w": " of",
+     "s": 6.9,
+     "e": 7.2
+    },
+    {
+     "w": " the",
+     "s": 7.2,
+     "e": 7.6
+    },
+    {
+     "w": " Pharmacy",
+     "s": 7.6,
+     "e": 8.0
+    },
+    {
+     "w": " Administration",
+     "s": 8.0,
+     "e": 8.56
+    },
+    {
+     "w": " at",
+     "s": 8.56,
+     "e": 8.96
+    },
+    {
+     "w": " the",
+     "s": 8.96,
+     "e": 9.08
+    },
+    {
+     "w": " University",
+     "s": 9.08,
+     "e": 9.42
+    }
+   ]
+  },
+  {
+   "start": 9.42,
+   "end": 15.12,
+   "text": " of Texas, claims that the typical pharmacy makes 2-4 mistakes a day, which is an alarming",
+   "words": [
+    {
+     "w": " of",
+     "s": 9.42,
+     "e": 9.68
+    },
+    {
+     "w": " Texas,",
+     "s": 9.68,
+     "e": 10.08
+    },
+    {
+     "w": " claims",
+     "s": 10.44,
+     "e": 10.76
+    },
+    {
+     "w": " that",
+     "s": 10.76,
+     "e": 11.02
+    },
+    {
+     "w": " the",
+     "s": 11.02,
+     "e": 11.16
+    },
+    {
+     "w": " typical",
+     "s": 11.16,
+     "e": 11.72
+    },
+    {
+     "w": " pharmacy",
+     "s": 11.72,
+     "e": 12.24
+    },
+    {
+     "w": " makes",
+     "s": 12.24,
+     "e": 12.56
+    },
+    {
+     "w": " 2",
+     "s": 12.56,
+     "e": 12.86
+    },
+    {
+     "w": "-4",
+     "s": 12.86,
+     "e": 13.14
+    },
+    {
+     "w": " mistakes",
+     "s": 13.14,
+     "e": 13.52
+    },
+    {
+     "w": " a",
+     "s": 13.52,
+     "e": 13.8
+    },
+    {
+     "w": " day,",
+     "s": 13.8,
+     "e": 14.04
+    },
+    {
+     "w": " which",
+     "s": 14.24,
+     "e": 14.54
+    },
+    {
+     "w": " is",
+     "s": 14.54,
+     "e": 14.66
+    },
+    {
+     "w": " an",
+     "s": 14.66,
+     "e": 14.78
+    },
+    {
+     "w": " alarming",
+     "s": 14.78,
+     "e": 15.12
+    }
+   ]
+  },
+  {
+   "start": 15.12,
+   "end": 17.12,
+   "text": " rate for such a high-stakes action.",
+   "words": [
+    {
+     "w": " rate",
+     "s": 15.12,
+     "e": 15.44
+    },
+    {
+     "w": " for",
+     "s": 15.44,
+     "e": 15.66
+    },
+    {
+     "w": " such",
+     "s": 15.66,
+     "e": 15.84
+    },
+    {
+     "w": " a",
+     "s": 15.84,
+     "e": 15.96
+    },
+    {
+     "w": " high",
+     "s": 15.96,
+     "e": 16.2
+    },
+    {
+     "w": "-stakes",
+     "s": 16.2,
+     "e": 16.54
+    },
+    {
+     "w": " action.",
+     "s": 16.54,
+     "e": 17.12
+    }
+   ]
+  },
+  {
+   "start": 17.72,
+   "end": 22.42,
+   "text": " By developing and training our own edge compute model and integrating other machine learning",
+   "words": [
+    {
+     "w": " By",
+     "s": 17.72,
+     "e": 17.84
+    },
+    {
+     "w": " developing",
+     "s": 17.84,
+     "e": 18.22
+    },
+    {
+     "w": " and",
+     "s": 18.22,
+     "e": 18.58
+    },
+    {
+     "w": " training",
+     "s": 18.58,
+     "e": 18.94
+    },
+    {
+     "w": " our",
+     "s": 18.94,
+     "e": 19.24
+    },
+    {
+     "w": " own",
+     "s": 19.24,
+     "e": 19.52
+    },
+    {
+     "w": " edge",
+     "s": 19.52,
+     "e": 19.72
+    },
+    {
+     "w": " compute",
+     "s": 19.72,
+     "e": 20.1
+    },
+    {
+     "w": " model",
+     "s": 20.1,
+     "e": 20.46
+    },
+    {
+     "w": " and",
+     "s": 20.46,
+     "e": 20.9
+    },
+    {
+     "w": " integrating",
+     "s": 20.9,
+     "e": 21.34
+    },
+    {
+     "w": " other",
+     "s": 21.34,
+     "e": 21.74
+    },
+    {
+     "w": " machine",
+     "s": 21.74,
+     "e": 22.12
+    },
+    {
+     "w": " learning",
+     "s": 22.12,
+     "e": 22.42
+    }
+   ]
+  },
+  {
+   "start": 22.42,
+   "end": 27.24,
+   "text": " features, we were confident we could create an automated system to reduce error and increase",
+   "words": [
+    {
+     "w": " features,",
+     "s": 22.42,
+     "e": 22.88
+    },
+    {
+     "w": " we",
+     "s": 23.22,
+     "e": 23.46
+    },
+    {
+     "w": " were",
+     "s": 23.46,
+     "e": 23.62
+    },
+    {
+     "w": " confident",
+     "s": 23.62,
+     "e": 23.98
+    },
+    {
+     "w": " we",
+     "s": 23.98,
+     "e": 24.28
+    },
+    {
+     "w": " could",
+     "s": 24.28,
+     "e": 24.46
+    },
+    {
+     "w": " create",
+     "s": 24.46,
+     "e": 24.74
+    },
+    {
+     "w": " an",
+     "s": 24.74,
+     "e": 24.9
+    },
+    {
+     "w": " automated",
+     "s": 24.9,
+     "e": 25.28
+    },
+    {
+     "w": " system",
+     "s": 25.28,
+     "e": 25.76
+    },
+    {
+     "w": " to",
+     "s": 25.76,
+     "e": 26.02
+    },
+    {
+     "w": " reduce",
+     "s": 26.02,
+     "e": 26.3
+    },
+    {
+     "w": " error",
+     "s": 26.3,
+     "e": 26.62
+    },
+    {
+     "w": " and",
+     "s": 26.62,
+     "e": 26.84
+    },
+    {
+     "w": " increase",
+     "s": 26.84,
+     "e": 27.24
+    }
+   ]
+  },
+  {
+   "start": 27.24,
+   "end": 29.36,
+   "text": " public confidence in pharmacists.",
+   "words": [
+    {
+     "w": " public",
+     "s": 27.24,
+     "e": 27.6
+    },
+    {
+     "w": " confidence",
+     "s": 27.6,
+     "e": 28.4
+    },
+    {
+     "w": " in",
+     "s": 28.4,
+     "e": 28.72
+    },
+    {
+     "w": " pharmacists.",
+     "s": 28.72,
+     "e": 29.36
+    }
+   ]
+  },
+  {
+   "start": 30.0,
+   "end": 34.36,
+   "text": " With tools like Pharmasweet, we hope to build a new tomorrow where everyone can trust health",
+   "words": [
+    {
+     "w": " With",
+     "s": 30.0,
+     "e": 30.14
+    },
+    {
+     "w": " tools",
+     "s": 30.14,
+     "e": 30.34
+    },
+    {
+     "w": " like",
+     "s": 30.34,
+     "e": 30.58
+    },
+    {
+     "w": " Pharmasweet,",
+     "s": 30.58,
+     "e": 31.06
+    },
+    {
+     "w": " we",
+     "s": 31.56,
+     "e": 31.6
+    },
+    {
+     "w": " hope",
+     "s": 31.6,
+     "e": 31.76
+    },
+    {
+     "w": " to",
+     "s": 31.76,
+     "e": 31.96
+    },
+    {
+     "w": " build",
+     "s": 31.96,
+     "e": 32.12
+    },
+    {
+     "w": " a",
+     "s": 32.12,
+     "e": 32.28
+    },
+    {
+     "w": " new",
+     "s": 32.28,
+     "e": 32.42
+    },
+    {
+     "w": " tomorrow",
+     "s": 32.42,
+     "e": 32.78
+    },
+    {
+     "w": " where",
+     "s": 32.78,
+     "e": 33.12
+    },
+    {
+     "w": " everyone",
+     "s": 33.12,
+     "e": 33.5
+    },
+    {
+     "w": " can",
+     "s": 33.5,
+     "e": 33.76
+    },
+    {
+     "w": " trust",
+     "s": 33.76,
+     "e": 34.08
+    },
+    {
+     "w": " health",
+     "s": 34.08,
+     "e": 34.36
+    }
+   ]
+  },
+  {
+   "start": 34.36,
+   "end": 35.12,
+   "text": " care professionals.",
+   "words": [
+    {
+     "w": " care",
+     "s": 34.36,
+     "e": 34.6
+    },
+    {
+     "w": " professionals.",
+     "s": 34.6,
+     "e": 35.12
+    }
+   ]
+  }
+ ],
+ "broll/New Recording 205.m4a": [
+  {
+   "start": 1.0400000000000031,
+   "end": 4.38,
+   "text": " To prevent the model from evading the privacy of pharmacy technicians,",
+   "words": [
+    {
+     "w": " To",
+     "s": 1.0400000000000031,
+     "e": 1.6
+    },
+    {
+     "w": " prevent",
+     "s": 1.6,
+     "e": 1.9
+    },
+    {
+     "w": " the",
+     "s": 1.9,
+     "e": 2.1
+    },
+    {
+     "w": " model",
+     "s": 2.1,
+     "e": 2.32
+    },
+    {
+     "w": " from",
+     "s": 2.32,
+     "e": 2.52
+    },
+    {
+     "w": " evading",
+     "s": 2.52,
+     "e": 2.74
+    },
+    {
+     "w": " the",
+     "s": 2.74,
+     "e": 2.88
+    },
+    {
+     "w": " privacy",
+     "s": 2.88,
+     "e": 3.2
+    },
+    {
+     "w": " of",
+     "s": 3.2,
+     "e": 3.46
+    },
+    {
+     "w": " pharmacy",
+     "s": 3.46,
+     "e": 3.7
+    },
+    {
+     "w": " technicians,",
+     "s": 3.7,
+     "e": 4.38
+    }
+   ]
+  },
+  {
+   "start": 4.84,
+   "end": 8.3,
+   "text": " PharmaSuite only begins tracking the pharmacist when they're making a transaction.",
+   "words": [
+    {
+     "w": " PharmaSuite",
+     "s": 4.84,
+     "e": 5.32
+    },
+    {
+     "w": " only",
+     "s": 5.32,
+     "e": 5.64
+    },
+    {
+     "w": " begins",
+     "s": 5.64,
+     "e": 5.96
+    },
+    {
+     "w": " tracking",
+     "s": 5.96,
+     "e": 6.34
+    },
+    {
+     "w": " the",
+     "s": 6.34,
+     "e": 6.54
+    },
+    {
+     "w": " pharmacist",
+     "s": 6.54,
+     "e": 6.96
+    },
+    {
+     "w": " when",
+     "s": 6.96,
+     "e": 7.26
+    },
+    {
+     "w": " they're",
+     "s": 7.26,
+     "e": 7.42
+    },
+    {
+     "w": " making",
+     "s": 7.42,
+     "e": 7.64
+    },
+    {
+     "w": " a",
+     "s": 7.64,
+     "e": 7.8
+    },
+    {
+     "w": " transaction.",
+     "s": 7.8,
+     "e": 8.3
+    }
+   ]
+  },
+  {
+   "start": 8.98,
+   "end": 13.46,
+   "text": " So the next to our project, we trained a custom edge compute model using data from a wearable",
+   "words": [
+    {
+     "w": " So",
+     "s": 8.98,
+     "e": 9.14
+    },
+    {
+     "w": " the",
+     "s": 9.14,
+     "e": 9.24
+    },
+    {
+     "w": " next",
+     "s": 9.24,
+     "e": 9.42
+    },
+    {
+     "w": " to",
+     "s": 9.42,
+     "e": 9.56
+    },
+    {
+     "w": " our",
+     "s": 9.56,
+     "e": 9.68
+    },
+    {
+     "w": " project,",
+     "s": 9.68,
+     "e": 10.04
+    },
+    {
+     "w": " we",
+     "s": 10.24,
+     "e": 10.28
+    },
+    {
+     "w": " trained",
+     "s": 10.28,
+     "e": 10.52
+    },
+    {
+     "w": " a",
+     "s": 10.52,
+     "e": 10.72
+    },
+    {
+     "w": " custom",
+     "s": 10.72,
+     "e": 11.1
+    },
+    {
+     "w": " edge",
+     "s": 11.1,
+     "e": 11.4
+    },
+    {
+     "w": " compute",
+     "s": 11.4,
+     "e": 11.82
+    },
+    {
+     "w": " model",
+     "s": 11.82,
+     "e": 12.22
+    },
+    {
+     "w": " using",
+     "s": 12.22,
+     "e": 12.66
+    },
+    {
+     "w": " data",
+     "s": 12.66,
+     "e": 12.94
+    },
+    {
+     "w": " from",
+     "s": 12.94,
+     "e": 13.16
+    },
+    {
+     "w": " a",
+     "s": 13.16,
+     "e": 13.26
+    },
+    {
+     "w": " wearable",
+     "s": 13.26,
+     "e": 13.46
+    }
+   ]
+  },
+  {
+   "start": 13.46,
+   "end": 17.5,
+   "text": " inertial measurement unit on the pharmacist's wrist to identify when the pill bottles are",
+   "words": [
+    {
+     "w": " inertial",
+     "s": 13.46,
+     "e": 13.92
+    },
+    {
+     "w": " measurement",
+     "s": 13.92,
+     "e": 14.18
+    },
+    {
+     "w": " unit",
+     "s": 14.18,
+     "e": 14.56
+    },
+    {
+     "w": " on",
+     "s": 14.56,
+     "e": 14.92
+    },
+    {
+     "w": " the",
+     "s": 14.92,
+     "e": 15.02
+    },
+    {
+     "w": " pharmacist's",
+     "s": 15.02,
+     "e": 15.5
+    },
+    {
+     "w": " wrist",
+     "s": 15.5,
+     "e": 15.62
+    },
+    {
+     "w": " to",
+     "s": 15.62,
+     "e": 15.98
+    },
+    {
+     "w": " identify",
+     "s": 15.98,
+     "e": 16.32
+    },
+    {
+     "w": " when",
+     "s": 16.32,
+     "e": 16.66
+    },
+    {
+     "w": " the",
+     "s": 16.66,
+     "e": 16.8
+    },
+    {
+     "w": " pill",
+     "s": 16.8,
+     "e": 16.98
+    },
+    {
+     "w": " bottles",
+     "s": 16.98,
+     "e": 17.24
+    },
+    {
+     "w": " are",
+     "s": 17.24,
+     "e": 17.5
+    }
+   ]
+  },
+  {
+   "start": 17.5,
+   "end": 22.86,
+   "text": " picked up or placed. By collecting 5000 data points manually, we ensured the neural network",
+   "words": [
+    {
+     "w": " picked",
+     "s": 17.5,
+     "e": 17.7
+    },
+    {
+     "w": " up",
+     "s": 17.7,
+     "e": 17.94
+    },
+    {
+     "w": " or",
+     "s": 17.94,
+     "e": 18.18
+    },
+    {
+     "w": " placed.",
+     "s": 18.18,
+     "e": 18.56
+    },
+    {
+     "w": " By",
+     "s": 19.28,
+     "e": 19.44
+    },
+    {
+     "w": " collecting",
+     "s": 19.44,
+     "e": 19.72
+    },
+    {
+     "w": " 5000",
+     "s": 19.72,
+     "e": 20.24
+    },
+    {
+     "w": " data",
+     "s": 20.24,
+     "e": 20.6
+    },
+    {
+     "w": " points",
+     "s": 20.6,
+     "e": 20.86
+    },
+    {
+     "w": " manually,",
+     "s": 20.86,
+     "e": 21.24
+    },
+    {
+     "w": " we",
+     "s": 21.56,
+     "e": 21.76
+    },
+    {
+     "w": " ensured",
+     "s": 21.76,
+     "e": 22.12
+    },
+    {
+     "w": " the",
+     "s": 22.12,
+     "e": 22.32
+    },
+    {
+     "w": " neural",
+     "s": 22.32,
+     "e": 22.52
+    },
+    {
+     "w": " network",
+     "s": 22.52,
+     "e": 22.86
+    }
+   ]
+  },
+  {
+   "start": 22.86,
+   "end": 28.56,
+   "text": " could distinguish between idle, random, putting down, and picking up actions with 98.21% accuracy.",
+   "words": [
+    {
+     "w": " could",
+     "s": 22.86,
+     "e": 23.02
+    },
+    {
+     "w": " distinguish",
+     "s": 23.02,
+     "e": 23.28
+    },
+    {
+     "w": " between",
+     "s": 23.28,
+     "e": 23.6
+    },
+    {
+     "w": " idle,",
+     "s": 23.6,
+     "e": 23.96
+    },
+    {
+     "w": " random,",
+     "s": 24.32,
+     "e": 24.6
+    },
+    {
+     "w": " putting",
+     "s": 25.0,
+     "e": 25.24
+    },
+    {
+     "w": " down,",
+     "s": 25.24,
+     "e": 25.52
+    },
+    {
+     "w": " and",
+     "s": 25.68,
+     "e": 25.8
+    },
+    {
+     "w": " picking",
+     "s": 25.8,
+     "e": 26.0
+    },
+    {
+     "w": " up",
+     "s": 26.0,
+     "e": 26.16
+    },
+    {
+     "w": " actions",
+     "s": 26.16,
+     "e": 26.48
+    },
+    {
+     "w": " with",
+     "s": 26.48,
+     "e": 26.66
+    },
+    {
+     "w": " 98",
+     "s": 26.66,
+     "e": 27.24
+    },
+    {
+     "w": ".21",
+     "s": 27.24,
+     "e": 27.84
+    },
+    {
+     "w": "%",
+     "s": 27.84,
+     "e": 28.18
+    },
+    {
+     "w": " accuracy.",
+     "s": 28.18,
+     "e": 28.56
+    }
+   ]
+  },
+  {
+   "start": 29.28,
+   "end": 33.82,
+   "text": " Using YOLO, a computer vision model, we correlate the position of the pharmacist's arm to",
+   "words": [
+    {
+     "w": " Using",
+     "s": 29.28,
+     "e": 29.64
+    },
+    {
+     "w": " YOLO,",
+     "s": 29.64,
+     "e": 30.06
+    },
+    {
+     "w": " a",
+     "s": 30.24,
+     "e": 30.34
+    },
+    {
+     "w": " computer",
+     "s": 30.34,
+     "e": 30.52
+    },
+    {
+     "w": " vision",
+     "s": 30.52,
+     "e": 30.8
+    },
+    {
+     "w": " model,",
+     "s": 30.8,
+     "e": 31.1
+    },
+    {
+     "w": " we",
+     "s": 31.32,
+     "e": 31.62
+    },
+    {
+     "w": " correlate",
+     "s": 31.62,
+     "e": 31.92
+    },
+    {
+     "w": " the",
+     "s": 31.92,
+     "e": 32.1
+    },
+    {
+     "w": " position",
+     "s": 32.1,
+     "e": 32.42
+    },
+    {
+     "w": " of",
+     "s": 32.42,
+     "e": 32.64
+    },
+    {
+     "w": " the",
+     "s": 32.64,
+     "e": 32.8
+    },
+    {
+     "w": " pharmacist's",
+     "s": 32.8,
+     "e": 33.28
+    },
+    {
+     "w": " arm",
+     "s": 33.28,
+     "e": 33.46
+    },
+    {
+     "w": " to",
+     "s": 33.46,
+     "e": 33.82
+    }
+   ]
+  },
+  {
+   "start": 33.82,
+   "end": 39.02,
+   "text": " bounding boxes to track the movements of pills. After the transaction, it obviously registers",
+   "words": [
+    {
+     "w": " bounding",
+     "s": 33.82,
+     "e": 34.28
+    },
+    {
+     "w": " boxes",
+     "s": 34.28,
+     "e": 34.56
+    },
+    {
+     "w": " to",
+     "s": 34.56,
+     "e": 34.86
+    },
+    {
+     "w": " track",
+     "s": 34.86,
+     "e": 35.2
+    },
+    {
+     "w": " the",
+     "s": 35.2,
+     "e": 35.4
+    },
+    {
+     "w": " movements",
+     "s": 35.4,
+     "e": 35.8
+    },
+    {
+     "w": " of",
+     "s": 35.8,
+     "e": 36.0
+    },
+    {
+     "w": " pills.",
+     "s": 36.0,
+     "e": 36.2
+    },
+    {
+     "w": " After",
+     "s": 36.82,
+     "e": 37.1
+    },
+    {
+     "w": " the",
+     "s": 37.1,
+     "e": 37.24
+    },
+    {
+     "w": " transaction,",
+     "s": 37.24,
+     "e": 37.8
+    },
+    {
+     "w": " it",
+     "s": 38.16,
+     "e": 38.22
+    },
+    {
+     "w": " obviously",
+     "s": 38.22,
+     "e": 38.54
+    },
+    {
+     "w": " registers",
+     "s": 38.54,
+     "e": 39.02
+    }
+   ]
+  },
+  {
+   "start": 39.02,
+   "end": 43.48,
+   "text": " changes in the database, ensuring that the pharmacist returns the pills into the right location.",
+   "words": [
+    {
+     "w": " changes",
+     "s": 39.02,
+     "e": 39.34
+    },
+    {
+     "w": " in",
+     "s": 39.34,
+     "e": 39.58
+    },
+    {
+     "w": " the",
+     "s": 39.58,
+     "e": 39.7
+    },
+    {
+     "w": " database,",
+     "s": 39.7,
+     "e": 40.04
+    },
+    {
+     "w": " ensuring",
+     "s": 40.34,
+     "e": 40.76
+    },
+    {
+     "w": " that",
+     "s": 40.76,
+     "e": 41.04
+    },
+    {
+     "w": " the",
+     "s": 41.04,
+     "e": 41.2
+    },
+    {
+     "w": " pharmacist",
+     "s": 41.2,
+     "e": 41.6
+    },
+    {
+     "w": " returns",
+     "s": 41.6,
+     "e": 42.04
+    },
+    {
+     "w": " the",
+     "s": 42.04,
+     "e": 42.26
+    },
+    {
+     "w": " pills",
+     "s": 42.26,
+     "e": 42.46
+    },
+    {
+     "w": " into",
+     "s": 42.46,
+     "e": 42.74
+    },
+    {
+     "w": " the",
+     "s": 42.74,
+     "e": 42.88
+    },
+    {
+     "w": " right",
+     "s": 42.88,
+     "e": 43.0
+    },
+    {
+     "w": " location.",
+     "s": 43.0,
+     "e": 43.48
+    }
+   ]
+  },
+  {
+   "start": 44.82,
+   "end": 49.88,
+   "text": " Through this process, PharmaSuite can make pharmaceutical handling safer and more trustworthy",
+   "words": [
+    {
+     "w": " Through",
+     "s": 44.82,
+     "e": 45.12
+    },
+    {
+     "w": " this",
+     "s": 45.12,
+     "e": 45.34
+    },
+    {
+     "w": " process,",
+     "s": 45.34,
+     "e": 45.88
+    },
+    {
+     "w": " PharmaSuite",
+     "s": 46.36,
+     "e": 46.7
+    },
+    {
+     "w": " can",
+     "s": 46.7,
+     "e": 46.86
+    },
+    {
+     "w": " make",
+     "s": 46.86,
+     "e": 47.12
+    },
+    {
+     "w": " pharmaceutical",
+     "s": 47.12,
+     "e": 47.66
+    },
+    {
+     "w": " handling",
+     "s": 47.66,
+     "e": 48.42
+    },
+    {
+     "w": " safer",
+     "s": 48.42,
+     "e": 48.82
+    },
+    {
+     "w": " and",
+     "s": 48.82,
+     "e": 49.12
+    },
+    {
+     "w": " more",
+     "s": 49.12,
+     "e": 49.38
+    },
+    {
+     "w": " trustworthy",
+     "s": 49.38,
+     "e": 49.88
+    }
+   ]
+  },
+  {
+   "start": 49.88,
+   "end": 54.54,
+   "text": " than ever before for patients while also preserving the privacy of workers.",
+   "words": [
+    {
+     "w": " than",
+     "s": 49.88,
+     "e": 50.56
+    },
+    {
+     "w": " ever",
+     "s": 50.56,
+     "e": 50.86
+    },
+    {
+     "w": " before",
+     "s": 50.86,
+     "e": 51.28
+    },
+    {
+     "w": " for",
+     "s": 51.28,
+     "e": 51.52
+    },
+    {
+     "w": " patients",
+     "s": 51.52,
+     "e": 51.98
+    },
+    {
+     "w": " while",
+     "s": 51.98,
+     "e": 52.48
+    },
+    {
+     "w": " also",
+     "s": 52.48,
+     "e": 52.96
+    },
+    {
+     "w": " preserving",
+     "s": 52.96,
+     "e": 53.38
+    },
+    {
+     "w": " the",
+     "s": 53.38,
+     "e": 53.66
+    },
+    {
+     "w": " privacy",
+     "s": 53.66,
+     "e": 54.0
+    },
+    {
+     "w": " of",
+     "s": 54.0,
+     "e": 54.28
+    },
+    {
+     "w": " workers.",
+     "s": 54.28,
+     "e": 54.54
+    }
+   ]
+  }
+ ]
+}

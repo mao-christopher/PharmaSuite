@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PharmaSuite pitch scenes</title>
+<style>
+  :root {
+    --bg: #060a13;
+    --panel: #0e1626;
+    --panel-2: #121d31;
+    --line: rgba(148, 163, 184, 0.16);
+    --line-strong: rgba(148, 163, 184, 0.32);
+    --text: #eaf0fa;
+    --muted: #8b9ab5;
+    --dim: #56647d;
+    --teal: #2dd4bf;
+    --blue: #3b82f6;
+    --amber: #f5a524;
+    --red: #f43f5e;
+    --green: #34d399;
+    --violet: #a78bfa;
+    --sans: "SF Pro Display", -apple-system, "Helvetica Neue", sans-serif;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; inset: 0; overflow: hidden; }
+  .bg { position: absolute; inset: 0; }
+  .bg .glow { position: absolute; border-radius: 50%; filter: blur(40px); }
+  .bg .grid {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(148, 163, 184, 0.09) 1.2px, transparent 1.3px);
+    background-size: 36px 36px;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 30%, transparent 85%);
+  }
+  .layer { position: absolute; inset: 0; }
+  .abs { position: absolute; }
+  .center { display: flex; align-items: center; justify-content: center; }
+  .eyebrow { font: 600 22px/1 var(--sans); letter-spacing: 0.18em; text-transform: uppercase; color: var(--teal); }
+  .title { font: 700 64px/1.08 var(--sans); letter-spacing: -0.02em; }
+  .card {
+    background: linear-gradient(180deg, rgba(20, 31, 52, 0.92), rgba(12, 19, 33, 0.92));
+    border: 1px solid var(--line); border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: rgba(14, 22, 38, 0.9);
+    font: 500 22px/1 var(--sans); color: var(--text); white-space: nowrap;
+  }
+  .mono { font-family: var(--mono); }
+  .word { display: inline-block; white-space: pre; will-change: transform, opacity, filter; }
+  svg { overflow: visible; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script src="scenes.js"></script>
+<script src="hud.js"></script>
+</body>
+</html>

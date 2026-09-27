@@ -1,0 +1,4 @@
+build/
+footage/*
+!footage/README.md
+node_modules/
