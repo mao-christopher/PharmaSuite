@@ -9,10 +9,16 @@ import ActiveBottles from '../components/ActiveBottles';
 import ActivityLog from '../components/ActivityLog';
 import Prescriptions from '../components/Prescriptions';
 import StockSummary from '../components/StockSummary';
+import LiveFeed from '../components/LiveFeed';
+import LiveMovements from '../components/LiveMovements';
+import { useLiveCapture } from '../lib/liveCapture';
 
 export default function Dashboard() {
   const { state } = useLive();
+  const capture = useLiveCapture();
   const t = inventoryTotals(state);
+  const live = capture.camera !== 'off';
+  const showLive = live && capture.panel === 'live';
 
   return (
     <>
@@ -25,9 +31,10 @@ export default function Dashboard() {
       </Metrics>
       <div className="dash-grid">
         <div className="stack">
-          <CameraFeed />
+          {showLive ? <LiveFeed /> : <CameraFeed />}
+          {(live || state.live?.movements?.length > 0) && <LiveMovements />}
           <FloorMap />
-          <ActivityLog />
+          {!showLive && <ActivityLog />}
           <StockSummary />
         </div>
         <div className="stack">

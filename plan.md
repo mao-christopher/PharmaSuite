@@ -1050,34 +1050,79 @@ never becomes a collider.
 | M8 re-enactment player | M5–M7 | L |
 | M9 render job and button | M8 | M |
 
-## Browser wristband capture — 2026-09-26
+## Live wristband capture in the dashboard — 2026-09-27
 
-The dashboard's Live camera page uses Chrome camera permission and Web Bluetooth to
-subscribe to one `Wristband-XX` at a time. Each `P` or `D` notification captures the
-preceding five seconds from the selected browser camera and uploads timestamped
-frames. The backend produces an MP4, runs the existing YOLO pose helper on rendered
-pixels, and tests the selected wrist against the configured camera regions. The
-first automatic rule requires three consecutive frames inside exactly one eligible
-region; overlap, competing regions, missing pose, or incomplete capture requires
-employee confirmation. MongoDB event IDs protect against upload retry. A short
-browser lease pauses recorded-video replay while the live camera is active.
-If a queued event arrives after its camera calibration changes, the API keeps its
-raw notification and clip but marks the location uncertain; it does not reinterpret
-old footage using the new region geometry. A Docker regression test verifies that
-the event survives, does not change stock, and deduplicates on retry. The full
-backend suite passed 123 tests in Docker after this change.
+Replaces PR 7's separate Live camera page (branch `feature/live-wristband-dashboard`,
+built on PR 7's browser capture and band connection). The live camera is now the main
+dashboard tile rather than a separate page, and every band event updates the whole
+dashboard like a played recording.
 
-This provisional rule has not been validated against a physical band and camera.
-Firmware notifications have no action timestamp or sequence number, so a captured
-interval only brackets the model's notification and may not contain the physical
-contact instant. The live mode supports one technician and one bottle at a time.
+Agreed behavior:
 
-The browser connection now shares one in-flight GATT attempt per selected band and
-removes notification and disconnect listeners before reconnecting or switching bands.
-Five deterministic Node tests cover concurrent connects, reconnects, band switching,
-disconnect during notification setup, and page cleanup. They passed in Docker along
-with the frontend production build; the backend suite passed 123 tests in Docker.
-If the browser camera track mutes or ends, the page clears buffered frames and stops
-the camera session so later band events cannot reuse stale footage.
-These tests do not establish real-band reconnection, camera permission behavior, or
-physical-contact timing. The live PR remains draft pending those hardware checks.
+- **Sources.** One camera at a time, chosen in the browser: the Mac webcam or an iPhone
+  through Continuity Camera (it appears as an ordinary camera in Chrome). Capture stays
+  in Chrome (`getUserMedia` + Web Bluetooth); the band firmware is unchanged.
+- **Privacy.** The feed lives only in browser memory (a rolling ~5.5 s JPEG buffer at
+  10 fps). Only the window from 4 s before to 1 s after each band notification is
+  uploaded and kept. Nothing is recorded between events, and no skeleton runs on the
+  continuous feed. Clips are kept until someone deletes them.
+- **Analysis.** Each event clip becomes a first-class recording (`scenarios/live-<event_id>`)
+  with an H.264 MP4, a thumbnail, YOLO poses from its pixels, one IMU event and its
+  scenario metadata. The existing three-consecutive-frame wrist rule decides the region,
+  and the inventory engine applies the event once, when it arrives. Replaying a clip is
+  review only, even after a reset, and review works while live capture keeps running.
+  The Unity re-render stays behind its button. OpenCV's `avc1` writer produces
+  browser-playable H.264 (`mp4v` fallback), so ffmpeg is not required.
+- **Tracking across clips.** All live events share one session scope (`live`). A pickup
+  opens a movement whose ID is its event ID; the next put-down joins that movement, so
+  the bottle's medication and original shelf carry across the two clips. The engine's
+  existing counter parking also applies here: a later pickup at the counter continues
+  the parked bottle.
+- **Out-of-sequence events** (pickup while a bottle is held, put-down with nothing held)
+  are treated as band false positives. Their raw notification is recorded in the store
+  and history as ignored, so a retry stays ignored, but no clip is written and inventory
+  is unchanged. Consequence: a missed put-down leaves the bottle held, and later pickups
+  are ignored until a put-down arrives.
+- **Uncertainty.** Multiple people, no frames, an incomplete window, a frame shape that
+  doesn't match the view, a calibration change while queued, or no confident wrist all
+  raise the normal uncertainty alert. The alert carries the live reason and its clip;
+  Notifications shows the thumbnail, and Confirm location plays the clip.
+- **Dashboard.** "Go live" replaces Upload on the top bar (Upload moved to Recordings).
+  The setup dialog has the camera, view (remembered per camera), wrist, band and a
+  privacy note. While live, the main tile switches between the live picture (with the
+  view's regions drawn over it) and the player. "Live movements" pairs each pickup with
+  its put-down, and Recordings groups clips by live session.
+- **Latency.** The target is 5–10 s from notification to dashboard update: 1 s post-roll,
+  upload, pose on about 50 frames, then the store write. Pose runs outside the inventory
+  lock so the replay clock doesn't stall.
+- **Dev mode.** `?dev=1` (remembered for the tab) makes Space send a pickup, then a
+  put-down, through the same upload path as the band, marked `source: dev`.
+
+Checks run (local, not Docker): the backend and simulation suites passed 262 tests,
+including 13 live API tests. Those cover:
+
+- a movement across two clips;
+- ignored out-of-sequence events without footage;
+- replay and reset never re-applying;
+- counter re-pickup keeping identity;
+- an uncertain pickup then confirm;
+- missing frames, multiple people, calibration change and frames outside the window;
+- dev source;
+- the live lease while a clip is reviewed;
+- deleting a clip keeping stock.
+
+The 5 Node band-link tests and the production dashboard build passed. The UI was checked in
+headless Chrome with a fake camera (light and dark themes); no band events were sent
+against the working database.
+
+Not validated: a physical band with a real camera, the real notification-to-contact
+timing (the firmware sends no timestamp or sequence number, so the window only brackets
+the notification), the measured end-to-end latency, Continuity Camera specifically, and
+automatic accuracy on live footage. The automatic rule remains provisional.
+
+Deferred:
+
+- Multi-camera live capture with visibility-driven handoff (AGENTS rule 15). Live mode
+  uses one camera.
+- Adapting PR 8's stocking flow to live events.
+- A timeout or manual "put down" for a band that misses a put-down.

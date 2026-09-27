@@ -1,14 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { IconContext, MoonIcon, PillIcon, SunIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import { IconContext, MoonIcon, PillIcon, SunIcon } from '@phosphor-icons/react';
 import { LiveProvider, useLive } from './lib/live';
 import { DialogProvider, useDialogs } from './lib/dialogs';
 import { useTheme } from './lib/theme';
 import { JobsIndicator, JobsProvider } from './lib/jobs';
+import { LiveCaptureProvider } from './lib/liveCapture';
+import LiveButton from './components/LiveButton';
 import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
-import LiveCamera from './pages/LiveCamera';
 
 const Room = React.lazy(() => import('./pages/Room')); // three.js loads only on this page
 
@@ -16,7 +17,7 @@ const ICONS = { size: 16, weight: 'bold' };
 
 function Shell() {
   const { state, connected, error } = useLive();
-  const { openDisposal, openUpload } = useDialogs();
+  const { openDisposal } = useDialogs();
   const location = useLocation();
   const [theme, toggleTheme] = useTheme();
   const seenDisposals = useRef(new Set());
@@ -53,7 +54,6 @@ function Shell() {
               )}
             </NavLink>
             <NavLink to="/recordings">Recordings</NavLink>
-            <NavLink to="/live">Live camera</NavLink>
             <NavLink to="/inventory">Inventory</NavLink>
             <NavLink to="/room">Room</NavLink>
           </nav>
@@ -65,7 +65,7 @@ function Shell() {
               title={connected ? 'Live updates connected' : 'Reconnecting to the server…'}
             >
               <span className="conn-dot" aria-hidden="true" />
-              {connected ? 'Live' : 'Reconnecting…'}
+              {connected ? 'Connected' : 'Reconnecting…'}
             </span>
             <button
               type="button"
@@ -76,9 +76,7 @@ function Shell() {
             >
               {theme === 'dark' ? <SunIcon aria-hidden="true" /> : <MoonIcon aria-hidden="true" />}
             </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={openUpload}>
-              <UploadSimpleIcon size={14} aria-hidden="true" /> Upload recording
-            </button>
+            <LiveButton />
           </div>
         </div>
       </header>
@@ -110,7 +108,7 @@ function Shell() {
                 </React.Suspense>
               }
             />
-            <Route path="/live" element={<LiveCamera />} />
+            <Route path="/live" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}
@@ -125,7 +123,9 @@ export default function App() {
       <LiveProvider>
         <JobsProvider>
           <DialogProvider>
-            <Shell />
+            <LiveCaptureProvider>
+              <Shell />
+            </LiveCaptureProvider>
           </DialogProvider>
         </JobsProvider>
       </LiveProvider>

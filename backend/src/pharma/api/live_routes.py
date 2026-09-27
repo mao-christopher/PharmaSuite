@@ -347,8 +347,13 @@ async def ingest_live_event(
                 camera_id=event.layout_id, calibration_version=event.calibration_version,
                 session_scope=live.LIVE_SCOPE)
             entry = ctrl.store.recordings[event.name]
+            reason = result["evidence"].get("reason")
             entry["live"] = {**live_meta(event, movement_id, result["clip"]),
-                             "region_id": result["region_id"], "reason": result["evidence"].get("reason")}
+                             "region_id": result["region_id"], "reason": reason}
+            # The engine only saw an empty hand list; keep the clip's actual reason for the employee.
+            for alert in ctrl.engine.alerts.values():
+                if alert.metadata.get("recording") == event.name and "live_reason" not in alert.metadata:
+                    alert.metadata["live_reason"] = reason
             ctrl.store.save()
             await ctrl.broadcast_state_snapshot()
     finally:

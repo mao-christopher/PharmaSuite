@@ -214,6 +214,8 @@ def test_second_visible_person_prevents_automatic_stock_change(client, wrist):
     response = send(client, "P")
     assert response.json()["status"] == "needs_confirmation"
     assert response.json()["evidence"]["reason"] == "multiple_people"
+    alert_id = state(client)["live"]["movements"][0]["alert_id"]
+    assert state(client)["alerts"][alert_id]["metadata"]["live_reason"] == "multiple_people"
 
 
 def test_queued_event_after_calibration_change_keeps_clip_without_reinterpreting(client, wrist):

@@ -1,6 +1,6 @@
 import React, { Fragment, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CaretDownIcon, CaretRightIcon, FilmStripIcon, PlayIcon, TrashIcon, UploadSimpleIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, CaretRightIcon, FilmStripIcon, PlayIcon, TrashIcon, UploadSimpleIcon, VideoCameraIcon } from '@phosphor-icons/react';
 import { useLive } from '../lib/live';
 import { useDialogs } from '../lib/dialogs';
 import { request } from '../lib/api';
@@ -15,12 +15,104 @@ const FILTERS = [
   { id: 'applied', label: 'Applied' },
 ];
 
-const isPending = (r) => r.status === 'ready' && r.events_applied < r.events_total;
+const isLive = (r) => r.source === 'live';
+// Live clips are applied once when they arrive, never from here.
+const isPending = (r) => !isLive(r) && r.status === 'ready' && r.events_applied < r.events_total;
 
 function matches(filter, r) {
-  if (filter === 'pending') return r.status !== 'ready' || r.events_applied < r.events_total;
-  if (filter === 'applied') return r.status === 'ready' && r.events_total > 0 && r.events_applied === r.events_total;
+  if (filter === 'pending') return !isLive(r) && (r.status !== 'ready' || r.events_applied < r.events_total);
+  if (filter === 'applied') return isLive(r) || (r.status === 'ready' && r.events_total > 0 && r.events_applied === r.events_total);
   return true;
+}
+
+/**
+ * Library rows, newest first: uploads and live sessions (each grouping its clips, oldest
+ * first, numbered by movement), then bundled fixtures.
+ */
+function libraryRows(recordings) {
+  const sessions = new Map();
+  const rows = [];
+  recordings.forEach((r) => {
+    if (!isLive(r)) {
+      rows.push({ kind: 'recording', rec: r, at: r.uploaded_at });
+      return;
+    }
+    const id = r.live?.live_session_id || 'unknown';
+    if (!sessions.has(id)) {
+      const group = { kind: 'session', id, clips: [] };
+      sessions.set(id, group);
+      rows.push(group);
+    }
+    sessions.get(id).clips.push(r);
+  });
+  sessions.forEach((group) => {
+    group.clips.sort((a, b) => (a.uploaded_at || '').localeCompare(b.uploaded_at || ''));
+    const movements = new Map();
+    group.clips.forEach((c) => {
+      const key = c.live?.movement_id;
+      if (!movements.has(key)) movements.set(key, movements.size + 1);
+      c.movementNumber = movements.get(key);
+    });
+    group.movements = movements.size;
+    group.at = group.clips[group.clips.length - 1].uploaded_at;
+    group.started = group.clips[0].uploaded_at;
+  });
+  return rows.sort((a, b) => (b.at != null) - (a.at != null) || (b.at || '').localeCompare(a.at || ''));
+}
+
+function liveMeta(r) {
+  const live = r.live || {};
+  const source = live.source === 'dev' ? 'dev key' : live.band_id ? `band ${live.band_id}` : 'wristband';
+  const number = r.movementNumber ? `Movement ${r.movementNumber}, ` : '';
+  return `${number}${live.event_type === 'release' ? 'put-down' : 'pickup'} from ${source}, ${live.wrist || 'unknown'} wrist`;
+}
+
+/** One live capture session: its clips, paired into pickup → put-down movements, open below it. */
+function SessionRow({ group, open, onToggle }) {
+  const alertsOpen = group.clips.reduce((n, c) => n + (c.alerts_open || 0), 0);
+  const pickups = group.clips.filter((c) => c.live?.event_type === 'pickup').length;
+  const releases = group.clips.length - pickups;
+  const day = formatDateTime(group.started);
+  const end = group.at ? new Date(group.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  return (
+    <tr className="session-row">
+      <td className="chevron-cell">
+        <button type="button" className="icon-btn" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} clips of this live session`} onClick={onToggle}>
+          {open ? <CaretDownIcon aria-hidden="true" /> : <CaretRightIcon aria-hidden="true" />}
+        </button>
+      </td>
+      <td>
+        <button type="button" className="rec-cell session-toggle" onClick={onToggle}>
+          <span className="session-icon" aria-hidden="true">
+            <VideoCameraIcon size={18} />
+          </span>
+          <span className="choice-main">
+            <span className="rec-name">
+              <span className="truncate">Live session</span>
+              <Badge tone="red">Live</Badge>
+            </span>
+            <span className="rec-meta truncate">
+              {day}
+              {end && group.clips.length > 1 ? ` to ${end}` : ''}
+            </span>
+            <span className="rec-meta">
+              {plural(group.clips.length, 'clip')}, {plural(group.movements, 'movement')}
+            </span>
+          </span>
+        </button>
+      </td>
+      <td className="num mono">{NONE}</td>
+      <td className="nowrap">
+        {plural(pickups, 'pickup')}
+        <div className="row-sub">{plural(releases, 'put-down')}</div>
+      </td>
+      <td>
+        <Badge tone="green">Applied live</Badge>
+      </td>
+      <td>{alertsOpen ? <Badge tone="red">{alertsOpen} open</Badge> : <span className="muted">None open</span>}</td>
+      <td className="actions" />
+    </tr>
+  );
 }
 
 function SkeletonStatus({ rec, onRetry }) {
@@ -129,6 +221,7 @@ export default function Recordings() {
   const [recordings, setRecordings] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
+  const [openSessions, setOpenSessions] = useState(() => new Set());
   const [busy, setBusy] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [deleting, setDeleting] = useState(null);
@@ -174,12 +267,14 @@ export default function Recordings() {
     navigate('/');
   });
 
-  const toggle = (name) =>
-    setExpanded((prev) => {
+  const flip = (setter) => (key) =>
+    setter((prev) => {
       const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
+  const toggle = flip(setExpanded);
+  const toggleSession = flip(setOpenSessions);
 
   const confirmDelete = async () => {
     setBusy(deleting.name);
@@ -210,14 +305,125 @@ export default function Recordings() {
     });
   const startApply = (r) => (r.earlier_pending > 0 ? setOrdering(r) : apply(r, false));
 
-  const shown = (recordings || []).filter((r) => matches(filter, r));
+  const shown = libraryRows((recordings || []).filter((r) => matches(filter, r)));
   const pendingCount = (recordings || []).filter(isPending).length;
+
+  const renderRow = (r, child = false) => {
+    const isOpen = expanded.has(r.name);
+    const ready = r.status === 'ready';
+    const remaining = r.events_total - r.events_applied;
+    return (
+      <Fragment key={r.name}>
+        <tr className={[r.in_player && 'current', child && 'session-child'].filter(Boolean).join(' ')}>
+          <td className="chevron-cell">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-expanded={isOpen}
+              aria-label={`${isOpen ? 'Hide' : 'Show'} signals for ${r.label}`}
+              onClick={() => toggle(r.name)}
+              disabled={!ready}
+            >
+              {isOpen ? <CaretDownIcon aria-hidden="true" /> : <CaretRightIcon aria-hidden="true" />}
+            </button>
+          </td>
+          <td>
+            <div className="rec-cell">
+              <img
+                className="thumb"
+                src={`/api/recordings/${encodeURIComponent(r.name)}/thumbnail`}
+                alt=""
+                width={112}
+                height={63}
+                loading="lazy"
+              />
+              <div className="choice-main">
+                <div className="rec-name">
+                  <span className="truncate">{r.label}</span>
+                  {r.in_player && <Badge tone="gray">In player</Badge>}
+                </div>
+                <div className="rec-meta truncate">
+                  {isLive(r)
+                    ? liveMeta(r)
+                    : r.source === 'upload'
+                      ? `Upload ${r.upload_index}: ${r.cameras.length > 1 ? `${r.cameras.length} cameras` : r.video_filename || 'video'}, ${formatDateTime(r.uploaded_at)}`
+                      : 'Bundled demo fixture'}
+                </div>
+                <div className="rec-meta">
+                  {r.cameras.length > 1
+                    ? `Views: ${r.cameras.map((c) => `${c.label} (${c.view_name || c.layout_id})`).join(', ')}`
+                    : `View: ${r.view_name || r.layout_id}`}
+                  {r.has_video && !r.view_confirmed && (
+                    <button
+                      type="button"
+                      className="link-btn view-check"
+                      onClick={() => openViewReview({ name: r.name, label: r.label, cameras: r.cameras })}
+                    >
+                      Check camera {r.cameras.length > 1 ? 'views' : 'view'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td className="num mono">{r.duration_ms != null ? formatMs(r.duration_ms) : NONE}</td>
+          <td className="nowrap">
+            {plural(r.pickups, 'pickup')}
+            <div className="row-sub">{plural(r.releases, 'put-down')}</div>
+          </td>
+          <td>
+            <SkeletonStatus rec={r} onRetry={() => run(r.name, () => request(`/api/recordings/${encodeURIComponent(r.name)}/process`, { method: 'POST' }))} />
+          </td>
+          <td>
+            {r.alerts_total === 0 ? (
+              <span className="muted">None</span>
+            ) : (
+              <Badge tone={r.alerts_open ? 'red' : 'gray'}>
+                {r.alerts_open ? `${r.alerts_open} open` : `${r.alerts_total} resolved`}
+              </Badge>
+            )}
+          </td>
+          <td className="actions">
+            {ready && r.has_video && r.render && <RenderButton name={r.name} initial={r.render} onDone={load} />}
+            {ready && remaining > 0 && !isLive(r) && (
+              <button type="button" className="btn btn-sm" disabled={busy === r.name} onClick={() => startApply(r)}>
+                {busy === r.name ? 'Applying…' : 'Apply'}
+              </button>
+            )}
+            <button type="button" className="btn btn-sm btn-primary" disabled={!ready || busy === r.name} onClick={() => open(r)}>
+              <PlayIcon size={13} aria-hidden="true" /> {r.in_player ? 'Watch' : 'Open'}
+            </button>
+            {(r.source === 'upload' || isLive(r)) && (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={`Delete ${r.label}`}
+                title={isLive(r) ? 'Delete clip' : 'Delete recording'}
+                disabled={r.status === 'processing'}
+                onClick={() => setDeleting(r)}
+              >
+                <TrashIcon aria-hidden="true" />
+              </button>
+            )}
+          </td>
+        </tr>
+        {isOpen && (
+          <tr className="expanded-row">
+            <td />
+            <td colSpan={6}>
+              <RecordingDetail rec={r} layout={state.layout} />
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
 
   return (
     <>
       <PageHeader
         title="Recordings"
-        subtitle="Every uploaded clip is kept here, in the order it happened. A clip's signals update live inventory once, the first time they play or when you apply the clip. Replays never count twice; uploading the same footage again counts as new events."
+        subtitle="Uploaded clips and live wristband clips are kept here, newest first. An upload's signals update inventory once, the first time they play or when you apply it; a live clip was applied when its band event arrived. Replays never count twice; uploading the same footage again counts as new events."
       >
         <div className="segmented" role="group" aria-label="Filter recordings">
           {FILTERS.map((f) => (
@@ -291,114 +497,16 @@ export default function Recordings() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((r) => {
-                  const isOpen = expanded.has(r.name);
-                  const ready = r.status === 'ready';
-                  const remaining = r.events_total - r.events_applied;
-                  return (
-                    <Fragment key={r.name}>
-                      <tr className={r.in_player ? 'current' : ''}>
-                        <td className="chevron-cell">
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            aria-expanded={isOpen}
-                            aria-label={`${isOpen ? 'Hide' : 'Show'} signals for ${r.label}`}
-                            onClick={() => toggle(r.name)}
-                            disabled={!ready}
-                          >
-                            {isOpen ? <CaretDownIcon aria-hidden="true" /> : <CaretRightIcon aria-hidden="true" />}
-                          </button>
-                        </td>
-                        <td>
-                          <div className="rec-cell">
-                            <img
-                              className="thumb"
-                              src={`/api/recordings/${encodeURIComponent(r.name)}/thumbnail`}
-                              alt=""
-                              width={112}
-                              height={63}
-                              loading="lazy"
-                            />
-                            <div className="choice-main">
-                              <div className="rec-name">
-                                <span className="truncate">{r.label}</span>
-                                {r.in_player && <Badge tone="gray">In player</Badge>}
-                              </div>
-                              <div className="rec-meta truncate">
-                                {r.source === 'upload'
-                                  ? `Upload ${r.upload_index}: ${r.cameras.length > 1 ? `${r.cameras.length} cameras` : r.video_filename || 'video'}, ${formatDateTime(r.uploaded_at)}`
-                                  : 'Bundled demo fixture'}
-                              </div>
-                              <div className="rec-meta">
-                                {r.cameras.length > 1
-                                  ? `Views: ${r.cameras.map((c) => `${c.label} (${c.view_name || c.layout_id})`).join(', ')}`
-                                  : `View: ${r.view_name || r.layout_id}`}
-                                {r.has_video && !r.view_confirmed && (
-                                  <button
-                                    type="button"
-                                    className="link-btn view-check"
-                                    onClick={() => openViewReview({ name: r.name, label: r.label, cameras: r.cameras })}
-                                  >
-                                    Check camera {r.cameras.length > 1 ? 'views' : 'view'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="num mono">{r.duration_ms != null ? formatMs(r.duration_ms) : NONE}</td>
-                        <td className="nowrap">
-                          {plural(r.pickups, 'pickup')}
-                          <div className="row-sub">{plural(r.releases, 'put-down')}</div>
-                        </td>
-                        <td>
-                          <SkeletonStatus rec={r} onRetry={() => run(r.name, () => request(`/api/recordings/${encodeURIComponent(r.name)}/process`, { method: 'POST' }))} />
-                        </td>
-                        <td>
-                          {r.alerts_total === 0 ? (
-                            <span className="muted">None</span>
-                          ) : (
-                            <Badge tone={r.alerts_open ? 'red' : 'gray'}>
-                              {r.alerts_open ? `${r.alerts_open} open` : `${r.alerts_total} resolved`}
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="actions">
-                          {ready && r.has_video && r.render && <RenderButton name={r.name} initial={r.render} onDone={load} />}
-                          {ready && remaining > 0 && (
-                            <button type="button" className="btn btn-sm" disabled={busy === r.name} onClick={() => startApply(r)}>
-                              {busy === r.name ? 'Applying…' : 'Apply'}
-                            </button>
-                          )}
-                          <button type="button" className="btn btn-sm btn-primary" disabled={!ready || busy === r.name} onClick={() => open(r)}>
-                            <PlayIcon size={13} aria-hidden="true" /> {r.in_player ? 'Watch' : 'Open'}
-                          </button>
-                          {r.source === 'upload' && (
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              aria-label={`Delete ${r.label}`}
-                              title="Delete recording"
-                              disabled={r.status === 'processing'}
-                              onClick={() => setDeleting(r)}
-                            >
-                              <TrashIcon aria-hidden="true" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr className="expanded-row">
-                          <td />
-                          <td colSpan={6}>
-                            <RecordingDetail rec={r} layout={state.layout} />
-                          </td>
-                        </tr>
-                      )}
+                {shown.map((item) =>
+                  item.kind === 'session' ? (
+                    <Fragment key={`session-${item.id}`}>
+                      <SessionRow group={item} open={openSessions.has(item.id)} onToggle={() => toggleSession(item.id)} />
+                      {openSessions.has(item.id) && item.clips.map((clip) => renderRow(clip, true))}
                     </Fragment>
-                  );
-                })}
+                  ) : (
+                    renderRow(item.rec)
+                  ),
+                )}
               </tbody>
             </table>
           </div>
@@ -441,7 +549,9 @@ export default function Recordings() {
           }}
         >
           <strong>{deleting.label}</strong> and its video, skeletons and timestamps will be removed.{' '}
-          {deleting.events_applied > 0
+          {isLive(deleting)
+            ? 'The stock change from its band event stays in place and remains in the history.'
+            : deleting.events_applied > 0
             ? 'Inventory changes it already made stay in place and remain in the history.'
             : 'None of its signals have been applied, so inventory is unaffected.'}
         </ConfirmDialog>

@@ -4,7 +4,7 @@ import { BellIcon, ClockCountdownIcon, InfoIcon, PackageIcon, TrashIcon, TrendDo
 import { useLive } from '../lib/live';
 import { request } from '../lib/api';
 import { useDialogs } from '../lib/dialogs';
-import { ALERT_TYPES, SEVERITY_RANK, SEVERITY_TONE, formatDate, medLabel, plural, regionLabel } from '../lib/format';
+import { ALERT_TYPES, LIVE_REASONS, SEVERITY_RANK, SEVERITY_TONE, formatDate, medLabel, plural, regionLabel } from '../lib/format';
 import { Badge, Card } from './ui';
 
 const ICONS = { red: WarningCircleIcon, amber: WarningIcon, blue: InfoIcon };
@@ -20,6 +20,10 @@ function describe(alert, layout, receipts) {
       const r = receipts.find((x) => x.receipt_id === m.receipt_id);
       return `Batch ${m.receipt_id}${r?.lot_number ? ` (lot ${r.lot_number})` : ''} expired ${formatDate(m.expiry_date)}. Find these bottles and dispose of them.`;
     }
+    case 'uncertainty':
+      return m.live_reason && LIVE_REASONS[m.live_reason]
+        ? `${LIVE_REASONS[m.live_reason]}. Watch the clip and confirm where it happened.`
+        : alert.description;
     default:
       return alert.description;
   }
@@ -210,6 +214,16 @@ export default function Notifications() {
                   <div className="notice-title">{ALERT_TYPES[a.alert_type] || a.alert_type}</div>
                   <div className="notice-med">{medLabel(meds, a.medication_key)}</div>
                   <p className="notice-text">{describe(a, state.layout, state.receipts)}</p>
+                  {a.alert_type === 'uncertainty' && a.metadata?.live_reason !== undefined && a.metadata?.recording && (
+                    <button type="button" className="notice-thumb" onClick={() => openConfirm(a.alert_id)} aria-label="Open the clip and confirm the location">
+                      <img
+                        src={`/api/recordings/${encodeURIComponent(a.metadata.recording)}/thumbnail`}
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => { e.currentTarget.parentElement.hidden = true; }}
+                      />
+                    </button>
+                  )}
                 </div>
                 <div className="notice-action">
                   <AlertAction

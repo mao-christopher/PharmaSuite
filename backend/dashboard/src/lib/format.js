@@ -103,6 +103,18 @@ export const SESSION_STATES = {
   DISPOSED: { label: 'Disposed', tone: 'gray' },
 };
 
+/** Why a live clip's location needs confirmation (backend live_capture / live_routes reasons). */
+export const LIVE_REASONS = {
+  no_stable_intersection: 'The wrist never settled inside one region',
+  overlapping_regions: 'The wrist was inside overlapping regions',
+  competing_regions: 'The wrist settled in more than one region',
+  multiple_people: 'More than one person was in view',
+  camera_aspect_mismatch: "The camera's frame shape doesn't match its view",
+  no_camera_frames: 'The camera was off',
+  incomplete_clip_window: 'The clip was incomplete',
+  calibration_changed: 'The camera view changed after the clip was captured',
+};
+
 export const TX_STATUS = {
   created: { label: 'Waiting', tone: 'gray' },
   confirmed_fill: { label: 'Filled', tone: 'blue' },

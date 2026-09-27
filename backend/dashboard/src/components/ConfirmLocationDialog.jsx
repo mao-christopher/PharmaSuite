@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLive } from '../lib/live';
-import { REGION_TYPES, jointNote, jointOffset, formatMs, medLabel, regionLabel } from '../lib/format';
+import { LIVE_REASONS, REGION_TYPES, jointNote, jointOffset, formatMs, medLabel, regionLabel } from '../lib/format';
 import { Dialog } from './ui';
 
 const REASONS = {
@@ -64,6 +64,9 @@ export default function ConfirmLocationDialog({ alert, onClose }) {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const events = (state.activity || []).filter((a) => a.session_id === m.session_id);
+  // Live band events carry their clip; watching it is the quickest way to decide.
+  const liveClip = 'live_reason' in m ? m.recording : null;
+  const [clipMissing, setClipMissing] = useState(false);
   const at = (type) => events.find((a) => a.event_type === type);
 
   const submit = async (e) => {
@@ -96,11 +99,23 @@ export default function ConfirmLocationDialog({ alert, onClose }) {
       }
     >
       <form id="confirm-form" className="form" onSubmit={submit}>
+        {liveClip && !clipMissing && (
+          <video
+            className="confirm-clip"
+            src={`/api/recordings/${encodeURIComponent(liveClip)}/video`}
+            controls
+            autoPlay
+            muted
+            loop
+            playsInline
+            onError={() => setClipMissing(true)}
+          />
+        )}
         <p className="lead">
-          {REASONS[m.reason] || 'The location was uncertain.'}
+          {liveClip !== null ? `${LIVE_REASONS[m.live_reason] || 'The location was uncertain'}.` : REASONS[m.reason] || 'The location was uncertain.'}
           {jointNote(m.joint, jointOffset(m)) && ` Position came from ${jointNote(m.joint, jointOffset(m))}.`}
           {session && session.medication_key !== 'UNKNOWN' && ` Bottle: ${medLabel(state.layout.medications, session.medication_key)}.`}
-          {m.recording && m.recording !== state.scenario && ` Recording: ${m.recording}.`}
+          {m.recording && m.recording !== state.scenario && liveClip === null && ` Recording: ${m.recording}.`}
           {' '}Choose where it happened; the nearest options are listed first.
         </p>
         <div className={askRelease ? 'grid-2 align-start' : ''}>

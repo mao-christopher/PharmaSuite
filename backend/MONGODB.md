@@ -3,16 +3,19 @@
 ## Run locally
 
 For live wristband use, open the dashboard in Chrome at localhost or an HTTPS
-origin, select **Live camera**, grant camera access, choose the fixed camera's
-calibrated view and wearing wrist, then select the `Wristband-XX` device in
-Chrome's Bluetooth picker. Chrome requires a user gesture for first-time device
-authorization; subsequent visits attempt to reconnect to an authorized band.
-The firmware sends `P` and `D` notifications only. An event saves a five-second
-camera clip and snapshot under `backend/data/live_clips/` and updates stock only
-when the selected wrist has a unique sustained intersection with a configured
-region. Uncertain events appear for employee confirmation. Browser upload retries
-keep their original event ID. The firmware does not timestamp the physical action;
-the matching window and automatic rule are provisional until tested with hardware.
+origin and select **Go live**. Choose the camera (the Mac webcam or an iPhone through
+Continuity Camera), its registered view and the wearing wrist, then connect the
+`Wristband-XX` device from Chrome's Bluetooth picker. Chrome requires a user gesture
+for first-time device authorization; later visits try to reconnect to an authorized
+band. The firmware sends only `P` and `D` notifications. Each notification uploads
+the 4 s before and 1 s after it. The clip becomes a recording (`live-<event_id>`),
+its pose is extracted, and stock updates once when the selected wrist stays inside
+exactly one region. Other cases wait for employee confirmation. A pickup and the next
+put-down count as one bottle; out-of-sequence notifications are stored as ignored,
+with no clip. Browser retries keep the original event ID, and replaying a live clip
+never changes stock. Add `?dev=1` to the URL to send pickups and put-downs with Space.
+The firmware does not timestamp the physical action, so the window and automatic
+rule remain provisional until tested with hardware.
 
 1. Start MongoDB: `docker compose -f backend/docker/docker-compose.yml up -d mongo`.
 2. Create `backend/.env` from `backend/.env.example`. Set `MONGO_URI`,
