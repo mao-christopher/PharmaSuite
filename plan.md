@@ -1298,3 +1298,7 @@ pages return 200 with certificate verification, and the dashboard WebSocket
 connects over HTTPS. The live UI verifies misplaced alerts above wristband events
 and absence of the removed player note/button. Frontend build and 7 tests pass.
 Certbot renewal dry-run also passes.
+
+The IMG_3537 recording's display label is now Pharmacy camera. The player subtitle
+shows the camera name without the skeleton timing description. Pre-action pose
+visibility is unchanged; only the user-facing label and caption were updated.

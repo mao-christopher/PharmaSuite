@@ -28,7 +28,7 @@ room['room_version']+=1;room['updated_at']=now
 view=json.loads((root/f'layouts/{viewid}/layout.json').read_text());view.update(name='Pharmacy security camera',regions=[],regions_source=None,medications=[],receipts=[])
 # Camera rectangles are presentation-only, never fabricated calibrated inventory evidence.
 (root/f'layouts/{viewid}/layout.json').write_text(Layout.model_validate(view).model_dump_json(indent=2))
-meta_path=root/f'scenarios/{rid}/scenario.json';meta=json.loads(meta_path.read_text());meta['privacy_windows']=True;meta_path.write_text(json.dumps(meta,indent=2))
+meta_path=root/f'scenarios/{rid}/scenario.json';meta=json.loads(meta_path.read_text());meta.update(privacy_windows=True,label='Pharmacy camera');meta_path.write_text(json.dumps(meta,indent=2))
 setup.update(camera_layout_id=viewid,presentation_regions=regions,reconstruction_source='Authored from video review; approximate room boxes, no camera calibration')
 (root/'demo/setup.json').write_text(json.dumps(setup,indent=2))
 print('Archived previous demos at',archive,'; one recording, one camera, four medication shelves and a counter remain')

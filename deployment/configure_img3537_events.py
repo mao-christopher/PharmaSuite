@@ -15,7 +15,7 @@ regions=json.loads(Path('/tmp/img3537-camera-regions.json').read_text())
 with httpx.Client(base_url='http://127.0.0.1:8000', timeout=120) as api:
     api.post('/api/replay/control',json={'action':'pause'}).raise_for_status()
     before=api.get('/api/inventory').raise_for_status().json()
-    assert before['recording']['label']=='IMG_3537'
+    assert before['recording']['name']==setup['recording']
     (backup/'ui-state.json').write_text(json.dumps(before,indent=2))
     repo=MongoStateRepository.configured()
     (backup/'inventory.json').write_text(json.dumps(repo.load(),default=str,indent=2));repo.close()

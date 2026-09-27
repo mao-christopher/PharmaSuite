@@ -194,7 +194,7 @@ export default function CameraFeed() {
           ? `Switching between ${state.camera_selection.cameras} cameras. Showing ${state.camera_selection.label || state.camera_selection.camera_id} (${
               state.camera_selection.reliable_arm ? 'arm visible' : 'arm not clearly visible'
             }), view ${state.layout?.name || state.layout?.layout_id}`
-          : `${state.layout?.name || state.layout?.layout_id} · ${rec.privacy_windows ? 'Skeleton only in the second before an action' : state.has_video ? 'Video with pose skeleton' : 'Scripted wrist path, no video'}`
+          : state.layout?.name || state.layout?.layout_id
       }
       className="area-player"
       flush
