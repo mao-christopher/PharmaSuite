@@ -214,7 +214,18 @@ class InventoryEngine:
 
     def handle_pickup(self, session_id: str, hands: List[Hand], timestamp: float) -> MovementSession:
         """Pickup signal: the bottle came from the region nearest the technician's hand."""
+        current = self.sessions.get(session_id)
+        if current and current.state in {"HELD", "NEEDS_CONFIRMATION"}:
+            self._add_alert("reconciliation_issue", "warning", current.medication_key,
+                            "Pickup signal received while bottle handling is unresolved.",
+                            {"session_id": session_id, "state": current.state})
+            return current
         region, evidence = self._locate(hands, PICKUP_REGION_TYPES)
+        if current and current.state in {"AT_COUNTER", "MISPLACED"} and region and region.region_id != current.current_location_id:
+            self._add_alert("reconciliation_issue", "warning", current.medication_key,
+                            "Pickup signal is away from the bottle's last recorded location.",
+                            {"session_id": session_id, "region_id": region.region_id})
+            return current
         if region is None:
             session = MovementSession(
                 session_id=session_id, medication_key="UNKNOWN", original_shelf_id="UNKNOWN"

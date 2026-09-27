@@ -8,6 +8,7 @@ import { JobsIndicator, JobsProvider } from './lib/jobs';
 import Dashboard from './pages/Dashboard';
 import Recordings from './pages/Recordings';
 import Inventory from './pages/Inventory';
+import LiveCamera from './pages/LiveCamera';
 
 const Room = React.lazy(() => import('./pages/Room')); // three.js loads only on this page
 
@@ -52,6 +53,7 @@ function Shell() {
               )}
             </NavLink>
             <NavLink to="/recordings">Recordings</NavLink>
+            <NavLink to="/live">Live camera</NavLink>
             <NavLink to="/inventory">Inventory</NavLink>
             <NavLink to="/room">Room</NavLink>
           </nav>
@@ -108,6 +110,7 @@ function Shell() {
                 </React.Suspense>
               }
             />
+            <Route path="/live" element={<LiveCamera />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}

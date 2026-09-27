@@ -2,6 +2,18 @@
 
 ## Run locally
 
+For live wristband use, open the dashboard in Chrome at localhost or an HTTPS
+origin, select **Live camera**, grant camera access, choose the fixed camera's
+calibrated view and wearing wrist, then select the `Wristband-XX` device in
+Chrome's Bluetooth picker. Chrome requires a user gesture for first-time device
+authorization; subsequent visits attempt to reconnect to an authorized band.
+The firmware sends `P` and `D` notifications only. An event saves a five-second
+camera clip and snapshot under `backend/data/live_clips/` and updates stock only
+when the selected wrist has a unique sustained intersection with a configured
+region. Uncertain events appear for employee confirmation. Browser upload retries
+keep their original event ID. The firmware does not timestamp the physical action;
+the matching window and automatic rule are provisional until tested with hardware.
+
 1. Start MongoDB: `docker compose -f backend/docker/docker-compose.yml up -d mongo`.
 2. Create `backend/.env` from `backend/.env.example`. Set `MONGO_URI`,
    `MONGO_DB_NAME` and a stable `PHARMACY_ID`. The defaults are local MongoDB,

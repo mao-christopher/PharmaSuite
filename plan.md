@@ -1049,3 +1049,20 @@ never becomes a collider.
 | M7 Unity scene from rebuilt room | N4, M6 | S–M |
 | M8 re-enactment player | M5–M7 | L |
 | M9 render job and button | M8 | M |
+
+## Browser wristband capture — 2026-09-26
+
+The dashboard's Live camera page uses Chrome camera permission and Web Bluetooth to
+subscribe to one `Wristband-XX` at a time. Each `P` or `D` notification captures the
+preceding five seconds from the selected browser camera and uploads timestamped
+frames. The backend produces an MP4, runs the existing YOLO pose helper on rendered
+pixels, and tests the selected wrist against the configured camera regions. The
+first automatic rule requires three consecutive frames inside exactly one eligible
+region; overlap, competing regions, missing pose, or incomplete capture requires
+employee confirmation. MongoDB event IDs protect against upload retry. A short
+browser lease pauses recorded-video replay while the live camera is active.
+
+This provisional rule has not been validated against a physical band and camera.
+Firmware notifications have no action timestamp or sequence number, so a captured
+interval only brackets the model's notification and may not contain the physical
+contact instant. The live mode supports one technician and one bottle at a time.
